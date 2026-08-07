@@ -1,0 +1,39 @@
+create module DuckProbe;
+
+alter module DuckProbe
+  add jar dependency (
+    group    = 'org.duckdb',
+    artifact = 'duckdb_jdbc',
+    version  = '1.5.5.1',
+    included = true,
+  );
+
+create constant DuckProbe.DataDir type string
+  default '/home/user/mxcli-formula1/data/f1db';
+create constant DuckProbe.DuckDbUrl type string default 'jdbc:duckdb:';
+create constant DuckProbe.DuckDbUser type string default '';
+create constant DuckProbe.DuckDbPassword type string default '' PRIVATE;
+
+create non-persistent entity DuckProbe.DriverRow (
+  DriverId: string(60),
+  Name: string(100),
+  TotalRaceWins: integer
+);
+
+create database connection DuckProbe.F1Warehouse
+type 'BYOD'
+connection string @DuckProbe.DuckDbUrl
+username @DuckProbe.DuckDbUser
+password @DuckProbe.DuckDbPassword
+begin
+  query GetDriverById
+    sql 'SELECT id, name, totalRaceWins FROM read_csv({dataDir} || ''/f1db-drivers.csv'') WHERE id = {driverId}'
+    parameter dataDir: string
+    parameter driverId: string
+    returns DuckProbe.DriverRow
+    map (
+      id as DriverId,
+      name as Name,
+      totalRaceWins as TotalRaceWins
+    );
+end;

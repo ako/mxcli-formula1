@@ -56,7 +56,15 @@ its domain no longer serves the dump.
 The CSVs are git-ignored and re-fetched by `scripts/fetch-f1-data.sh`. The
 backend never copies them into a Mendix database: DuckDB reads them in place at
 query time via `read_csv()`, through the JDBC driver, behind Mendix's External
-Database Connector.
+Database Connector (database type `BYOD`, connection string `jdbc:duckdb:`).
+
+**This is proven, not assumed.** `spikes/duckdb-readpath/` holds a throwaway probe
+that ran inside a booted Mendix runtime and asserted against real values — Senna 41
+wins, Hamilton 106, 917 driver rows — in ~30 ms per query. Re-run it any time with
+`mxcli test`; the README there has the commands.
+
+The DuckDB JDBC driver (82 MB) is git-ignored too and fetched by
+`scripts/fetch-duckdb-driver.sh` into `Formula1Backend/userlib/`.
 
 ## Working on it
 
@@ -67,6 +75,14 @@ To do it by hand:
 
 ```bash
 sh .claude/bootstrap-mxcli.sh
+```
+
+For a fast test loop, leave the backend up with its test endpoint and attach to it
+— ~2 s per iteration instead of a ~34 s cold boot each time:
+
+```bash
+./mxcli run --local -p Formula1Backend.mpr --test-endpoint   # terminal 1
+./mxcli test tests/ -p Formula1Backend.mpr --attach          # terminal 2
 ```
 
 Then boot either app:

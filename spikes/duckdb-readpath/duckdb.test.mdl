@@ -1,0 +1,27 @@
+/**
+ * @test Ayrton Senna has 41 race wins
+ * @expect $result = 41
+ */
+$result = CALL MICROFLOW DuckProbe.GetDriverWins(DriverId = 'ayrton-senna');
+/
+
+/**
+ * @test Lewis Hamilton has 106 race wins
+ * @expect $result = 106
+ */
+$result = CALL MICROFLOW DuckProbe.GetDriverWins(DriverId = 'lewis-hamilton');
+/
+
+/**
+ * @test An unknown driver id yields the -1 sentinel
+ * @expect $result = -1
+ */
+$result = CALL MICROFLOW DuckProbe.GetDriverWins(DriverId = 'no-such-driver');
+/
+
+/**
+ * @test The drivers CSV has 917 rows
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW DuckProbe.CountAllDrivers();
+/

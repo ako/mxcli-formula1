@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main @ `9236202` (2026-08-07), reports `mxcli version 9236202` |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 were done on `9236202`; §11–§13 on **`1bdd46a`** (2026-08-07, PR #109 — the `test --watch`/`--attach` work) |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -137,8 +137,10 @@ Two corrections fall out of this:
   is **not** in the 11.13 picker, and omits `BYOD`, which is.
 - mxcli does not validate the type string at all — `mdl/executor/cmd_dbconnection.go`
   passes `stmt.DatabaseType` straight through to `addStr(e,"DatabaseType",…)` in
-  `mdl/backend/modelsdk/db_write.go`. So `type 'BYOD'` will be written happily;
-  whether the *runtime* accepts it is still unproven here (see open items).
+  `mdl/backend/modelsdk/db_write.go`. So `type 'BYOD'` will be written happily.
+  ~~Whether the *runtime* accepts it is still unproven here.~~ **§11 proved it does:**
+  a booted Mendix 11.13 runtime opened `jdbc:duckdb:` through a `type 'BYOD'`
+  connection and returned real rows.
 
 ## 7. DuckDB-over-CSV via JDBC: verified working, including a bound path prefix
 
@@ -189,25 +191,26 @@ and include `ApplicationRootUrl` in the `show` summary.
 
 ## Open / not yet verified
 
-*(Trimmed as items were closed. §10 later proved the OData half of this list; what
-remains is the DuckDB half.)*
+*(Trimmed as items were closed. §10 proved the OData half; §11 proved the DuckDB
+half. Almost nothing is left.)*
 
-- `type 'BYOD'` has been shown to *write* cleanly through mxcli and to be a valid
-  value in the Studio Pro editor. It has **not** been round-tripped through
-  `mxbuild` or exercised against a booted runtime. Do that before trusting it.
-- The DuckDB numbers in §7 come from a standalone JVM. Behaviour inside the
-  Mendix runtime — driver discovery from `userlib/`, connection pooling against
-  an in-memory DuckDB, and whether each pooled connection gets its own empty
-  database — is untested.
-- The two halves have not been joined: a read microflow whose body is
-  `execute database query` against the DuckDB connection. §7 proved the JDBC
-  layer, §10 proved the OData layer with a stub microflow returning an empty
-  list. Nothing has yet carried a CSV row all the way to an OData response.
+- **Closed (§10):** `mxbuild` has been run against `Formula1Backend` — green, after
+  the §10 workarounds.
+- **Closed (§11):** `type 'BYOD'` is accepted by the runtime, the driver is found in
+  `userlib/`, and real CSV rows come back through `execute database query`.
+- **Still open:** the two halves have not been joined *in one flow* — a published
+  OData read microflow whose body is `execute database query`. §10 used a stub
+  returning an empty list; §11 called the DuckDB microflow directly from a test.
+  Both ends work; the seam between them is the one untested inch.
+- **Still open:** connection-pool behaviour against an in-memory DuckDB under
+  concurrent load. §11's timings are single-threaded. Each pooled connection gets
+  its own empty in-memory database, which is fine when every query inlines
+  `read_csv()`, but would break anything relying on session state (temp tables,
+  `CREATE VIEW`, `SET`).
 
-**Closed since:** `mxbuild` has now been run against `Formula1Backend` (green,
-after the §10 workarounds), so "no `mx check` has been run" no longer holds. Both
-apps are otherwise still the blank template plus theme and `ApplicationRootUrl` —
-the probe module used in §10 was dropped and the `.mpr` restored.
+Both apps are otherwise still the blank template plus theme and
+`ApplicationRootUrl` — the probe modules from §10 and §11 were dropped and the
+`.mpr` restored each time.
 
 ---
 
@@ -472,6 +475,129 @@ is `execute database query` — has not been run yet.
 
 ---
 
+## 11. The DuckDB read path works from inside the Mendix runtime — and `test --attach` makes it a 2-second loop
+
+*Verified 2026-08-07 on mxcli `1bdd46a` (rebuilt from `ako/mxcli` main) / Mendix
+11.13.0, against the real 47-file dataset. Reproducible: `spikes/duckdb-readpath/`.*
+
+This closes the biggest open item. A Mendix microflow, using the External Database
+Connector with `type 'BYOD'` and connection string `jdbc:duckdb:`, calling
+`read_csv()` on `data/f1db/`, returns real rows inside a booted runtime:
+
+```
+PASS  Ayrton Senna has 41 race wins           (29ms)
+PASS  Lewis Hamilton has 106 race wins        (29ms)
+PASS  An unknown driver id yields -1          (27ms)
+PASS  The drivers CSV has 917 rows            (60ms)
+```
+
+Nothing is copied into Postgres. `BYOD` is accepted by the runtime, not just the
+editor — §6's caveat ("whether the runtime accepts it is still unproven") is
+resolved.
+
+Two MDL details cost time and are worth writing down:
+
+- `execute database query … dynamic '<sql>'` overrides the SQL at runtime but
+  **still requires values for every declared parameter**, even ones the override
+  does not use. `CountAllDrivers` passes `driverId = 'unused'`.
+- `read_csv({dataDir} || '/f1db-drivers.csv')` — the `{param}` placeholder
+  concatenated into the path — works through the connector exactly as it did in
+  the standalone JDBC harness in §7. One constant, no absolute path in the model.
+
+### The new test runner is the story
+
+`mxcli test --local` used to boot the app once per invocation. `--watch` (#108) and
+`--attach` (#109) change the economics completely. Measured here, same 4 tests:
+
+| Mode | Wall clock |
+|---|---|
+| `test --local`, cold boot each run | **33.7 s** |
+| `test --attach` against a warm `run --local --test-endpoint` | **2.2 s** (3.2 s first, then 2.1–2.5 s) |
+| edit the microflow under test → verdict, via `--attach` | **2.0 s** |
+
+That matches the commit message's claim of ~2 s. It is the difference between
+"run the suite when you remember to" and "run it on every edit".
+
+Two design choices that proved themselves in use:
+
+- **Per-test microflows.** The first run of §11 failed all four tests with
+  `exception during execution` — and reported four separate failures with
+  individual timings, rather than dying on the first. The old after-startup runner
+  would have given one log to grep.
+- **Ownership on attach is strict, and it holds.** After an attach run,
+  `show modules` showed `MxTest` still present with exactly its host-owned
+  `RegisterEndpoint` microflow + Java action; the four `Test_*` microflows were
+  gone. On `Ctrl-C` of the host, the log said `test endpoint removed; project
+  restored`, `MxTest` disappeared, and `.mxcli/test-endpoint.json` was deleted. The
+  probe module I created myself was the only thing left, which is correct.
+
+The failure mode to know: `--attach` runs against the **host app's own database**,
+not a scratch one. §11's tests are pure reads so it does not matter, but a test that
+commits will leave rows in the app you are looking at.
+
+## 12. Gap: a module JAR dependency never reaches the generated Gradle build
+
+*Verified 2026-08-07 on mxcli `1bdd46a` / Mendix 11.13.0.*
+
+This is why §11's first run failed. The documented way to add a JDBC driver is a
+module JAR dependency, and mxcli writes it correctly:
+
+```sql
+ALTER MODULE DuckProbe ADD JAR DEPENDENCY (
+  group = 'org.duckdb', artifact = 'duckdb_jdbc', version = '1.5.5.1', included = true,
+);
+```
+
+```
+> list jar dependencies in DuckProbe;
+DuckProbe  org.duckdb  duckdb_jdbc  1.5.5.1  yes
+```
+
+The model has it. The build does not:
+
+```
+ERROR - ExternalDatabaseConnector: No JDBC drivers found, add the appropriate driver JAR to your app via Module Settings
+java.sql.SQLException: No JDBC driver found in app for URL: jdbc:duckdb:.
+```
+
+`deployment/build.gradle` contains no `dependencies` block mentioning duckdb, and
+`find deployment -iname '*duckdb*'` returns nothing. Dropping the same jar into
+`Formula1Backend/userlib/` made all four tests pass on the next run with no other
+change — so the driver and the connector were always fine; only dependency
+*resolution* was missing.
+
+Unresolved: whether `mxbuild --serve` simply skips Maven resolution (a full
+`mxbuild` might do it), or whether mxcli writes the dependency somewhere MxBuild
+does not read. Worth pinning down, because the failure is silent at model level —
+`list jar dependencies` happily reports a dependency that will not be on the
+classpath, and the only symptom is a runtime `SQLException` much later.
+
+**Workaround in this repo:** `scripts/fetch-duckdb-driver.sh` puts the jar in
+`userlib/` and the SessionStart hook runs it. The jar is git-ignored (82 MB).
+
+## 13. MDL papercuts hit while writing the spike
+
+Small, all verified 2026-08-07 on `1bdd46a`:
+
+- **A bare literal assignment does not parse.** `$N = 0;` and `$N = -1;` both give
+  `no viable alternative at input '$N=0'`. `DECLARE $N Integer = 0;` is the working
+  form, and `$X = HEAD($List)` / `$X = execute database query …` still work bare, so
+  the inconsistency is easy to trip over. The error names the token, not the
+  missing `DECLARE`.
+- **`mxcli lint` caught a real mistake with a genuinely good message**, worth
+  crediting rather than just complaining:
+  ```
+  ✗ declare '$Total' calls 'count()', which is not a Mendix expression function —
+    the build fails CE0117 "Error(s) in expression"  [MDL044]
+    → 'count' is an aggregate activity, not an expression function. Assign it to a
+      variable first: $n = count($List); then use $n in the expression.
+  ```
+  This is the standard other MDL errors should be held to.
+- **`mxcli test tests/` resolves the path relative to the process CWD, not to `-p`.**
+  Expected, but combined with `mxcli`'s project auto-discovery — which *does* search
+  upward and sideways (§3) — it is easy to get a "no such file or directory" for a
+  directory that exists next to the `.mpr`.
+
 ## Suggested mxcli issues, in the order I would file them
 
 1. **`CREATE ODATA SERVICE` leaves `ServiceName` empty → every published service fails
@@ -486,14 +612,32 @@ is `execute database query` — has not been run yet.
    and is unreachable by anyone who does not read the Go source.
 5. **Fix the published-OData DESCRIBE roundtrip** (§10.5) — emit `microflow X`, use the
    entity-set exposed name, include paging.
-6. **Correct the database type table in `database-connections.md`** (§6) — drop
+6. **A module JAR dependency never reaches the generated Gradle build** (§12) —
+   `list jar dependencies` reports it, `deployment/build.gradle` has no trace of it,
+   and the only symptom is a runtime `SQLException` about a missing driver. Silent at
+   model level, which is the worst place for it to be silent.
+7. **Correct the database type table in `database-connections.md`** (§6) — drop
    `Redshift`, add `BYOD` ("Other"), which is the only way to use a JDBC driver Mendix
-   does not ship a picker entry for.
-7. **`mxcli init` from a solution root silently initialises one app** (§3) — refuse, or
+   does not ship a picker entry for. Now that §11 has proven `BYOD` works against a
+   live runtime, the doc is the only thing standing between a user and this working.
+8. **`mxcli init` from a solution root silently initialises one app** (§3) — refuse, or
    name the chosen project first.
-8. **Warn on unknown `publish entity` properties.** `parsePublishEntityBlock`
+9. **Warn on unknown `publish entity` properties.** `parsePublishEntityBlock`
    (`visitor_odata.go:344-359`) has a `switch` with no `default`, so a typo like
    `ReadMicroflow:` or `Pagesize:` is silently discarded. The service-level path already
    does this right — `alterODataService` returns
    `"unknown OData service property: %s"`. Applying the same rule at entity level would
    have saved most of an afternoon here.
+
+10. **`$N = 0;` does not parse; `DECLARE $N Integer = 0;` does** (§13) — and the error
+    (`no viable alternative at input '$N=0'`) names the token rather than the missing
+    keyword. Bare assignment works for `HEAD(...)` and `execute database query`, so the
+    rule is not guessable.
+
+### Credit where due
+
+`mxcli test --attach` (#109) took the DuckDB verification loop in §11 from 33.7 s to
+2.0 s per iteration, and the per-test-microflow design meant the first (all-failing)
+run reported four independent failures with timings instead of one dead log. The
+ownership contract held exactly as documented across attach, edit, re-attach and host
+shutdown. `mxcli lint`'s MDL044 message (§13) is the best error text in the tool.
