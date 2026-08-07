@@ -198,3 +198,79 @@ and include `ApplicationRootUrl` in the `show` summary.
   database — is untested.
 - No `mx check` has been run against either app yet; both are still the blank
   template plus theme and `ApplicationRootUrl`.
+
+---
+
+## 9. Both apps boot, on their own hostnames, with the hub previews live
+
+*Verified 2026-08-07.*
+
+```
+http://backend.local:8080/    200      http://frontend.local:8180/    200
+http://backend.local:8080/xas/ 401     http://frontend.local:8180/xas/ 401   (correct: unauthenticated)
+```
+
+`run --local` picked up the per-app root URL exactly as documented:
+
+```
+Application root URL from configuration "Default": http://backend.local:8080/
+Application root URL from configuration "Default": http://frontend.local:8180/
+```
+
+`MXCLI_HUB_KEY` was already set on this environment, so `--hub https://hub.mxcli.org
+--hub-solution Formula1` worked for both:
+
+- https://formula1backend-claude-mendix-app-provisioning-gvqxpg.mxcli.org
+- https://formula1frontend-claude-mendix-app-provisioning-gvqxpg.mxcli.org
+
+Both return **302 to GitHub OAuth** rather than 200 — the hub gates previews behind
+a GitHub login, so `curl` sees the redirect and a browser sees the app. That is the
+hub working, not a failure; do not go hunting for a broken tunnel. `--hub` implies
+`--local`, so the loopback URLs keep serving at the same time.
+
+Aside: `pkill -f "mxcli run --local"` leaves a **Gradle daemon** (`GradleDaemon 8.5`
+from `…/mxbuild/11.13.0/modeler/tools/gradle/`) alive. Harmless, but it is not
+mxcli's own process and will not be reaped by killing mxcli.
+
+## 10. Non-persistable entities CAN be published over OData v4 — but mxcli cannot wire the read microflow
+
+*Verified 2026-08-07 by extracting validation strings from
+`/root/.mxcli/mxbuild/11.13.0/modeler/Mendix.Modeler.Texts.dll`, and by reading
+`mdl/ast/ast_odata.go` at `ako/mxcli` main.*
+
+This is the finding that decides the whole backend architecture, so the evidence
+matters. The received wisdom is "published OData resources must be persistable",
+which would force the CSV data to be copied into Postgres. Mendix 11.13 says
+otherwise:
+
+```
+"You can only publish non-persistable entities when the OData version is 4."
+"Non-persistent entity '{ENTITY}' must have read microflow defined when exposed through an OData resource."
+"Read microflow can only accept a System.HttpRequest, System.HttpResponse and a System.ODataResponse as parameter."
+"Cannot use paging in combination with a Read microflow."
+"Publishing object ID for entity '{ENTITY}' is not allowed, because the entity is non-persistable."
+```
+
+So the pure design is legal: Database Connector query → non-persistable entity →
+read microflow → OData **v4** resource, with no copy into the Mendix database. The
+constraints that come with it are: no paging, no published object ID (the OData key
+must be a real attribute), and `Countable` requires a `System.ODataResponse`
+parameter on the read microflow.
+
+**The gap:** mxcli has no MDL for the read microflow. `PublishedEntityDef` in
+`mdl/ast/ast_odata.go` carries exactly `Entity, ExposedName, ReadMode, InsertMode,
+UpdateMode, DeleteMode, UsePaging, PageSize, Members` — there is no `ReadMicroflow`
+field, and `ALTER ODATA SERVICE … SET k = v` changes service-level properties, not
+per-entity ones. `CREATE ODATA SERVICE … publish entity <non-persistable>` will
+therefore write a resource that `mx check` rejects as incomplete, and MDL alone
+cannot finish it.
+
+This is probably the single most valuable enhancement request to send upstream:
+add `ReadMicroflow: microflow Module.Read_X` to the `publish entity` option list
+(and the matching `InsertMicroflow`/`UpdateMicroflow`/`DeleteMicroflow`, which the
+same validation strings imply exist).
+
+Consequence for this repo: the first build materialises the DuckDB result sets into
+persistable entities via a refresh microflow, which is fully expressible in MDL
+today. The non-persistable design is the better end state and should be revisited
+once mxcli can express the read microflow (or via `--mcp` against a live Studio Pro).
