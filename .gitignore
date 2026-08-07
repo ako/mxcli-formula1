@@ -1,0 +1,24 @@
+# Root-level ignores for the Formula1 solution.
+# Each app folder has its own .gitignore (written by 'mxcli init') covering the
+# Mendix build artefacts; this one covers what lives at the solution root.
+
+# The mxcli binary (~85 MB, hardlinked into both app folders). Rebuilt from
+# ako/mxcli main by .claude/bootstrap-mxcli.sh on session start.
+/mxcli
+/mxcli.exe
+
+# Checkout of ako/mxcli used to build the binary.
+/.mxcli-src/
+
+# The F1 CSV dataset (~25 MB, 47 files). Re-fetched by scripts/fetch-f1-data.sh.
+/data/f1db/
+
+# DuckDB scratch files, if any are ever materialised next to the CSVs.
+*.duckdb
+*.duckdb.wal
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# OS
+.DS_Store

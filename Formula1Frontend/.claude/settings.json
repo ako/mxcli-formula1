@@ -1,0 +1,26 @@
+{
+  "env": {
+    "MXCLI_QUIET": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "sh .claude/bootstrap-mxcli.sh || true",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(mxcli:*)",
+      "Bash(./mxcli:*)",
+      "Bash(./mxcli *)",
+      "Bash(playwright-cli:*)",
+      "Bash(playwright-cli *)"
+    ]
+  }
+}
