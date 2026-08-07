@@ -9,7 +9,11 @@
  * They are also what tests/services.test.mdl asserts on.
  */
 
-/* Goes to the query, not the read microflow — Read_Drivers now takes a request. */
+/*
+ * These go straight to the query, not through the read microflows. Every read
+ * microflow now takes System.ODataResponse (and Drivers/RaceResults take the
+ * request too), which is the OData layer's business, not a counter's.
+ */
 CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Drivers ()
   RETURNS Long AS $N
 BEGIN
@@ -22,7 +26,8 @@ END;
 CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Seasons ()
   RETURNS Long AS $N
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Backend.Read_Seasons();
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
+    (dataDir = @Formula1Backend.DataDir);
   $N = COUNT($Rows);
   RETURN $N;
 END;
@@ -30,7 +35,8 @@ END;
 CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Races ()
   RETURNS Long AS $N
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Backend.Read_Races();
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
+    (dataDir = @Formula1Backend.DataDir);
   $N = COUNT($Rows);
   RETURN $N;
 END;

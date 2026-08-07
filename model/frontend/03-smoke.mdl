@@ -1,0 +1,47 @@
+/*
+ * Retrieval smoke tests over the external entities.
+ *
+ * A build only proves the contract parsed. These prove the frontend can
+ * actually reach the backend, authenticate as ApiConsumer, and get rows back
+ * through both clients.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Count_Live_Drivers ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Live.Drivers;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Count_Cached_Drivers ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.Drivers;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Live_SennaWins ()
+  RETURNS Long AS $Wins
+BEGIN
+  -- LIMIT 1 yields a single object, not a list, so there is no HEAD() here.
+  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Wins Long = 0;
+  IF $Row != empty THEN
+    SET $Wins = $Row/raceWins;
+  END IF;
+  RETURN $Wins;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Cached_SennaWins ()
+  RETURNS Long AS $Wins
+BEGIN
+  -- LIMIT 1 yields a single object, not a list, so there is no HEAD() here.
+  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Wins Long = 0;
+  IF $Row != empty THEN
+    SET $Wins = $Row/raceWins;
+  END IF;
+  RETURN $Wins;
+END;

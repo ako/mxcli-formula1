@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§22 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§27 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -954,30 +954,212 @@ pre-validates field names (§20):
 Both are in `tests/pushdown.test.mdl`, which runs under `--local` in about a
 second.
 
+## 23. Gap: `CREATE ODATA CLIENT` fetches `$metadata` without credentials
+
+*Verified 2026-08-07 on mxcli `45ae6a6`.*
+
+The statement accepts `UseAuthentication` / `HttpUsername` / `HttpPassword` — they
+are parsed at `cmd_odata.go:1205-1218` and stored on the HTTP configuration for
+the runtime. The design-time fetch ignores them:
+
+```go
+// mdl/executor/cmd_odata.go:1820, fetchODataMetadata
+client := &http.Client{Timeout: 30 * time.Second}
+resp, err := client.Get(metadataUrl)
+```
+
+No `SetBasicAuth`, no headers. Against a service with `authentication basic` the
+result is:
+
+```
+Warning: could not fetch $metadata: $metadata fetch returned HTTP 401
+Created OData client: F1Live.LiveApi
+```
+
+The client is created but unvalidated, with **no entity types cached**, so the
+`CREATE EXTERNAL ENTITIES FROM …` that follows has nothing to import. It is a
+warning rather than an error, so a script appears to succeed and produces an
+empty module.
+
+**Fix:** use the credentials already on the statement for the metadata fetch, and
+send the `HEADERS (...)` too. Consider making an unreachable `MetadataUrl` an
+error when the next statement depends on it.
+
+**Workaround, and it turns out to be a better practice anyway:** `MetadataUrl`
+accepts a file path as well as a URL. Fetch the contract once with credentials
+and point the client at the file:
+
+```bash
+curl -u f1api:<pw> 'http://backend.local:8080/odata/f1-live/$metadata' \
+  -o contracts/f1-live-metadata.xml
+```
+```sql
+MetadataUrl: './contracts/f1-live-metadata.xml',
+```
+
+The contracts are committed, so the frontend model rebuilds without the backend
+running, and a contract change shows up as a reviewable diff instead of silently
+altering the generated entities.
+
+## 24. Gap: generated external entities ignore the capabilities in the `$metadata`
+
+*Verified 2026-08-07.*
+
+`CREATE EXTERNAL ENTITIES FROM …` reads names, types and navigation properties
+out of the contract correctly, then defaults **every capability to true**
+regardless of what the contract says. Mendix compares the two at build time and
+refuses:
+
+```
+ERROR at F1Live, Domain model, Entity 'F1Live.Seasons':
+  'Seasons' is marked Countable=False in the OData service, but True in the app.
+ERROR at F1Live, Domain model, Attribute 'F1Live.Circuits.latitude':
+  'latitude' is marked Filterable=False in the OData service, but True in the app.
+```
+
+Eight errors from an eight-resource import. The whole point of generating from
+`$metadata` is fidelity to the contract, and `Countable` / `Filterable` /
+`Sortable` are in the document right there:
+
+```xml
+<Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+  <Record><PropertyValue Bool="false" Property="Countable"/></Record>
+</Annotation>
+```
+
+**Fix:** read the capability annotations during import.
+
+## 25. Gap: `CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention
+
+*Verified 2026-08-07. Found while working around §24, and it is the more serious
+of the two.*
+
+The AST comments say scalar fields are pointers specifically so an omitted
+property is preserved rather than zeroed — "Treating omitted fields as zero on
+modify silently corrupted entities — see issue #594". Attributes are not
+protected the same way. Modifying only the entity-level `Countable`:
+
+```sql
+create or modify external entity F1Live.Circuits
+  from odata client F1Live.LiveApi
+  (EntitySet: 'Circuits', RemoteName: 'Stg_Circuit', Countable: false);
+```
+
+leaves the attribute *count* intact but breaks the attributes themselves:
+
+```
+> describe entity F1Live.Circuits;
+create or modify external entity F1Live.Circuits (
+  circuitId: String(60),
+  Stg_Circuitname: String(120),   <-- was `name`
+  ...
+```
+
+`name` became `Stg_Circuitname` — the remote entity name prefixed onto it — and
+every attribute lost its remote mapping, so the build fails with
+`Attribute 'year' of external entity 'Stg_Season' is not supported.` on all of
+them. The `from odata client` / `EntitySet` / `RemoteName` detail is missing from
+the DESCRIBE output afterwards too.
+
+Same class of bug as #594, one level down. **Fix:** when no attribute list is
+given, leave the existing attributes and their remote mappings alone.
+
+**What to do instead:** do not patch generated external entities. Make the
+published contract say the right thing and regenerate. Here that meant giving
+every live read microflow a `System.ODataResponse` and a count so all eight
+resources are genuinely `Countable`, which removed the mismatch at the source.
+
+## 26. `create or modify odata service` keeps stale published members and drops role grants
+
+*Verified 2026-08-07, three separate times before the pattern was obvious.*
+
+Re-running a `create or modify odata service` after editing a `publish entity`
+block does **not** apply the change. Marking `latitude` as `Filterable` and
+re-executing left the served `$metadata` unchanged; only
+`drop odata service` + create picked it up. The same is true of `Countable`.
+
+It also silently clears `AllowedModuleRoles`, so the next build fails with:
+
+```
+At least one allowed role must be selected for the published OData service to be accessible.
+```
+
+**Working recipe** for changing a published service:
+
+```sql
+drop odata service Module.Service;
+-- re-execute the create script
+grant access on odata service Module.Service to Module.Role;
+```
+
+**Fix:** either apply entity-set and member changes on modify, or refuse the
+modify with a message saying a drop is required. Preserving the role grants
+across a modify seems unambiguously right.
+
+## 27. The frontend consumes both services
+
+*Verified 2026-08-07 end to end: build green, and four retrieval tests passing
+against the running backend.*
+
+```
+PASS  Live client retrieves all 917 drivers straight from the CSVs (1.799s)
+PASS  Cached client retrieves all 917 drivers from Postgres (452ms)
+PASS  Live client: Senna has 41 race wins (637ms)
+PASS  Cached client: Senna has 41 race wins (416ms)
+```
+
+Two clients, two modules — `F1Live` and `F1Cached` — because both services
+publish identically named resources and importing them into one module would
+collide. 16 external entities. The contrast is visible in the domain model
+itself: `F1Cached` carries six navigation associations (`season`, `circuit`,
+`driver`, `constructor`) while `F1Live` has none, because its rows are flat and
+DuckDB did the joins.
+
+`RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna'` reaches
+through the OData client, into the read microflow, into a `read_csv()` scan, and
+back — 637 ms, and it returns the same 41 as the Postgres-backed one.
+
+One thing that cost time and is worth repeating from §13: `RETRIEVE … LIMIT 1`
+yields a **single object**, not a list, so `HEAD()` on it fails with
+`The selected 'Rows' variable must be of type List`. Both spellings are useful;
+the difference is invisible in the syntax.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
+1. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
+   renames one and strips every remote mapping, leaving a project that cannot
+   build. Silent, and the same class as issue #594 one level down.
+2. **`create or modify odata service` ignores published-member changes and drops
+   role grants** (§26) — a modify that quietly does not modify, and breaks the
+   build in a second, unrelated-looking way.
+3. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
+   credentials are on the statement and go unused, so the client is created empty
+   with only a warning.
+4. **Generated external entities ignore the contract's capability annotations** (§24) —
+   `Countable`/`Filterable`/`Sortable` default to true, so importing from a service
+   that restricts any of them produces a project that will not build.
+5. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
    `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
    starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
    query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
-2. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
+6. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
    `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
    published service fails the build until you switch it to `long`. One line, and the
    function's own comment flags Integer as unverified.
-3. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
+7. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
    a suite that needs startup state passes under `--attach` and fails under `--local`
    for reasons unrelated to the code. Say so in the output, or chain the original.
-4. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
+8. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
    sits below the `--list` branch in `cmd_test_run.go:136`.
-5. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
+9. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
    which `fa0cdb6` added and the checker accepts.
-6. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
+10. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
    `mxcli` is rebuilt, with no warning.
-7. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-8. **`create module role` has no `or modify` form**, so a security script cannot be
+12. **`create module role` has no `or modify` form**, so a security script cannot be
    re-run — the reason this repo has a separate `07-demo-users.mdl`.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14

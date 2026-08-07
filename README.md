@@ -22,7 +22,7 @@ Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main**.
 | App | Port / host | Owns |
 |---|---|---|
 | `Formula1Backend` | `http://backend.local:8080/` (admin 8090, serve 6543) | Reading the CSVs through DuckDB over JDBC, and publishing the result as **two** OData services — see below |
-| `Formula1Frontend` | `http://frontend.local:8180/` (admin 8190, serve 6643) | Consuming that OData and presenting it — the browsing UI the enthusiast uses |
+| `Formula1Frontend` | `http://frontend.local:8180/` (admin 8190, serve 6643) | Consuming both services as external entities, and presenting them — the browsing UI the enthusiast uses |
 
 Each app is a full Mendix project: its own `.mpr`, its own runtime, its own
 Postgres database (`formula1backend` / `formula1frontend`, derived from the
@@ -85,7 +85,30 @@ and the rejections.
 
 The remaining live resources (Seasons, Circuits, Constructors, Races, both
 standings) are small enough to return whole and still do; they follow the same
-pattern when needed.
+pattern when needed. All eight are countable.
+
+## The frontend
+
+Two OData clients, one per service, in their own modules — `F1Live` and
+`F1Cached` — because both services publish identically named resources. 16
+external entities generated from the contracts under
+`Formula1Frontend/contracts/`, which are committed so the frontend model builds
+with the backend down.
+
+Verified against the running backend:
+
+```
+PASS  Live client retrieves all 917 drivers straight from the CSVs (1.799s)
+PASS  Cached client retrieves all 917 drivers from Postgres          (452ms)
+PASS  Live client:   Senna has 41 race wins                          (637ms)
+PASS  Cached client: Senna has 41 race wins                          (416ms)
+```
+
+`RETRIEVE ... WHERE driverId = 'ayrton-senna'` on the live client reaches through
+OData, into the read microflow, into a `read_csv()` scan and back.
+
+See `model/frontend/README.md` — in particular, do not patch generated external
+entities; fix the contract and regenerate.
 
 ## The data
 
