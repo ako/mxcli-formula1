@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§19 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§22 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -824,26 +824,160 @@ after-startup microflow will not run)" — or offer to chain the original one af
 the endpoint registration. As it stands the failure mode is a suite that passes
 under `--attach` and fails under `--local` for reasons unrelated to the code.
 
+## 20. Mendix applies no query options to a read-microflow resource — the microflow owns all of them
+
+*Verified 2026-08-07 on Mendix 11.13.0, by logging `System.HttpRequest.Uri` and
+comparing responses.*
+
+For a published resource backed by a read microflow, Mendix hands the request to
+the microflow and returns exactly what comes back. It applies **nothing**:
+
+```
+GET /odata/f1-live/Drivers?$top=5                 -> 917 rows
+GET /odata/f1-live/Drivers?$orderby=raceWins desc -> 917 rows, still alphabetical
+GET /odata/f1-live/Drivers?$skip=80&$top=5        -> 917 rows
+```
+
+This is easy to get wrong in the optimistic direction, because the metadata
+advertises the opposite — the entity set carries
+`Org.OData.Capabilities.V1.TopSupported = true` and `SkipSupported = true`, so a
+client believes paging works. It does, but only if the microflow implements it.
+
+The full query string does arrive, URL-encoded, on `System.HttpRequest.Uri`:
+
+```
+F1Probe: URI=/odata/f1-live/Drivers?$orderby=raceWins%20desc&$top=3
+```
+
+so everything needed is there. `System.ODataResponse.Count` is the other half —
+set it and `$count=true` reports the size of the filtered set rather than the
+page.
+
+Two related behaviours worth knowing, both good:
+
+- **Mendix validates field names before the microflow runs.** `$filter=secretColumn eq 'x'`
+  returns `400 Could not map 'secretColumn' to attribute or association`, and
+  `$orderby=name;DROP TABLE x--` returns `400 Server cannot process the given uri`.
+  So the microflow only ever sees names that exist in the published metadata.
+  That is defence in depth, not a substitute for a whitelist — it constrains the
+  *name*, not what you then do with it.
+- `Countable: Yes` is required for the microflow to take `System.ODataResponse`,
+  and forbidden without it. The two are checked in both directions.
+
+## 21. Gap: `execute database query … dynamic $Variable` is written as the literal string
+
+*Verified 2026-08-07 on mxcli `45ae6a6`. This one blocks runtime-built SQL entirely.*
+
+The grammar allows an expression:
+
+```antlr
+executeDatabaseQueryStatement
+    : … (DYNAMIC (STRING_LITERAL | DOLLAR_STRING | expression))? …
+```
+
+and the visitor captures it (`visitor_microflow_actions.go:576`,
+`stmt.DynamicQuery = expr.GetText()`). But the builder then quotes anything that
+does not already begin with a quote:
+
+```go
+// mdl/executor/cmd_microflows_builder_calls.go:1349
+dynamicQuery := s.DynamicQuery
+if dynamicQuery != "" && !strings.HasPrefix(dynamicQuery, "'") {
+    dynamicQuery = "'" + strings.ReplaceAll(dynamicQuery, "'", "''") + "'"
+}
+```
+
+So `dynamic $Sql` reaches the runtime as the string literal `'$Sql'`, and DuckDB
+is asked to execute:
+
+```
+ERROR - ExternalDatabaseConnector: Parser Error: syntax error at or near "$"
+LINE 1: $Sql
+```
+
+There is no discriminator on the AST — `DynamicQuery` is one string whether it
+came from `STRING_LITERAL` or from `expression` — so the builder cannot tell a
+literal from an expression. **Fix:** add `DynamicQueryIsExpression bool` to
+`ast.ExecuteDatabaseQueryStmt`, set it in the `expr` branch of the visitor, and
+skip the quoting when it is set.
+
+**Workaround, and it is a good one to know:** write `dynamic '' + $Sql`. The
+expression text then starts with a quote, so the builder leaves it alone, and
+Mendix evaluates `'' + $Sql` to the string. Verified end to end — a microflow
+building `… LIMIT ' + toString($Limit)` returns exactly that many rows.
+
+## 22. Query pushdown, built and measured
+
+*Verified 2026-08-07 against the running app.*
+
+With §20 and §21 understood, the live service can do what a datagrid over an
+external entity actually needs. `Read_Drivers` and `Read_RaceResults` now
+translate `$skip` / `$top` / `$orderby` / `$filter` / `$count` into DuckDB SQL
+(`model/backend/09-query-pushdown.mdl`, `10-live-pushdown.mdl`, and
+`javasource/formula1backend/ODataQuery.java`).
+
+The case from the request — a grid showing rows 80-100 sorted by driver name:
+
+| | before pushdown | after |
+|---|---|---|
+| rows returned | 917 | **20** |
+| bytes | 293422 | **6621** |
+| `@odata.count` | not supported | **917** |
+| order | ignored | applied in SQL |
+
+And the resource that could not exist before: `RaceResults` on the live service
+now serves all 27533 rows a page at a time — 20 rows in 7.6 KB with
+`@odata.count: 27533`, straight from the CSVs with nothing materialised. Before,
+the live service could only offer `LatestRaceResults` bounded to one season.
+
+Both services now return **41** for Senna's race wins — one counting rows in
+Postgres, the other scanning a 4 MB CSV per request.
+
+**Injection.** `$orderby` and `$filter` name columns chosen by the caller and
+those names end up in SQL, so every one is resolved through a whitelist the
+caller passes (`exposedName:sqlExpression,…`). A name that is not in the map is
+ignored in `$orderby` (a wrong sort is cosmetic) and **rejected** in `$filter` —
+silently dropping a filter would hand back more rows than the client asked for,
+which looks like data rather than an error.
+
+Two bugs the unit tests caught that HTTP testing could not, because Mendix
+pre-validates field names (§20):
+
+- A naive `startsWith("'") && endsWith("'")` literal check accepted
+  `name eq 'a' or name eq 'b'` as a single quoted value and emitted SQL with an
+  OR this translator does not implement. Now a strict literal parser requires
+  the closing quote to be the last character.
+- OData escapes an inner quote by doubling it, so `'O''Brien'` is `O'Brien`.
+  Stripping the outer quotes without un-doubling produced `O''Brien` and then
+  re-escaped it to `O''''Brien`.
+
+Both are in `tests/pushdown.test.mdl`, which runs under `--local` in about a
+second.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
+1. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
+   `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
+   starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
+   query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
+2. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
    `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
    published service fails the build until you switch it to `long`. One line, and the
    function's own comment flags Integer as unverified.
-2. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
+3. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
    a suite that needs startup state passes under `--attach` and fails under `--local`
    for reasons unrelated to the code. Say so in the output, or chain the original.
-3. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
+4. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
    sits below the `--list` branch in `cmd_test_run.go:136`.
-4. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
+5. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
    which `fa0cdb6` added and the checker accepts.
-5. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
+6. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
    `mxcli` is rebuilt, with no warning.
-6. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+7. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-7. **`create module role` has no `or modify` form**, so a security script cannot be
+8. **`create module role` has no `or modify` form**, so a security script cannot be
    re-run — the reason this repo has a separate `07-demo-users.mdl`.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14

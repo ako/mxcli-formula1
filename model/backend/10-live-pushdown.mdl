@@ -1,0 +1,140 @@
+/*
+ * The live service's Drivers resource, rewritten to push the query down.
+ *
+ * Before: Read_Drivers() ignored the request and returned all 917 rows for
+ * every call, whatever the grid asked for.
+ *
+ * After: the read microflow takes System.HttpRequest, turns $skip / $top /
+ * $orderby / $filter into SQL, and returns exactly the page. It also takes
+ * System.ODataResponse so $count can report the size of the full filtered set
+ * rather than the page — which is what a grid needs to draw its scrollbar.
+ *
+ * Note Countable is back to Yes on this resource (it was No), because a read
+ * microflow may only take System.ODataResponse when the entity is countable.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Drivers (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_Driver AS $Rows
+BEGIN
+  /*
+   * The whitelist. Only these names can reach the SQL, and each maps an exposed
+   * OData property to the CSV column behind it. `name` and `raceWins` differ
+   * from the column names, which is exactly why the mapping has to exist.
+   */
+  DECLARE $Cols String = 'driverId:id,name:name,fullName:fullName,'
+    + 'abbreviation:abbreviation,permanentNumber:permanentNumber,'
+    + 'dateOfBirth:dateOfBirth,placeOfBirth:placeOfBirth,'
+    + 'nationality:nationalityCountryId,championshipWins:totalChampionshipWins,'
+    + 'raceStarts:totalRaceStarts,raceWins:totalRaceWins,podiums:totalPodiums,'
+    + 'points:totalPoints,polePositions:totalPolePositions';
+
+  $Where = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
+    Uri = $Request/Uri, ColumnMap = $Cols);
+
+  $OrderLimit = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
+    Uri = $Request/Uri, ColumnMap = $Cols, DefaultOrderBy = 'name ASC', MaxTop = 500);
+
+  DECLARE $Select String = 'SELECT id, name, fullName, abbreviation, permanentNumber,'
+    + ' dateOfBirth, placeOfBirth, nationalityCountryId, totalChampionshipWins,'
+    + ' totalRaceStarts, totalRaceWins, totalPodiums, totalPoints, totalPolePositions'
+    + ' FROM read_csv(''' + @Formula1Backend.DataDir + '/f1db-drivers.csv'')';
+
+  DECLARE $Sql String = $Select + $Where + $OrderLimit;
+
+  /*
+   * `dynamic '' + $Sql` rather than `dynamic $Sql`. mxcli quotes any dynamic
+   * query that does not already start with a quote, so a bare variable is
+   * written into the model as the literal string '$Sql' and DuckDB is asked to
+   * run "$Sql". Prefixing '' + makes the expression start with a quote, so it
+   * survives as an expression. See FINDINGS.md §21.
+   */
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
+    dynamic '' + $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  /*
+   * $count must be the size of the whole filtered set, not of the page, so it
+   * needs its own query with the same WHERE and no LIMIT.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    DECLARE $CountSql String = 'SELECT count(*) AS total FROM read_csv('''
+      + @Formula1Backend.DataDir + '/f1db-drivers.csv'')' + $Where;
+    $CountRows = execute database query Formula1Backend.F1Warehouse.GetDriverCount
+      dynamic '' + $CountSql
+      (dataDir = @Formula1Backend.DataDir);
+    $CountRow = HEAD($CountRows);
+    IF $CountRow != empty THEN
+      CHANGE $Response (Count = $CountRow/Total);
+    END IF;
+  END IF;
+
+  RETURN $Rows;
+END;
+
+/*
+ * Race results, pushed down — and this is the one that changes what the live
+ * service can publish at all.
+ *
+ * Without pushdown, 27533 rows had to come back on every call, so the live
+ * service could only offer `LatestRaceResults` (one season). With the query
+ * translated into SQL, a request costs one page, so the full set is publishable
+ * from the CSVs with nothing materialised. The resource is renamed `RaceResults`
+ * to match the cached service, and the two are now directly comparable.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceResults (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_RaceResult AS $Rows
+BEGIN
+  DECLARE $Cols String = 'positionOrder:rr.positionDisplayOrder,raceId:rr.raceId,'
+    + 'year:rr.year,round:rr.round,position:rr.positionNumber,'
+    + 'positionText:rr.positionText,driverId:rr.driverId,driverName:d.name,'
+    + 'constructorId:rr.constructorId,constructorName:c.name,'
+    + 'driverNumber:rr.driverNumber,laps:rr.laps,points:rr.points,'
+    + 'gridPosition:rr.gridPositionNumber,positionsGained:rr.positionsGained,'
+    + 'fastestLap:rr.fastestLap,polePosition:rr.polePosition';
+
+  DECLARE $From String = ' FROM read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-race-results.csv'') rr'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-drivers.csv'') d ON d.id = rr.driverId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c ON c.id = rr.constructorId';
+
+  $Where = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
+    Uri = $Request/Uri, ColumnMap = $Cols);
+
+  $OrderLimit = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
+    Uri = $Request/Uri, ColumnMap = $Cols,
+    DefaultOrderBy = 'rr.year DESC, rr.round ASC, rr.positionDisplayOrder ASC',
+    MaxTop = 500);
+
+  DECLARE $Select String = 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder,'
+    + ' rr.positionNumber, rr.positionText, rr.driverId, d.name AS driverName,'
+    + ' rr.constructorId, c.name AS constructorName, rr.driverNumber, rr.laps,'
+    + ' rr.time, rr.gap, rr.reasonRetired, rr.points, rr.gridPositionNumber,'
+    + ' rr.positionsGained, rr.fastestLap, rr.polePosition';
+
+  DECLARE $Sql String = $Select + $From + $Where + $OrderLimit;
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResults
+    dynamic '' + $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    DECLARE $CountSql String = 'SELECT count(*) AS total' + $From + $Where;
+    $CountRows = execute database query Formula1Backend.F1Warehouse.GetRaceResultCount
+      dynamic '' + $CountSql
+      (dataDir = @Formula1Backend.DataDir);
+    $CountRow = HEAD($CountRows);
+    IF $CountRow != empty THEN
+      CHANGE $Response (Count = $CountRow/Total);
+    END IF;
+  END IF;
+
+  RETURN $Rows;
+END;

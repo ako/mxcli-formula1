@@ -1,0 +1,113 @@
+/*
+ * Unit tests for the OData -> SQL translation.
+ *
+ * These call the Java actions directly rather than going over HTTP, because
+ * Mendix validates field names against the published metadata before a read
+ * microflow ever runs. Going through the service would only ever exercise the
+ * happy path; the whitelist and the rejection behaviour need testing here.
+ *
+ * Runs under `--local` — nothing here needs a loaded cache.
+ */
+
+/**
+ * @test No query options: default order, bounded by MaxTop
+ * @expect $result = ' ORDER BY name ASC LIMIT 500'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers');
+/
+
+/**
+ * A datagrid showing rows 80-100 sorted by name — the case that started this.
+ *
+ * @test $skip + $top + $orderby become OFFSET / LIMIT / ORDER BY
+ * @expect $result = ' ORDER BY name ASC LIMIT 20 OFFSET 80'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$skip=80&$top=20&$orderby=name');
+/
+
+/**
+ * @test An exposed name maps to its real CSV column, and desc is honoured
+ * @expect $result = ' ORDER BY totalRaceWins DESC LIMIT 10'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$orderby=raceWins desc&$top=10');
+/
+
+/**
+ * @test Multi-column sort
+ * @expect $result = ' ORDER BY totalRaceWins DESC, name ASC LIMIT 500'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$orderby=raceWins desc,name asc');
+/
+
+/**
+ * A $top larger than MaxTop must not let a client ask for everything.
+ *
+ * @test $top is clamped to MaxTop
+ * @expect $result = ' ORDER BY name ASC LIMIT 500'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$top=99999');
+/
+
+/**
+ * A sort on a column outside the whitelist is dropped, not injected — the
+ * request still succeeds, just in the default order.
+ *
+ * @test A non-whitelisted sort column falls back to the default order
+ * @expect $result = ' ORDER BY name ASC LIMIT 500'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$orderby=id;DROP TABLE x--');
+/
+
+/**
+ * @test No $filter yields no WHERE clause
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$top=5');
+/
+
+/**
+ * @test contains() becomes ILIKE with the column from the whitelist
+ * @expect $result = ' WHERE name ILIKE ''%Verstappen%'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=contains(name,''Verstappen'')');
+/
+
+/**
+ * @test A numeric comparison maps to the real column
+ * @expect $result = ' WHERE totalRaceWins > 50'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=raceWins gt 50');
+/
+
+/**
+ * @test Two terms joined by and
+ * @expect $result = ' WHERE totalRaceWins > 50 AND name ILIKE ''Ver%'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=raceWins gt 50 and startswith(name,''Ver'')');
+/
+
+/**
+ * A quote in the value must be escaped, not closed.
+ *
+ * @test A single quote in a filter value survives as one escaped quote
+ * @expect $result = ' WHERE name ILIKE ''%O''''Brien%'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=contains(name,''O''''Brien'')');
+/
+
+/**
+ * Unlike $orderby, an unknown FILTER column must fail loudly — silently
+ * dropping it would return more rows than the client asked for.
+ *
+ * @test A non-whitelisted filter column is rejected, not ignored
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=secret eq ''x''');
+/
+
+/**
+ * @test A filter shape we cannot translate is rejected rather than dropped
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=name eq ''a'' or name eq ''b''');
+/

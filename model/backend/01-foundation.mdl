@@ -10,28 +10,16 @@
  * DataDir can be overridden per environment with MX_Formula1Backend_DataDir.
  */
 
-create module Formula1Backend;
-
--- The DuckDB JDBC driver. Declaring is not resolving: 'mxcli sync-java-deps'
--- downloads it into vendorlib/, and 'run --local' does that before boot.
-alter module Formula1Backend
-  add jar dependency (
-    group    = 'org.duckdb',
-    artifact = 'duckdb_jdbc',
-    version  = '1.5.5.1',
-    included = true,
-  );
-
-create constant Formula1Backend.DataDir type string
+create or modify constant Formula1Backend.DataDir type string
   default '/home/user/mxcli-formula1/data/f1db'
   comment 'Folder holding the f1db CSVs. Override per environment.';
 
-create constant Formula1Backend.DuckDbUrl type string
+create or modify constant Formula1Backend.DuckDbUrl type string
   default 'jdbc:duckdb:'
   comment 'In-memory DuckDB — no database file; read_csv() reads the CSVs per query.';
 
-create constant Formula1Backend.DuckDbUser type string default '';
-create constant Formula1Backend.DuckDbPassword type string default '' PRIVATE;
+create or modify constant Formula1Backend.DuckDbUser type string default '';
+create or modify constant Formula1Backend.DuckDbPassword type string default '' PRIVATE;
 
 /* ---------------------------------------------------------------------------
  * Row shapes. Non-persistable, because that is what the External Database
@@ -45,14 +33,14 @@ create constant Formula1Backend.DuckDbPassword type string default '' PRIVATE;
  * FINDINGS.md §16.
  * ------------------------------------------------------------------------- */
 
-create non-persistent entity Formula1Backend.Stg_Season (
+create or modify non-persistent entity Formula1Backend.Stg_Season (
   Year: long,
   ChampionDriverName: string(120),
   ChampionConstructorName: string(120),
   RaceCount: long
 );
 
-create non-persistent entity Formula1Backend.Stg_Circuit (
+create or modify non-persistent entity Formula1Backend.Stg_Circuit (
   CircuitId: string(60),
   Name: string(120),
   FullName: string(200),
@@ -65,7 +53,7 @@ create non-persistent entity Formula1Backend.Stg_Circuit (
   RacesHeld: long
 );
 
-create non-persistent entity Formula1Backend.Stg_Constructor (
+create or modify non-persistent entity Formula1Backend.Stg_Constructor (
   ConstructorId: string(60),
   Name: string(120),
   FullName: string(200),
@@ -78,7 +66,7 @@ create non-persistent entity Formula1Backend.Stg_Constructor (
   PolePositions: long
 );
 
-create non-persistent entity Formula1Backend.Stg_Driver (
+create or modify non-persistent entity Formula1Backend.Stg_Driver (
   DriverId: string(60),
   Name: string(120),
   FullName: string(200),
@@ -95,7 +83,7 @@ create non-persistent entity Formula1Backend.Stg_Driver (
   PolePositions: long
 );
 
-create non-persistent entity Formula1Backend.Stg_Race (
+create or modify non-persistent entity Formula1Backend.Stg_Race (
   RaceId: long,
   Year: long,
   Round: long,
@@ -108,7 +96,7 @@ create non-persistent entity Formula1Backend.Stg_Race (
   Distance: decimal
 );
 
-create non-persistent entity Formula1Backend.Stg_RaceResult (
+create or modify non-persistent entity Formula1Backend.Stg_RaceResult (
   RaceId: long,
   Year: long,
   Round: long,
@@ -131,7 +119,7 @@ create non-persistent entity Formula1Backend.Stg_RaceResult (
   PolePosition: boolean
 );
 
-create non-persistent entity Formula1Backend.Stg_DriverStanding (
+create or modify non-persistent entity Formula1Backend.Stg_DriverStanding (
   Year: long,
   PositionOrder: long,
   PositionNumber: long,
@@ -142,7 +130,7 @@ create non-persistent entity Formula1Backend.Stg_DriverStanding (
   ChampionshipWon: boolean
 );
 
-create non-persistent entity Formula1Backend.Stg_ConstructorStanding (
+create or modify non-persistent entity Formula1Backend.Stg_ConstructorStanding (
   Year: long,
   PositionOrder: long,
   EngineManufacturer: string(60),
@@ -154,6 +142,15 @@ create non-persistent entity Formula1Backend.Stg_ConstructorStanding (
   ChampionshipWon: boolean
 );
 
+/*
+ * A row shape for count queries. The connector maps every result into an
+ * entity, so "SELECT count(*)" needs one too. Used by the pushdown read
+ * microflows to answer $count over the filtered set rather than the page.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_Count (
+  Total: long
+);
+
 /* ---------------------------------------------------------------------------
  * The connection. Type 'BYOD' is Studio Pro's "Other" — bring your own driver.
  * It skips the driver-presence check, which is the only reason a JDBC driver
@@ -162,7 +159,7 @@ create non-persistent entity Formula1Backend.Stg_ConstructorStanding (
  * Every query takes dataDir so the CSV folder stays a constant, not a literal.
  * ------------------------------------------------------------------------- */
 
-create database connection Formula1Backend.F1Warehouse
+create or modify database connection Formula1Backend.F1Warehouse
 type 'BYOD'
 connection string @Formula1Backend.DuckDbUrl
 username @Formula1Backend.DuckDbUser
@@ -258,6 +255,20 @@ begin
           reasonRetired as ReasonRetired, points as Points,
           gridPositionNumber as GridPosition, positionsGained as PositionsGained,
           fastestLap as FastestLap, polePosition as PolePosition );
+
+  -- Count queries. The SQL here is a placeholder: callers override it with
+  -- `dynamic` so the WHERE clause matches the page query.
+  query GetDriverCount
+    sql 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-drivers.csv'')'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Count
+    map ( total as Total );
+
+  query GetRaceResultCount
+    sql 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'')'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Count
+    map ( total as Total );
 
   query GetDriverStandings
     sql 'SELECT ds.year, ds.positionDisplayOrder, ds.positionNumber, ds.positionText,

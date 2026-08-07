@@ -1,0 +1,47 @@
+/*
+ * Thin microflow wrappers so the pushdown Java actions can be unit-tested.
+ *
+ * Testing them through HTTP only proves the happy path, because Mendix
+ * validates $filter and $orderby field names against the published metadata
+ * *before* the read microflow runs — an unknown field never reaches our code
+ * (verified: `$filter=secretColumn eq 'x'` returns 400 "Could not map
+ * 'secretColumn' to attribute or association"). That is welcome defence in
+ * depth, but it means the whitelist has to be tested directly.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_OrderLimit ($Uri: String)
+  RETURNS String AS $Sql
+BEGIN
+  $Sql = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
+    Uri = $Uri,
+    ColumnMap = 'name:name,raceWins:totalRaceWins',
+    DefaultOrderBy = 'name ASC',
+    MaxTop = 500);
+  RETURN $Sql;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Where ($Uri: String)
+  RETURNS String AS $Sql
+BEGIN
+  $Sql = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
+    Uri = $Uri,
+    ColumnMap = 'name:name,raceWins:totalRaceWins');
+  RETURN $Sql;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_WhereIsRejected ($Uri: String)
+  RETURNS Boolean AS $Rejected
+BEGIN
+  DECLARE $Rejected Boolean = false;
+  $Sql = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
+    Uri = $Uri,
+    ColumnMap = 'name:name,raceWins:totalRaceWins')
+  ON ERROR {
+    SET $Rejected = true;
+  };
+  RETURN $Rejected;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_OrderLimit TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Where TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO Formula1Backend.DataAdmin;

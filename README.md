@@ -48,30 +48,44 @@ a literal, so the address is environment-overridable.
 |---|---|---|
 | Data comes from | the CSVs, read on every request | Postgres, filled by a refresh job |
 | Entities | non-persistable + a read microflow each | persistent |
-| Paging | **none** — Mendix forbids it with a read microflow | yes, `PageSize` 100 (200 for results) |
-| `$filter` / `$orderby` | not pushed down | pushed into SQL |
-| `$count` | `400 non-countable` | works (27533 race results) |
+| Paging | `$skip`/`$top` translated to `OFFSET`/`LIMIT` by the read microflow | `PageSize` 100 (200 for results) |
+| `$filter` / `$orderby` | translated to `WHERE`/`ORDER BY` against the CSVs | pushed into SQL by Mendix |
+| `$count` | works (27533 race results) | works (27533 race results) |
 | Navigation properties | none — the rows are flat, DuckDB did the joins | `season`, `circuit`, `driver`, `constructor` |
 | Staleness | impossible | as old as the last refresh |
 | Setup cost | none | `ACT_RefreshAll`, ~33 s |
 
-Measured on this container, same request to each — the paging difference is the
-whole story:
+### Query pushdown
 
-```
-resource       LIVE (bytes)   CACHED (bytes)
-Drivers            293422           32900      917 rows vs one page of 100
-Races              273403           22743
-DriverStandings    270590           19341
-```
+Mendix applies **no** query options to a resource backed by a read microflow — it
+hands over the request and returns whatever comes back. `?$top=5` really did
+return all 917 drivers. So `Drivers` and `RaceResults` on the live service parse
+the options off the request and turn them into SQL themselves
+(`javasource/formula1backend/ODataQuery.java`).
 
-Both answer in ~0.4–0.7 s. The live service is not slower; it just cannot stop
-sending.
+A datagrid showing rows 80–100 sorted by name:
 
-The one asymmetry: race results. 27533 rows is too many to return unpaged, so the
-live service publishes `LatestRaceResults` (most recent season only, ~480 rows)
-while the cached service publishes the full `RaceResults`. That is the clearest
-illustration of what paging buys.
+| | before | after |
+|---|---|---|
+| rows | 917 | **20** |
+| bytes | 293422 | **6621** |
+| `@odata.count` | unsupported | **917** |
+| sort order | ignored | applied in SQL |
+
+That is also what makes `RaceResults` publishable from the CSVs at all: all 27533
+rows, a page at a time, 7.6 KB per request, nothing materialised. Both services
+now answer **41** for Senna's race wins — one counting rows in Postgres, the
+other scanning a 4 MB CSV per request.
+
+Column names from `$orderby` and `$filter` reach SQL, so each one is resolved
+through a per-resource whitelist. An unlisted name is ignored in a sort and
+rejected in a filter — dropping a filter would quietly return more rows than the
+client asked for. `tests/pushdown.test.mdl` covers the translation, the clamping
+and the rejections.
+
+The remaining live resources (Seasons, Circuits, Constructors, Races, both
+standings) are small enough to return whole and still do; they follow the same
+pattern when needed.
 
 ## The data
 

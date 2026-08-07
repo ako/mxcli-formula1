@@ -18,7 +18,7 @@
  * latest season on the live side.
  */
 
-create odata service Formula1Backend.F1CachedApi (
+create or modify odata service Formula1Backend.F1CachedApi (
   path: 'odata/f1/',
   version: '1.0.0',
   ODataVersion: OData4,

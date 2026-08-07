@@ -14,11 +14,10 @@
  *   - Countable: No on every resource. It is what lets a read microflow take
  *     no System.ODataResponse parameter, and a count would mean a second scan.
  *
- * Because there is no paging, RaceResults is the one resource that cannot be
- * published whole here — 27533 rows in one response. The live service exposes
- * LatestRaceResults instead, bounded to the most recent season (~480 rows).
- * The cached service publishes the full set. That contrast is the point of
- * having both.
+ * Two resources escape those limits: Drivers and RaceResults. Their read
+ * microflows translate the query options into SQL themselves — see
+ * 10-live-pushdown.mdl, which OWNS those two microflows; do not redefine them
+ * here. Everything else in this file still returns its whole list.
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons ()
@@ -41,14 +40,6 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors ()
   RETURNS List of Formula1Backend.Stg_Constructor AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
-    (dataDir = @Formula1Backend.DataDir);
-  RETURN $Rows;
-END;
-
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Drivers ()
-  RETURNS List of Formula1Backend.Stg_Driver AS $Rows
-BEGIN
-  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
     (dataDir = @Formula1Backend.DataDir);
   RETURN $Rows;
 END;
@@ -77,32 +68,9 @@ BEGIN
   RETURN $Rows;
 END;
 
-/*
- * The one bounded resource. A dynamic override replaces the SQL but does NOT
- * remove the declared parameters, so dataDir still has to be supplied even
- * though the override embeds its own reference to it.
- */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LatestRaceResults ()
-  RETURNS List of Formula1Backend.Stg_RaceResult AS $Rows
-BEGIN
-  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResults
-    dynamic 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder, rr.positionNumber,
-                    rr.positionText, rr.driverId, d.name AS driverName,
-                    rr.constructorId, c.name AS constructorName, rr.driverNumber,
-                    rr.laps, rr.time, rr.gap, rr.reasonRetired, rr.points,
-                    rr.gridPositionNumber, rr.positionsGained, rr.fastestLap, rr.polePosition
-             FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
-             LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = rr.driverId
-             LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
-             WHERE rr.year = (SELECT max(year) FROM read_csv({dataDir} || ''/f1db-races-race-results.csv''))
-             ORDER BY rr.round, rr.positionDisplayOrder'
-    (dataDir = @Formula1Backend.DataDir);
-  RETURN $Rows;
-END;
-
 /* ------------------------------------------------------------------------- */
 
-create odata service Formula1Backend.F1LiveApi (
+create or modify odata service Formula1Backend.F1LiveApi (
   path: 'odata/f1-live/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -158,10 +126,14 @@ authentication basic, session
     PolePositions as 'polePositions' (Filterable, Sortable)
   );
 
+  -- Drivers is the pushdown resource: its read microflow translates $skip /
+  -- $top / $orderby / $filter into SQL (see 10-live-pushdown.mdl), so it is
+  -- Countable and its microflow takes System.ODataResponse to answer $count
+  -- over the whole filtered set rather than the page.
   publish entity Formula1Backend.Stg_Driver as 'Drivers' (
     ReadMode: microflow Formula1Backend.Read_Drivers,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     DriverId as 'driverId' (KEY, Filterable, Sortable),
@@ -198,10 +170,13 @@ authentication basic, session
     Distance as 'distance' (Filterable, Sortable)
   );
 
-  publish entity Formula1Backend.Stg_RaceResult as 'LatestRaceResults' (
-    ReadMode: microflow Formula1Backend.Read_LatestRaceResults,
+  -- The full 27533 rows, from the CSVs, one page at a time. Before pushdown
+  -- this had to be LatestRaceResults (one season) because every call returned
+  -- everything; see 10-live-pushdown.mdl.
+  publish entity Formula1Backend.Stg_RaceResult as 'RaceResults' (
+    ReadMode: microflow Formula1Backend.Read_RaceResults,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     PositionOrder as 'positionOrder' (KEY, Filterable, Sortable),

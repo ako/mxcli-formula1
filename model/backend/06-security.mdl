@@ -61,7 +61,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Circuits TO Formula1Backend.ApiU
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Constructors TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Drivers TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Races TO Formula1Backend.ApiUser;
-GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LatestRaceResults TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceResults TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverStandings TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_ConstructorStandings TO Formula1Backend.ApiUser;
 

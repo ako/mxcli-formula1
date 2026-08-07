@@ -7,13 +7,14 @@ domain model had to be reshaped.
 
 ```bash
 cd Formula1Backend
-for f in ../model/backend/0*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; done
+for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; done
 ./mxcli -p Formula1Backend.mpr -c \
   "alter settings model AfterStartupMicroflow = 'Formula1Backend.ASU_LoadCacheIfEmpty';"
 ```
 
 | Script | What it adds |
 |---|---|
+| `00-dependencies.mdl` | The module and the DuckDB JDBC driver. Separate because `ADD JAR DEPENDENCY` has no `IF NOT EXISTS`. |
 | `01-foundation.mdl` | The DuckDB connection (`type 'BYOD'`), the `Stg_*` row shapes, and one query per resource. Both services stand on this. |
 | `02-live-service.mdl` | Read microflows + `F1LiveApi` — non-persistable entities served straight from the CSVs. |
 | `03-persistent-entities.mdl` | The persistent mirror + associations, for the cached service. |
@@ -22,6 +23,9 @@ for f in ../model/backend/0*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; d
 | `06-security.mdl` | Module roles, entity and microflow access, user roles. |
 | `07-demo-users.mdl` | `f1api` / `f1admin`. Separate because 06 is not re-runnable. |
 | `08-health.mdl` | Row-count helpers and `Check_ServicesAgree`, the invariant the tests assert. |
+| `09-query-pushdown.mdl` | Java actions that turn OData query options into SQL. Logic lives in `javasource/formula1backend/ODataQuery.java`. |
+| `10-live-pushdown.mdl` | The read microflows that use them — `Read_Drivers` and `Read_RaceResults`. **Owns those two microflows**; `02` must not redefine them, and must run before this. |
+| `11-pushdown-tests-support.mdl` | Thin wrappers so the Java actions can be unit-tested directly. |
 
 ## Re-runnability
 
@@ -39,7 +43,7 @@ The user roles (`ApiConsumer`, `Administrator`) live at project level and surviv
 the drop; `06` uses `alter user role … add module roles` for `Administrator`
 because the blank template already ships one.
 
-## Three things that will bite whoever edits this
+## Five things that will bite whoever edits this
 
 - **Whole numbers must be `long`, not `integer`.** mxcli publishes a Mendix
   `Integer` as `Edm.Int32` while Mendix itself wants `Edm.Int64`, so any
@@ -47,5 +51,10 @@ because the blank template already ships one.
 - **A `KEY` on a persistent entity needs `unique` on the attribute too.** The
   non-persistable `Stg_*` entities do not — same `expose` clause, different rule.
   FINDINGS §17.
+- **`dynamic '' + $Sql`, never `dynamic $Sql`.** mxcli quotes a bare variable into
+  a literal, so the runtime is asked to execute the text `$Sql`. FINDINGS §21.
+- **`10` owns `Read_Drivers` and `Read_RaceResults`.** Re-running `02` after `10`
+  reverts them to their non-pushdown form and the build fails on the missing
+  `System.ODataResponse` parameter.
 - **The standings key is `(year, positionDisplayOrder)`.** Not `(year,
   constructorId)`: Brabham has three 1966 rows, one per engine. FINDINGS §18.

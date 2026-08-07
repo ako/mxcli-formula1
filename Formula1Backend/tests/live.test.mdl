@@ -23,3 +23,13 @@ $result = CALL MICROFLOW Formula1Backend.Count_Live_Seasons();
  */
 $result = CALL MICROFLOW Formula1Backend.Count_Live_Races();
 /
+
+/**
+ * Since pushdown the live service serves the whole result set a page at a
+ * time, so it can be counted — it could not be before.
+ *
+ * @test Live service: 27533 race results are reachable from the CSVs
+ * @expect $result = 27533
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Live_RaceResults();
+/

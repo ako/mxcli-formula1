@@ -9,10 +9,12 @@
  * They are also what tests/services.test.mdl asserts on.
  */
 
+/* Goes to the query, not the read microflow — Read_Drivers now takes a request. */
 CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Drivers ()
   RETURNS Long AS $N
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Backend.Read_Drivers();
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
+    (dataDir = @Formula1Backend.DataDir);
   $N = COUNT($Rows);
   RETURN $N;
 END;
@@ -33,12 +35,21 @@ BEGIN
   RETURN $N;
 END;
 
-/* Bounded on purpose — the live service cannot serve all 27533 results. */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_LatestResults ()
+/*
+ * Race results straight from the CSVs. Since pushdown, the live service serves
+ * all 27533 of these a page at a time, so this counts the whole set — the
+ * number the cached service must agree with.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_RaceResults ()
   RETURNS Long AS $N
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Backend.Read_LatestRaceResults();
-  $N = COUNT($Rows);
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResultCount
+    (dataDir = @Formula1Backend.DataDir);
+  $Row = HEAD($Rows);
+  DECLARE $N Long = 0;
+  IF $Row != empty THEN
+    SET $N = $Row/Total;
+  END IF;
   RETURN $N;
 END;
 
@@ -84,9 +95,12 @@ BEGIN
   $CachedSeasons = CALL MICROFLOW Formula1Backend.Count_Cached_Seasons();
   $LiveRaces = CALL MICROFLOW Formula1Backend.Count_Live_Races();
   $CachedRaces = CALL MICROFLOW Formula1Backend.Count_Cached_Races();
+  $LiveResults = CALL MICROFLOW Formula1Backend.Count_Live_RaceResults();
+  $CachedResults = CALL MICROFLOW Formula1Backend.Count_Cached_RaceResults();
   DECLARE $Agree Boolean = $LiveDrivers = $CachedDrivers
                        and $LiveSeasons = $CachedSeasons
-                       and $LiveRaces = $CachedRaces;
+                       and $LiveRaces = $CachedRaces
+                       and $LiveResults = $CachedResults;
   RETURN $Agree;
 END;
 
