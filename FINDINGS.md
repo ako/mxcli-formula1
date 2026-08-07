@@ -189,15 +189,25 @@ and include `ApplicationRootUrl` in the `show` summary.
 
 ## Open / not yet verified
 
-- `type 'BYOD'` has only been shown to *write* cleanly through mxcli and to be a
-  valid value in the Studio Pro editor. It has **not** been round-tripped through
-  `mx check` or exercised against a booted runtime. Do that before trusting it.
-- The DuckDB numbers above come from a standalone JVM. Behaviour inside the
+*(Trimmed as items were closed. §10 later proved the OData half of this list; what
+remains is the DuckDB half.)*
+
+- `type 'BYOD'` has been shown to *write* cleanly through mxcli and to be a valid
+  value in the Studio Pro editor. It has **not** been round-tripped through
+  `mxbuild` or exercised against a booted runtime. Do that before trusting it.
+- The DuckDB numbers in §7 come from a standalone JVM. Behaviour inside the
   Mendix runtime — driver discovery from `userlib/`, connection pooling against
   an in-memory DuckDB, and whether each pooled connection gets its own empty
   database — is untested.
-- No `mx check` has been run against either app yet; both are still the blank
-  template plus theme and `ApplicationRootUrl`.
+- The two halves have not been joined: a read microflow whose body is
+  `execute database query` against the DuckDB connection. §7 proved the JDBC
+  layer, §10 proved the OData layer with a stub microflow returning an empty
+  list. Nothing has yet carried a CSV row all the way to an OData response.
+
+**Closed since:** `mxbuild` has now been run against `Formula1Backend` (green,
+after the §10 workarounds), so "no `mx check` has been run" no longer holds. Both
+apps are otherwise still the blank template plus theme and `ApplicationRootUrl` —
+the probe module used in §10 was dropped and the `.mpr` restored.
 
 ---
 
@@ -232,45 +242,258 @@ Aside: `pkill -f "mxcli run --local"` leaves a **Gradle daemon** (`GradleDaemon 
 from `…/mxbuild/11.13.0/modeler/tools/gradle/`) alive. Harmless, but it is not
 mxcli's own process and will not be reaped by killing mxcli.
 
-## 10. Non-persistable entities CAN be published over OData v4 — but mxcli cannot wire the read microflow
+## 10. Publishing a CSV-backed non-persistable entity over OData: what actually works, and the four mxcli gaps in the way
 
-*Verified 2026-08-07 by extracting validation strings from
-`/root/.mxcli/mxbuild/11.13.0/modeler/Mendix.Modeler.Texts.dll`, and by reading
-`mdl/ast/ast_odata.go` at `ako/mxcli` main.*
+*Verified 2026-08-07 end to end on `ako/mxcli` main @ `9236202` / Mendix 11.13.0:
+MDL executed against a real `.mpr`, `mxbuild` run to completion, and the result
+queried over HTTP from a booted runtime. Superseded an earlier version of this
+entry that claimed mxcli could not do this at all — that claim was wrong.*
 
-This is the finding that decides the whole backend architecture, so the evidence
-matters. The received wisdom is "published OData resources must be persistable",
-which would force the CSV data to be copied into Postgres. Mendix 11.13 says
-otherwise:
+**The headline: it works today, with no changes to mxcli.** A non-persistable
+entity, populated by a read microflow and published over OData v4, builds and
+serves — no copy of the data into Postgres. Everything below is about the four
+places where getting there is harder than it should be.
+
+### 10.0 The MDL that works
+
+```sql
+create non-persistent entity ProbeOData.Row (
+  RowKey: string(60),
+  Label:  string(120)
+);
+
+CREATE MICROFLOW ProbeOData.Read_Rows ($Response: System.ODataResponse)
+  RETURNS List of ProbeOData.Row AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF ProbeOData.Row;
+  RETURN $Rows;
+END;
+
+create odata service ProbeOData.ProbeApi (
+  path: 'odata/probe/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'ProbeOData.Probe',
+  ServiceName: 'ProbeApi'          -- gap 1: omitting this fails the build
+)
+authentication basic
+{
+  publish entity ProbeOData.Row as 'Rows' (
+    ReadMode: microflow ProbeOData.Read_Rows,   -- gap 2: undocumented
+    InsertMode: not_supported,
+    UpdateMode: not_supported,
+    DeleteMode: not_supported
+  )
+  expose (
+    RowKey as 'rowKey' (KEY, Filterable, Sortable),
+    Label (Filterable, Sortable)
+  );
+};
+
+alter odata service ProbeOData.ProbeApi set PublishAssociations = true;  -- gap 4
+```
+
+`mxbuild` → **BUILD SUCCEEDED**. Booted with `mxcli run --local`:
 
 ```
-"You can only publish non-persistable entities when the OData version is 4."
-"Non-persistent entity '{ENTITY}' must have read microflow defined when exposed through an OData resource."
-"Read microflow can only accept a System.HttpRequest, System.HttpResponse and a System.ODataResponse as parameter."
-"Cannot use paging in combination with a Read microflow."
-"Publishing object ID for entity '{ENTITY}' is not allowed, because the entity is non-persistable."
+GET /odata/probe/$metadata          200   <EntitySet EntityType="…Row" Name="Rows">, <Key><PropertyRef Name="rowKey"/>
+GET /odata/probe/Rows               200   {"@odata.context":"…#Rows","value":[]}
+GET /odata/probe/Rows?$count=true   200   {"…","@odata.count":-1,"value":[]}
 ```
 
-So the pure design is legal: Database Connector query → non-persistable entity →
-read microflow → OData **v4** resource, with no copy into the Mendix database. The
-constraints that come with it are: no paging, no published object ID (the OData key
-must be a real attribute), and `Countable` requires a `System.ODataResponse`
-parameter on the read microflow.
+The read microflow is invoked and its list is what the client receives. (`@odata.count`
+is `-1` because the probe microflow never sets `Count` on its `System.ODataResponse`;
+that is the microflow's job, not a defect.)
 
-**The gap:** mxcli has no MDL for the read microflow. `PublishedEntityDef` in
-`mdl/ast/ast_odata.go` carries exactly `Entity, ExposedName, ReadMode, InsertMode,
-UpdateMode, DeleteMode, UsePaging, PageSize, Members` — there is no `ReadMicroflow`
-field, and `ALTER ODATA SERVICE … SET k = v` changes service-level properties, not
-per-entity ones. `CREATE ODATA SERVICE … publish entity <non-persistable>` will
-therefore write a resource that `mx check` rejects as incomplete, and MDL alone
-cannot finish it.
+### 10.1 Gap: `CREATE ODATA SERVICE` does not default `ServiceName`, so every published service fails to build
 
-This is probably the single most valuable enhancement request to send upstream:
-add `ReadMicroflow: microflow Module.Read_X` to the `publish entity` option list
-(and the matching `InsertMicroflow`/`UpdateMicroflow`/`DeleteMicroflow`, which the
-same validation strings imply exist).
+**This is the big one, and it has nothing to do with non-persistable entities —
+it breaks every published OData service created purely from MDL.**
 
-Consequence for this repo: the first build materialises the DuckDB result sets into
-persistable entities via a refresh microflow, which is fully expressible in MDL
-today. The non-persistable design is the better end state and should be revisited
-once mxcli can express the read microflow (or via `--mcp` against a live Studio Pro).
+```
+ERROR at …, Published OData service 'ProbeApi', -: The service name should not be empty.
+```
+
+`Name` (the document name) and `ServiceName` (the OData service name in the
+metadata document) are different properties. `CREATE ODATA SERVICE` sets only the
+first:
+
+```go
+// mdl/executor/cmd_odata.go:1356
+newSvc := &model.PublishedODataService{
+    Name:        stmt.Name.Name,
+    ServiceName: stmt.ServiceName,   // empty unless the author typed ServiceName:
+    …
+}
+```
+
+The **consumed** path 300 lines earlier gets this right, and even says why:
+
+```go
+// mdl/executor/cmd_odata.go:1038
+ServiceName: stmt.Name.Name, // Default ServiceName to document name (CE0339)
+```
+
+**Fix:** mirror line 1038 in the published path — `ServiceName: stmt.ServiceName`
+falling back to `stmt.Name.Name`. One line. Worth a doctype/roundtrip test that
+runs `mxbuild`, since MDL-level `check` passes happily on a model that cannot
+deploy.
+
+### 10.2 Gap: `ReadMode: microflow …` works but is undocumented
+
+The full pipeline already supports it, and I only found it by reading the source:
+
+| Stage | Evidence |
+|---|---|
+| grammar | `odataPropertyValue : … \| MICROFLOW qualifiedName` — `MDLService.g4:156` |
+| visitor | `odataValueText` returns `"MICROFLOW " + qn` — `visitor_odata.go:275-280` |
+| AST | `parsePublishEntityBlock`, `case "readmode": entity.ReadMode = value` — `visitor_odata.go:344` |
+| BSON | `odataReadModeToGen`: `HasPrefix(mode, "MICROFLOW ")` → `ODataPublish$CallMicroflowToRead{Microflow: …}` — `odata_write.go:359-371` |
+
+`odataChangeModeToGen` does the same for Insert/Update/Delete, and both also accept
+a `CallMicroflow:<qn>` prefix.
+
+But `mxcli syntax odata publish` documents only:
+
+```
+ReadMode: source,
+InsertMode: source | not_supported,
+```
+
+so the feature is invisible. The `database-connections.md` and `odata-data-sharing.md`
+skills likewise present "publish persistent entities" as the only shape, which is what
+sent me down the materialise-into-Postgres path in the first place.
+
+**Fix:** add to the syntax registry and the skills —
+`ReadMode: microflow Module.Read_X` (and the Insert/Update/Delete equivalents), with
+a note that non-persistable published entities *require* it.
+
+### 10.3 Gap: `Countable` is hardcoded `true`, forcing a `System.ODataResponse` parameter
+
+```
+ERROR …: The published entity is marked as Countable, but the read microflow does not
+have a parameter of type System.ODataResponse. This entity has a Count attribute which
+should be used to return the count of the result set.
+```
+
+```go
+// mdl/backend/modelsdk/odata_write.go:290-294
+qo := newElem("ODataPublish$QueryOptions", "")
+addBool(qo, "Countable", true)      // hardcoded
+addBool(qo, "SkipSupported", true)  // hardcoded
+addBool(qo, "TopSupported", true)   // hardcoded
+addPart(g, "QueryOptions", qo)
+```
+
+There is no MDL to turn any of the three off, so **every** read-microflow-backed
+resource is forced to declare `$Response: System.ODataResponse` and compute a count
+it may not want to compute. For a resource over a 27533-row CSV scan, "cheap count"
+is not a given.
+
+**Fix:** expose them as publish-entity properties — `Countable: No`,
+`SkipSupported: No`, `TopSupported: No` — defaulting to today's `true` so nothing
+changes for existing scripts. They belong next to `UsePaging`/`PageSize` on
+`PublishedEntityDef`.
+
+### 10.4 Gap: the `PublishAssociations` default makes non-persistable resources unbuildable
+
+```
+ERROR …: Attribute ID for entity 'ProbeOData.Row' must be published and be the key
+when associations are exposed as an associated object id.
+```
+
+This fires even with **no associations exposed at all**. `PublishAssociations`
+defaults to `false`, which Mendix reads as "expose associations as associated object
+id" — and that mode demands the system `ID` attribute be published as the key. For a
+non-persistable entity that is flatly illegal; the same texts file says
+`"Publishing object ID for entity '{ENTITY}' is not allowed, because the entity is
+non-persistable."` So the default is a dead end from which there is no escape inside
+`CREATE ODATA SERVICE`.
+
+`alter odata service … set PublishAssociations = true` fixes it (build goes green
+immediately), but:
+
+- it needs a **second statement** — `PublishAssociations` is accepted by
+  `alterODataService` (`cmd_odata.go:1427`) but the create path only reads it from
+  `stmt.PublishAssociations`, which the `CREATE` grammar has no property for. So a
+  one-shot MDL script cannot express it.
+- the name is misleading. It is a two-value mode (`links` vs `associated object id`),
+  not "publish associations yes/no", and `true` is what you want even when you publish
+  none.
+
+**Fix:** accept `PublishAssociations` as a `CREATE ODATA SERVICE` property, and
+consider defaulting it to `true` (links) — or at minimum special-case it when every
+published entity is non-persistable, where `false` can never build.
+
+### 10.5 Roundtrip: `DESCRIBE` emits a form it cannot parse
+
+```
+> describe odata service ProbeOData.ProbeApi;
+publish entity ProbeOData.Row as 'Row' (
+  ReadMode: CallMicroflow:ProbeOData.Read_Rows,
+  …
+```
+
+Three problems in four lines:
+
+1. `ReadMode: CallMicroflow:ProbeOData.Read_Rows` is **not valid MDL input** — a bare
+   `CallMicroflow:Qualified.Name` matches no `odataPropertyValue` alternative. DESCRIBE
+   should emit `ReadMode: microflow ProbeOData.Read_Rows`, the form the user wrote.
+2. `as 'Row'` — but the MDL said `as 'Rows'` and the served `$metadata` really does say
+   `Name="Rows"`. DESCRIBE is printing the *entity type* exposed name where the
+   *entity set* exposed name belongs, so a describe→re-exec cycle silently renames the
+   entity set.
+3. `UsePaging` and `PageSize` are omitted entirely.
+
+That breaks the DESCRIBE-roundtrip property the project's own review checklist calls
+for.
+
+### 10.6 Consequence for this repo
+
+The pure architecture is back on the table and is what the brief actually asked for:
+
+```
+data/f1db/*.csv → DuckDB (BYOD JDBC, read_csv at query time)
+                → Database Connector query → non-persistable entity
+                → read microflow → published OData v4
+                → frontend OData client + external entities
+```
+
+No copy into Postgres, no refresh job. The cost is four workarounds (`ServiceName:`
+explicitly, `ReadMode: microflow …`, a `System.ODataResponse` parameter on every read
+microflow, and a follow-up `alter … set PublishAssociations = true`), all of which are
+one-liners once known, and all of which are recorded above so the next session does not
+rediscover them.
+
+Still unproven: a Database Connector query with `type 'BYOD'` executing against DuckDB
+from **inside the Mendix runtime**. §7 proved the JDBC layer standalone; §10 proved the
+OData layer with a stub microflow. The join between them — a read microflow whose body
+is `execute database query` — has not been run yet.
+
+---
+
+## Suggested mxcli issues, in the order I would file them
+
+1. **`CREATE ODATA SERVICE` leaves `ServiceName` empty → every published service fails
+   `mxbuild`** (§10.1). One-line fix, affects everyone, currently invisible because
+   `mxcli check` passes. Highest impact.
+2. **Add `Countable` / `SkipSupported` / `TopSupported` to `publish entity`** (§10.3) —
+   they are hardcoded `true` in the BSON writer with no way to override.
+3. **Accept `PublishAssociations` on `CREATE`, and reconsider the default** (§10.4) —
+   today a non-persistable resource cannot be made buildable in a single script.
+4. **Document `ReadMode: microflow …`** in `mxcli syntax odata publish` and the
+   `odata-data-sharing` / `database-connections` skills (§10.2) — the feature exists
+   and is unreachable by anyone who does not read the Go source.
+5. **Fix the published-OData DESCRIBE roundtrip** (§10.5) — emit `microflow X`, use the
+   entity-set exposed name, include paging.
+6. **Correct the database type table in `database-connections.md`** (§6) — drop
+   `Redshift`, add `BYOD` ("Other"), which is the only way to use a JDBC driver Mendix
+   does not ship a picker entry for.
+7. **`mxcli init` from a solution root silently initialises one app** (§3) — refuse, or
+   name the chosen project first.
+8. **Warn on unknown `publish entity` properties.** `parsePublishEntityBlock`
+   (`visitor_odata.go:344-359`) has a `switch` with no `default`, so a typo like
+   `ReadMicroflow:` or `Pagesize:` is silently discarded. The service-level path already
+   does this right — `alterODataService` returns
+   `"unknown OData service property: %s"`. Applying the same rule at entity level would
+   have saved most of an afternoon here.
