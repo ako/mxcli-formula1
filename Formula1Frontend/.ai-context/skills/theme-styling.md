@@ -172,6 +172,30 @@ container ctn (style: 'color: red;') {
 
 This also applies to `alter styling` and `alter page set style` — never target a DYNAMICTEXT widget with Style.
 
+### Clipped navigation labels are the CLOSED sidebar, not the theme
+
+A sidebar item reading `All task` instead of `All tasks` is Atlas's **closed**
+sidebar, which is an icon rail: `--navsidebar-width-closed: 48px`, set in Atlas's
+own `themesource/atlas_core/web/themes/_theme-default.scss`. Measured against a
+real compiled theme in a browser, the `<a>` for "All tasks" is **57px wide inside
+a 48px rail** — the same overflow reported from a live app (56 in 48).
+
+No mxcli theme sets any navigation *width*; the themes map colours only. So this
+reproduces identically under `signal`, `ledger` and `console`, in both variants —
+a layout constant, not a palette.
+
+The fix is in the app, not the theme:
+
+- **Give each nav item an icon.** That is what the closed rail is for; the icon is
+  what stays visible when the sidebar is closed.
+- **Or keep the sidebar open**, where the label has room.
+- Shorter labels help, but only until the next one is too long.
+
+Do **not** reach for `text-overflow: ellipsis` on the nav item as a blanket fix.
+Tried and rejected: where Atlas does not also set `white-space: nowrap`, the label
+wraps to two lines and reads fine — and the ellipsis rule turns that readable
+`All / tasks` into `All / t…`. It trades one truncation for a worse one.
+
 ### DataGrid2 Renders ARIA `<div>`s, Not a `<table>` — and `Size` Is a Flex Weight
 
 Two surprises when styling a **DataGrid2** matrix/pivot (ledger finding #46):

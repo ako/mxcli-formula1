@@ -23,6 +23,9 @@
 # OS
 .DS_Store
 
-# DuckDB JDBC driver (82 MB, bundles native libs for every platform).
-# Re-fetched by scripts/fetch-duckdb-driver.sh.
-/Formula1Backend/userlib/duckdb_jdbc-*.jar
+# Managed Java dependencies resolved by 'mxcli sync-java-deps' (and by
+# 'run --local' before boot). The DuckDB JDBC driver alone is 82 MB.
+/Formula1Backend/vendorlib/
+/Formula1Frontend/vendorlib/
+/Formula1Backend/userlib/*.jar
+/Formula1Frontend/userlib/*.jar

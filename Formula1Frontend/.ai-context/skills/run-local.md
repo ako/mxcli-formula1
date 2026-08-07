@@ -133,6 +133,7 @@ Launch `run --local` as the **sole** command in its invocation (don't chain a tr
 | `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page (URL or `/path`) |
 | `--screenshot-user` / `--screenshot-password` | — | Log in once, reuse session (pages behind login) |
 | `--runtime-log` | `.mxcli/runtime.log` | Runtime log file: JVM stdout/stderr **and** the application log (microflow `LOG` output + server stack traces, via an attached file log subscriber). `-` disables. |
+| `--test-endpoint` | off | Host mxcli's token-guarded test endpoint so `mxcli test … --attach` can run a suite against this app with no boot of its own. Installed **before** the boot (the handler registers from after-startup), your own after-startup microflow is chained not displaced, and both are removed on exit. See `test-microflows.md`. |
 | `--debug` | off | Enable the microflow debugger at boot + start a session, so `mxcli debug break/paused/…` works from another terminal (see `debug-microflows.md`). No breakpoints = no behaviour change; disabled on shutdown. |
 | `--debug-pass` | `mxdebug` | Debugger password when `--debug` is set |
 | `--metrics` | off | Register a Prometheus meter registry at boot; the runtime serves metrics at `http://127.0.0.1:<admin-port>/prometheus` |
@@ -247,6 +248,27 @@ The file is appended across restarts (each boot writes a `=== runtime start … 
 marker); the subscriber is re-attached on every restart and never rotates the file (so
 the JVM tee's handle stays valid). Override the path with `--runtime-log <path>`, or
 pass `--runtime-log -` to disable the file (and the subscriber) entirely.
+
+## "Sign in failed" that is not about the password
+
+The local runtime is **unlicensed**, and an unlicensed runtime caps concurrent
+sessions at a handful. Past the cap it refuses the sign-in, and the login page
+reports that as a plain **"Sign in failed"** — exactly what a wrong password
+looks like. The real reason is written only to the runtime log:
+
+```
+Maximum number of sessions exceeded! (You are currently using a trial license)
+```
+
+So: when a login you know is correct starts failing, `grep -c "Maximum number of
+sessions" .mxcli/runtime.log` before touching the credentials or the user's
+password in the model. `--screenshot-user` does this for you — a rejected sign-in
+now reads the log and says so instead of quietly screenshotting the login page.
+
+Sessions are held until they expire; restarting `run --local` clears them all.
+A script that drives the app through a browser should **sign out at the end**,
+otherwise each run leaks a slot and the fifth or sixth run is the one that fails —
+which makes it look like a change you just made broke authentication.
 
 ## External browser preview (`--hub`)
 

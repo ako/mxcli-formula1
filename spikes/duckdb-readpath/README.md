@@ -26,20 +26,22 @@ No data is copied into Postgres. The CSVs are read in place, per query.
 
 ## Reproducing it
 
-Needs the DuckDB JDBC driver in `Formula1Backend/userlib/` — it is git-ignored
-(82 MB) and fetched by `scripts/fetch-duckdb-driver.sh`, which the SessionStart
-hook runs.
+`01-connection.mdl` declares the DuckDB JDBC driver as a managed Java dependency;
+mxcli resolves it into `vendorlib/` on its own (`run --local` does it before boot,
+or run `mxcli sync-java-deps` explicitly). Nothing needs to be fetched by hand.
 
 ```bash
 cd Formula1Backend
-../scripts/fetch-duckdb-driver.sh
-
 ./mxcli exec ../spikes/duckdb-readpath/01-connection.mdl -p Formula1Backend.mpr
 ./mxcli exec ../spikes/duckdb-readpath/02-microflows.mdl -p Formula1Backend.mpr
 
 mkdir -p tests && cp ../spikes/duckdb-readpath/duckdb.test.mdl tests/
 ./mxcli test tests/ -p Formula1Backend.mpr --local
 ```
+
+Needs network the first time (Maven). Earlier revisions of this spike shipped a
+`scripts/fetch-duckdb-driver.sh` that put the jar in `userlib/` by hand — that was
+a workaround for FINDINGS §12 and is no longer needed.
 
 Then put the project back:
 

@@ -23,7 +23,6 @@ cd "$DIR"
 
 sh scripts/build-mxcli.sh
 sh scripts/fetch-f1-data.sh
-sh scripts/fetch-duckdb-driver.sh
 
 # Two apps, two hostnames. Cookies are keyed on host name and ignore the port,
 # so backend and frontend on localhost:8080 / localhost:8180 would share one

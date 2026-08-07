@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 were done on `9236202`; §11–§13 on **`1bdd46a`** (2026-08-07, PR #109 — the `test --watch`/`--attach` work) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§15 on **`45ae6a6`**, where §1–§13 were all fixed upstream and re-verified |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -598,9 +598,121 @@ Small, all verified 2026-08-07 on `1bdd46a`:
   upward and sideways (§3) — it is easy to get a "no such file or directory" for a
   directory that exists next to the `.mpr`.
 
-## Suggested mxcli issues, in the order I would file them
+## 14. Every finding above was fixed upstream — re-verified on `45ae6a6`
 
-1. **`CREATE ODATA SERVICE` leaves `ServiceName` empty → every published service fails
+*Verified 2026-08-07 by re-running each original reproduction against a fresh build
+of `ako/mxcli` main @ `45ae6a6`. Not read from commit messages — every row below was
+executed.*
+
+| # | Finding | Fix | Verified how |
+|---|---|---|---|
+| §1 | ANTLR version not pinned where the failure happens | `68d235f` | — |
+| §2 | `mxcli new` help said "downloads" when it links | `8e7bfcc` | `new --help` now reads *"6. Links this mxcli into the project (or downloads a Linux build on macOS/Windows)"* |
+| §3 | `init` from a solution root silently picks one app | `83e85c2` | Now **refuses**, lists both `.mpr` paths, and prints `mxcli init /…/Formula1Backend`. An empty dir warns that paths are placeholders. |
+| §6 | Wrong database-type table; `BYOD` undocumented | `1fb51d7` + skill | `check` on `type 'Redshift'` warns `MDL-DB01` and names the six real values, calling out `BYOD` for unknown drivers. `type 'BYOD'` is clean. |
+| §8 | `describe settings configuration '…'` was a parse error | `f0d9e38` | Parses, and `show settings configurations` now carries `url=http://backend.local:8080/` (the empty-`DatabaseUrl` `, ,` is gone too) |
+| §10.1 | `ServiceName` empty → every published service fails `mxbuild` | `d9cadfa` | See below |
+| §10.2 | `ReadMode: microflow …` undocumented | `305a9fa` | `syntax odata publish` documents all four modes, `ServiceName`, and the query options |
+| §10.3 | `Countable`/`Skip`/`Top` hardcoded `true` | `fa0cdb6` | All three accepted as publish-entity properties |
+| §10.4 | `PublishAssociations` default unbuildable, `CREATE`-inaccessible | `d9cadfa` | See below |
+| §10.5 | DESCRIBE emitted unparseable MDL and the wrong exposed name | `04aadde` | Round-tripped: DESCRIBE → `check` → passes |
+| §12 | Declared JAR dependency never resolved | `38484ea` | See below |
+| §13a | `$Total = 5;` did not parse | `e0744b9` | `$N = 0; $N = -1; $N = $N + 5;` all parse |
+| §13b | Test path not resolved relative to the project | `d70c3e5` | Works for execution; **not** for `--list` (see §15) |
+| §9 | Unknown publish-entity properties silently dropped | `6b5db79` | `ReadMicroflow:` now errors `MDL-ODATA01` and lists the known names |
+
+### §10 end to end: the workarounds are gone
+
+The §10 probe re-run with **no** `ServiceName`, **no** `alter … set PublishAssociations`,
+and a read microflow taking **no parameters at all** (possible because `Countable: No`
+now exists):
+
+```sql
+create odata service ProbeOData.ProbeApi (
+  path: 'odata/probe/', version: '1.0.0', ODataVersion: OData4,
+  namespace: 'ProbeOData.Probe'
+) authentication basic {
+  publish entity ProbeOData.Row as 'Rows' (
+    ReadMode: microflow ProbeOData.Read_Rows,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  ) expose ( RowKey as 'rowKey' (KEY, Filterable, Sortable), Label (Filterable, Sortable) );
+};
+```
+
+→ **BUILD SUCCEEDED.** Three workarounds retired by one script.
+
+`DESCRIBE` now emits the defaults it filled in (`ServiceName: 'ProbeApi'`,
+`PublishAssociations: Yes`), `ReadMode: microflow ProbeOData.Read_Rows` rather than
+`CallMicroflow:…`, the correct entity-set name `as 'Rows'`, `Countable: No`, and `KEY`
+rather than `IsPartOfKey`. Piped back through `check`: passes.
+
+### §12: the answer was a third thing
+
+My open question was "does `mxbuild --serve` skip Maven resolution, or does mxcli write
+the dependency somewhere MxBuild cannot read?" Neither — **declaring and resolving are
+separate steps**, and the Mendix toolset has always had `mx sync-java-dependencies`
+for the second one. Studio Pro runs it when you edit Module Settings; nothing headless
+was.
+
+mxcli now wires it at three levels: a new `mxcli sync-java-deps [--check]` command, a
+warning from the executor the moment an unvendored coordinate is written, and
+resolution inside `run --local` before boot — which is what the log shows:
+
+```
+Resolving 1 managed Java dependency/dependencies (org.duckdb:duckdb_jdbc:1.5.5.1)...
+```
+
+Verified the hard way: **deleted the jar from `userlib/` entirely**, left only the
+`ALTER MODULE … ADD JAR DEPENDENCY` declaration, and re-ran the §11 suite:
+
+```
+PASS  Ayrton Senna has 41 race wins        (704ms)
+PASS  Lewis Hamilton has 106 race wins      (56ms)
+PASS  An unknown driver id yields -1        (91ms)
+PASS  The drivers CSV has 917 rows         (152ms)
+```
+
+with `userlib/` empty and the jar landing at
+`deployment/model/lib/userlib/duckdb_jdbc-1.5.5.1.jar`. This repo's
+`scripts/fetch-duckdb-driver.sh` workaround has been **deleted** as a result.
+
+## 15. Two residuals from the fixes, and one operational gotcha
+
+*Verified 2026-08-07 on `45ae6a6`. All minor; recorded so they are not rediscovered.*
+
+- **`mxcli test --list` still does not resolve a project-relative path.** `d70c3e5`
+  added `resolveTestPaths` and wired it into `RunOptions.TestFiles`, but the `--list`
+  branch returns earlier and calls `testrunner.ListTests(args, …)` with the raw args
+  (`cmd/mxcli/cmd_test_run.go:136`). So execution works from the solution root and
+  listing does not:
+  ```
+  $ mxcli test tests/ -p Formula1Backend/Formula1Backend.mpr --attach   # 4 passed
+  $ mxcli test tests/ -p Formula1Backend/Formula1Backend.mpr --list
+  Error: stat tests/: stat tests/: no such file or directory
+  ```
+  One line: move the `resolveTestPaths` call above the `if list` branch.
+
+- **`MDL-ODATA01`'s hint omits the properties `fa0cdb6` added.** The message says
+  *"Known properties here: ReadMode, InsertMode, UpdateMode, DeleteMode, UsePaging,
+  PageSize"* — no `Countable`, `SkipSupported` or `TopSupported`, though all three are
+  accepted. The two lists want a single source.
+
+- **`.ai-context/skills/` does not follow an mxcli upgrade.** The skills are copied
+  into each app at `mxcli init` time, so after upgrading the binary this project was
+  still reading the *old* `database-connections.md` — the one with the wrong type
+  table that caused §6 in the first place. Re-running `mxcli init --tool claude` in
+  each app folder refreshed 63 skill files (694 insertions). Worth knowing that
+  upgrading mxcli is two steps, and worth mxcli either versioning the copied skills
+  or noticing they are stale.
+
+## Suggested mxcli issues
+
+**All of the below were fixed upstream in `45ae6a6` and re-verified in §14.** The list
+is kept because the reasoning is still the record of why each mattered. Anything still
+open is in §15.
+
+1. ~~**`CREATE ODATA SERVICE` leaves `ServiceName` empty → every published service fails
    `mxbuild`** (§10.1). One-line fix, affects everyone, currently invisible because
    `mxcli check` passes. Highest impact.
 2. **Add `Countable` / `SkipSupported` / `TopSupported` to `publish entity`** (§10.3) —

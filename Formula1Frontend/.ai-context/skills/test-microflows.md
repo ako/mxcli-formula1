@@ -121,19 +121,131 @@ mxcli test tests/ -p app.mpr --verbose
 
 ## How It Works
 
-The test runner uses the **after-startup microflow** pattern:
+There are two mechanisms. `--local` uses the **test endpoint**; Docker uses the
+older **after-startup microflow** pattern.
+
+### `--local`: the test endpoint
 
 1. Parses test files and extracts test blocks with annotations
 2. Records the project's current after-startup microflow, and whether an `MxTest`
    module already exists
-3. Generates a `MxTest.TestRunner` microflow with assertion logic and points
-   after-startup at it
-4. Builds the project and restarts the runtime (Docker, or local with `--local`)
+3. Generates **one `MxTest.Test_<id>` microflow per test**, plus a Java action
+   that registers an HTTP endpoint, and points after-startup at a microflow whose
+   only job is to call it — **no test runs during startup**
+4. Builds and boots the app once
+5. Invokes each test by name over HTTP; each returns its own verdict in the
+   response
+6. Restores the original after-startup setting and removes everything generated
+7. Outputs results (console, JUnit XML)
+
+Two consequences worth knowing when reading a failing run:
+
+- **A test that throws fails only itself.** It is reported as `ERROR` with the
+  root-cause message, and the next test still runs. Under the after-startup
+  mechanism an uncaught error ends the whole flow — and because that flow *is*
+  the startup action, it also fails the boot.
+- **Results are returned, not scraped**, so a test cannot be lost to log
+  buffering or a runtime that stopped echoing to the console.
+
+Each test is a separate microflow with its own variable scope, so `$result` in
+one test never collides with `$result` in another.
+
+#### `--watch`: keep the runtime warm
+
+```bash
+mxcli test tests/ -p app.mpr --local --watch
+```
+
+The first run pays the cold boot; after that the runtime and the build server
+stay up, and the suite re-runs on every change — to a test file **or** to the
+project's model. Measured on an 11.13.0 app:
+
+| | |
+|---|---|
+| First run (cold boot) | ~30s |
+| Edit a test → verdict on screen | **~2s** |
+| Edit a microflow → verdict on screen | **~2s** |
+| The tests themselves | 20–70ms |
+
+Editing a microflow and seeing straight away whether it still passes is the loop
+this exists for. Ctrl-C stops watching and restores the project — the shutdown
+prints `project restored` when it has.
+
+Adding, editing and deleting tests all work mid-session: the suite is re-parsed
+on every change, and a deleted test's microflow is dropped rather than left
+behind reporting a stale pass.
+
+`--watch` requires `--local`. The Docker and `--legacy-runner` paths can only
+re-run tests by restarting, which is the thing being avoided.
+
+#### `--attach`: no boot at all
+
+If you already have the app running, tests can skip the boot entirely. The dev
+loop has to opt into hosting the endpoint, because the handler is registered by
+the after-startup microflow and so cannot be added to an app that is already up:
+
+```bash
+# terminal 1 — the app you are working in
+mxcli run --local --test-endpoint -p app.mpr
+
+# terminal 2 — runs in ~2s, no boot, repeatable
+mxcli test tests/ -p app.mpr --attach
+mxcli test tests/ -p app.mpr --attach --watch    # ...and re-run on every change
+```
+
+The hosting app chains your project's own after-startup microflow rather than
+displacing it, so it still boots normally. The endpoint and the handshake file
+(`.mxcli/test-endpoint.json`, mode 0600) are removed when the app stops.
+
+Three things to know before reaching for it:
+
+- **Tests run against the running app's database**, not a scratch one, so they
+  can leave data behind in the app you are looking at. `--local` uses a separate
+  `<project>_test` database; `--attach` does not.
+- **An attach only owns its own test microflows.** The endpoint and the
+  after-startup setting belong to the app hosting them, and cleanup never
+  touches them.
+- **A change needing a runtime restart is refused** — a new entity or
+  association. That runtime belongs to the other process. Restart it, or drop
+  `--attach`.
+
+| | Boot | Database | Owns the runtime |
+|---|---|---|---|
+| `--local` | ~30s each run | `<project>_test` | yes |
+| `--local --watch` | ~30s once, then ~2s | `<project>_test` | yes |
+| `--attach` | none | the running app's | no |
+
+#### Security of the endpoint
+
+It executes microflows under a system context, so it is gated four ways:
+
+| Guard | Behaviour |
+|---|---|
+| No `MXCLI_TEST_TOKEN` in the runtime's environment | The handler is **not registered at all** (404) |
+| Missing or wrong `X-MxTest-Token` header | 401, compared in constant time |
+| Non-loopback caller | 403 |
+| `mf` outside `MxTest.Test_*` | 403 — it is not a general microflow-invocation API |
+
+The token is generated per run and reaches the runtime through its **environment**,
+never written into the project. Combined with fail-closed registration, that means
+a project which kept the `MxTest` module through a failed cleanup exposes nothing
+when deployed anywhere else.
+
+### Docker: the after-startup microflow
+
+1. Parses test files and extracts test blocks with annotations
+2. Records the project's current after-startup microflow, and whether an `MxTest`
+   module already exists
+3. Generates a single `MxTest.TestRunner` microflow containing every test, and
+   points after-startup at it
+4. Builds the project and restarts the container
 5. Captures structured `MXTEST:` log lines for pass/fail
 6. Restores the original after-startup setting and removes the generated runner —
    the whole `MxTest` module when the runner created it, otherwise just the
    `TestRunner` microflow
 7. Outputs results (console, JUnit XML)
+
+### Both mechanisms
 
 The project's **Security Level is not modified**. The after-startup microflow runs
 in an administrative context and is not subject to it, and forcing it off breaks

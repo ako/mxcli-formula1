@@ -217,6 +217,19 @@ set $count = 1;
 1. Check microflow exists: `show microflows in ModuleName`
 2. Use fully qualified name: `Module.MicroflowName`
 
+### "page not found" for a page the script creates further down (MDL-PAGE01)
+
+**Problem**: A widget action targets a page created by a LATER statement in the
+same script. Page references resolve in statement order, and `exec` is not
+transactional — the statements before the failure are already written.
+
+**Fix**:
+1. Move the `create page` for the target above the page that links to it.
+2. If two pages link to each other, no ordering works: create one without the
+   linking widget, then add it with `alter page ... insert`.
+3. Commit before executing a large script — recovery from a partial run is
+   `git checkout -- App.mpr mprcontents/`.
+
 ## Studio Pro Error Code Reference
 
 | Code | Message | Common Cause |

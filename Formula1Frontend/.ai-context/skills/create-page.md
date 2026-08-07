@@ -1082,7 +1082,37 @@ textbox txtHidden (label: 'Hidden', attribute: Name, visible: false)
 -- A quoted-string expression is also accepted (CREATE and ALTER). Unlike the
 -- bracket form, it is NOT auto-rooted — write $currentObject/ yourself.
 dynamictext ovChip (content: 'chip', visible: '$currentObject/Name != empty')
+
+-- Function calls work in the bracket form, including functions whose name is
+-- also an MDL keyword (trim, length, find). Arguments are rooted like any other
+-- reference.
+dynamictext tTrim (content: 'x', visible: [trim($currentObject/Slug) != ''])
+textbox txtSlug (label: 'Slug', attribute: Slug, editable: [length(Slug) > 0])
 ```
+
+> **`visible:`/`editable:` is a Mendix *expression*, not XPath** — a different
+> function set from a datasource `where` clause, even though both use `[ ... ]`:
+>
+> | | `visible:` / `editable:` (client expression) | `where [ … ]` (XPath) |
+> |---|---|---|
+> | String tests | `trim()`, `length()`, `toUpperCase()`, `find()`, `contains()` | `contains()`, `starts-with()`, `ends-with()`, `string-length()` |
+> | `length()` | character count | number of elements in a list |
+> | Emptiness | `$currentObject/X != ''` / `!= empty` | `[X = empty]` or `[X = NULL]` — a **keyword**, never `empty(…)` |
+> | Aggregates | not available | `count()`/`avg()`/`min()`/`max()`/`sum()` are Java-API-only |
+>
+> mxcli's grammar accepts any function name in both and lets MxBuild adjudicate,
+> so a wrong-context call surfaces as **CE0117** "Error(s) in expression" at
+> build rather than as a parse error. See the Mendix reference guide:
+> [XPath constraint functions](https://docs.mendix.com/refguide/xpath-constraint-functions/),
+> [XPath keywords](https://docs.mendix.com/refguide/xpath-keywords-and-system-variables/).
+
+> **An unparseable conditional is an error, not a silent drop.** If the
+> expression inside `visible: [ ... ]` / `editable: [ ... ]` can't be parsed, the
+> property has nowhere to go and would vanish on write — leaving the widget
+> unconditionally visible/editable, which looks identical to a specificity bug in
+> the running app. `mxcli check` reports this as **MDL-WIDGET19** and fails the
+> command instead. Until v0.16.x, `trim(…)` and `length(…)` hit exactly this path
+> and disappeared without a word (issue #852).
 
 > **Attribute rooting is automatic** — a bare attribute in a widget
 > visibility/editability expression (`[Name != '']`, `[IsActive]`) is rooted in the

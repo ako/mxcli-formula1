@@ -63,8 +63,9 @@ that ran inside a booted Mendix runtime and asserted against real values — Sen
 wins, Hamilton 106, 917 driver rows — in ~30 ms per query. Re-run it any time with
 `mxcli test`; the README there has the commands.
 
-The DuckDB JDBC driver (82 MB) is git-ignored too and fetched by
-`scripts/fetch-duckdb-driver.sh` into `Formula1Backend/userlib/`.
+The DuckDB JDBC driver (82 MB) is declared in the model as a managed Java
+dependency; mxcli resolves it into `vendorlib/` before boot, so it is git-ignored
+and needs no fetch script of its own.
 
 ## Working on it
 

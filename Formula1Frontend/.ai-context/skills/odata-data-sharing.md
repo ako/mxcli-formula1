@@ -223,8 +223,12 @@ create odata service ProductApi.ProductDataApi (
   ODataVersion: OData4,
   namespace: 'DefaultNamespace',
   ServiceName: 'ProductDataApi',
-  Summary: 'Product and customer data API',
-  PublishAssociations: No
+  Summary: 'Product and customer data API'
+  -- PublishAssociations is left at its default (Yes = associations as links).
+  -- Setting it to No means "associations as an associated object id", which
+  -- Mendix only allows when the system ID is published as the key — publishing
+  -- an ordinary attribute as the key then fails the build with CE7375, even
+  -- when no associations are exposed at all.
 )
 authentication basic
 {
@@ -411,6 +415,64 @@ from odata client ShopClient.ShopApiClient
 alter entity ShopClient.Product set allow_create_change_locally = true;
 alter entity ShopClient.Product set allow_create_change_locally = false;
 ```
+
+## Publishing a Non-Persistable Entity (no copy of the data)
+
+A published entity does **not** have to be persistable. Back it with a read
+microflow and the rows are produced per request — nothing is stored, and there
+is no refresh job to keep a copy in step with the source. This is the shape to
+use when the data lives outside Mendix (an external database, a CSV, an API).
+
+```sql
+create non-persistent entity Api.Lap (
+  LapKey:  string(60),
+  Driver:  string(120),
+  LapTime: decimal
+);
+
+-- While Countable is Yes (the default), the read microflow MUST take a
+-- $Response: System.ODataResponse parameter — Mendix asks it for the count.
+CREATE MICROFLOW Api.Read_Laps ($Response: System.ODataResponse)
+  RETURNS List of Api.Lap AS $Laps
+BEGIN
+  -- retrieve from wherever the data actually lives, e.g. EXECUTE DATABASE QUERY
+  $Laps = CREATE LIST OF Api.Lap;
+  RETURN $Laps;
+END;
+
+create odata service Api.LapApi (
+  path: 'odata/laps/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Api.Laps'
+)
+authentication basic
+{
+  publish entity Api.Lap as 'Laps' (
+    ReadMode: microflow Api.Read_Laps,
+    InsertMode: not_supported,
+    UpdateMode: not_supported,
+    DeleteMode: not_supported
+  )
+  expose (
+    LapKey as 'lapKey' (KEY, Filterable, Sortable),
+    Driver (Filterable, Sortable),
+    LapTime (Sortable)
+  );
+};
+```
+
+Two things worth knowing before you write this:
+
+- **`ReadMode: microflow Module.MF`** is the whole feature. `InsertMode`,
+  `UpdateMode` and `DeleteMode` take the same form for a read-write resource.
+- **Counting is not free.** If the count means a full scan of the underlying
+  source, set `Countable: No` on the published entity — the read microflow then
+  takes no parameters at all. `SkipSupported: No` and `TopSupported: No` turn
+  off `$skip` and `$top` the same way. All three default to Yes.
+
+`PublishAssociations` must stay at its default (Yes) here: a non-persistable
+entity cannot publish its ID, so object-id mode can never build for it.
 
 ## Step-by-Step: Read-Write API with Microflow Handlers
 
