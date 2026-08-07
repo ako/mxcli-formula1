@@ -1,0 +1,289 @@
+/*
+ * Formula1Backend — the DuckDB read layer.
+ *
+ * Everything both OData services stand on: the connection to the CSV folder,
+ * the non-persistable row shapes the connector maps results into, and one
+ * query per resource.
+ *
+ * The CSVs are read in place. `read_csv({dataDir} || '/f1db-x.csv')` binds the
+ * folder as a query parameter, so nothing absolute is baked into the model and
+ * DataDir can be overridden per environment with MX_Formula1Backend_DataDir.
+ */
+
+create module Formula1Backend;
+
+-- The DuckDB JDBC driver. Declaring is not resolving: 'mxcli sync-java-deps'
+-- downloads it into vendorlib/, and 'run --local' does that before boot.
+alter module Formula1Backend
+  add jar dependency (
+    group    = 'org.duckdb',
+    artifact = 'duckdb_jdbc',
+    version  = '1.5.5.1',
+    included = true,
+  );
+
+create constant Formula1Backend.DataDir type string
+  default '/home/user/mxcli-formula1/data/f1db'
+  comment 'Folder holding the f1db CSVs. Override per environment.';
+
+create constant Formula1Backend.DuckDbUrl type string
+  default 'jdbc:duckdb:'
+  comment 'In-memory DuckDB — no database file; read_csv() reads the CSVs per query.';
+
+create constant Formula1Backend.DuckDbUser type string default '';
+create constant Formula1Backend.DuckDbPassword type string default '' PRIVATE;
+
+/* ---------------------------------------------------------------------------
+ * Row shapes. Non-persistable, because that is what the External Database
+ * Connector maps query results into. Flat: every join happens in DuckDB, so
+ * there are no associations to resolve on the Mendix side.
+ *
+ * Whole numbers are `long`, not `integer`, on purpose. Mendix publishes a
+ * Mendix `Integer` as Edm.Int64, but mxcli writes Edm.Int32 for it, and the
+ * build then fails with "has type Integer, but is published as Edm.Int32" on
+ * every such attribute. `long` maps to Edm.Int64 on both sides. See
+ * FINDINGS.md §16.
+ * ------------------------------------------------------------------------- */
+
+create non-persistent entity Formula1Backend.Stg_Season (
+  Year: long,
+  ChampionDriverName: string(120),
+  ChampionConstructorName: string(120),
+  RaceCount: long
+);
+
+create non-persistent entity Formula1Backend.Stg_Circuit (
+  CircuitId: string(60),
+  Name: string(120),
+  FullName: string(200),
+  PlaceName: string(120),
+  Country: string(60),
+  Latitude: decimal,
+  Longitude: decimal,
+  Length: decimal,
+  Turns: long,
+  RacesHeld: long
+);
+
+create non-persistent entity Formula1Backend.Stg_Constructor (
+  ConstructorId: string(60),
+  Name: string(120),
+  FullName: string(200),
+  Country: string(60),
+  ChampionshipWins: long,
+  RaceStarts: long,
+  RaceWins: long,
+  Podiums: long,
+  Points: decimal,
+  PolePositions: long
+);
+
+create non-persistent entity Formula1Backend.Stg_Driver (
+  DriverId: string(60),
+  Name: string(120),
+  FullName: string(200),
+  Abbreviation: string(10),
+  PermanentNumber: string(10),
+  DateOfBirth: datetime,
+  PlaceOfBirth: string(120),
+  Nationality: string(60),
+  ChampionshipWins: long,
+  RaceStarts: long,
+  RaceWins: long,
+  Podiums: long,
+  Points: decimal,
+  PolePositions: long
+);
+
+create non-persistent entity Formula1Backend.Stg_Race (
+  RaceId: long,
+  Year: long,
+  Round: long,
+  RaceDate: datetime,
+  OfficialName: string(200),
+  GrandPrixId: string(60),
+  CircuitId: string(60),
+  CircuitName: string(120),
+  Laps: long,
+  Distance: decimal
+);
+
+create non-persistent entity Formula1Backend.Stg_RaceResult (
+  RaceId: long,
+  Year: long,
+  Round: long,
+  PositionOrder: long,
+  PositionNumber: long,
+  PositionText: string(20),
+  DriverId: string(60),
+  DriverName: string(120),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  DriverNumber: string(10),
+  Laps: long,
+  TimeText: string(60),
+  Gap: string(60),
+  ReasonRetired: string(120),
+  Points: decimal,
+  GridPosition: long,
+  PositionsGained: long,
+  FastestLap: boolean,
+  PolePosition: boolean
+);
+
+create non-persistent entity Formula1Backend.Stg_DriverStanding (
+  Year: long,
+  PositionOrder: long,
+  PositionNumber: long,
+  PositionText: string(20),
+  DriverId: string(60),
+  DriverName: string(120),
+  Points: decimal,
+  ChampionshipWon: boolean
+);
+
+create non-persistent entity Formula1Backend.Stg_ConstructorStanding (
+  Year: long,
+  PositionOrder: long,
+  EngineManufacturer: string(60),
+  PositionNumber: long,
+  PositionText: string(20),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  Points: decimal,
+  ChampionshipWon: boolean
+);
+
+/* ---------------------------------------------------------------------------
+ * The connection. Type 'BYOD' is Studio Pro's "Other" — bring your own driver.
+ * It skips the driver-presence check, which is the only reason a JDBC driver
+ * Mendix has no picker entry for can be used at all.
+ *
+ * Every query takes dataDir so the CSV folder stays a constant, not a literal.
+ * ------------------------------------------------------------------------- */
+
+create database connection Formula1Backend.F1Warehouse
+type 'BYOD'
+connection string @Formula1Backend.DuckDbUrl
+username @Formula1Backend.DuckDbUser
+password @Formula1Backend.DuckDbPassword
+begin
+  query GetSeasons
+    sql 'SELECT s.year AS year,
+                COALESCE(d.name, ''—'') AS championDriverName,
+                COALESCE(c.name, ''—'') AS championConstructorName,
+                (SELECT count(*) FROM read_csv({dataDir} || ''/f1db-races.csv'') r
+                   WHERE r.year = s.year) AS raceCount
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') s
+         LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
+                ON ds.year = s.year AND ds.championshipWon = true
+         LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
+                ON cs.year = s.year AND cs.championshipWon = true
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
+         ORDER BY s.year DESC'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Season
+    map ( year as Year, championDriverName as ChampionDriverName,
+          championConstructorName as ChampionConstructorName, raceCount as RaceCount );
+
+  query GetCircuits
+    sql 'SELECT id, name, fullName, placeName, countryId, latitude, longitude,
+                length, turns, totalRacesHeld
+         FROM read_csv({dataDir} || ''/f1db-circuits.csv'') ORDER BY name'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Circuit
+    map ( id as CircuitId, name as Name, fullName as FullName, placeName as PlaceName,
+          countryId as Country, latitude as Latitude, longitude as Longitude,
+          length as Length, turns as Turns, totalRacesHeld as RacesHeld );
+
+  query GetConstructors
+    sql 'SELECT id, name, fullName, countryId, totalChampionshipWins, totalRaceStarts,
+                totalRaceWins, totalPodiums, totalPoints, totalPolePositions
+         FROM read_csv({dataDir} || ''/f1db-constructors.csv'') ORDER BY name'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Constructor
+    map ( id as ConstructorId, name as Name, fullName as FullName, countryId as Country,
+          totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
+          totalRaceWins as RaceWins, totalPodiums as Podiums, totalPoints as Points,
+          totalPolePositions as PolePositions );
+
+  query GetDrivers
+    sql 'SELECT id, name, fullName, abbreviation, permanentNumber, dateOfBirth,
+                placeOfBirth, nationalityCountryId, totalChampionshipWins,
+                totalRaceStarts, totalRaceWins, totalPodiums, totalPoints,
+                totalPolePositions
+         FROM read_csv({dataDir} || ''/f1db-drivers.csv'') ORDER BY name'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Driver
+    map ( id as DriverId, name as Name, fullName as FullName, abbreviation as Abbreviation,
+          permanentNumber as PermanentNumber, dateOfBirth as DateOfBirth,
+          placeOfBirth as PlaceOfBirth, nationalityCountryId as Nationality,
+          totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
+          totalRaceWins as RaceWins, totalPodiums as Podiums, totalPoints as Points,
+          totalPolePositions as PolePositions );
+
+  query GetRaces
+    sql 'SELECT r.id, r.year, r.round, r.date, r.officialName, r.grandPrixId,
+                r.circuitId, c.name AS circuitName, r.laps, r.distance
+         FROM read_csv({dataDir} || ''/f1db-races.csv'') r
+         LEFT JOIN read_csv({dataDir} || ''/f1db-circuits.csv'') c ON c.id = r.circuitId
+         ORDER BY r.year DESC, r.round'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Race
+    map ( id as RaceId, year as Year, round as Round, date as RaceDate,
+          officialName as OfficialName, grandPrixId as GrandPrixId,
+          circuitId as CircuitId, circuitName as CircuitName, laps as Laps,
+          distance as Distance );
+
+  -- Every race result, 27533 rows. The cached service materialises all of it;
+  -- the live service overrides this SQL per season so a request stays bounded.
+  query GetRaceResults
+    sql 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder, rr.positionNumber,
+                rr.positionText, rr.driverId, d.name AS driverName,
+                rr.constructorId, c.name AS constructorName, rr.driverNumber,
+                rr.laps, rr.time, rr.gap, rr.reasonRetired, rr.points,
+                rr.gridPositionNumber, rr.positionsGained, rr.fastestLap, rr.polePosition
+         FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
+         LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = rr.driverId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
+         ORDER BY rr.year DESC, rr.round, rr.positionDisplayOrder'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_RaceResult
+    map ( raceId as RaceId, year as Year, round as Round,
+          positionDisplayOrder as PositionOrder, positionNumber as PositionNumber,
+          positionText as PositionText, driverId as DriverId, driverName as DriverName,
+          constructorId as ConstructorId, constructorName as ConstructorName,
+          driverNumber as DriverNumber, laps as Laps, time as TimeText, gap as Gap,
+          reasonRetired as ReasonRetired, points as Points,
+          gridPositionNumber as GridPosition, positionsGained as PositionsGained,
+          fastestLap as FastestLap, polePosition as PolePosition );
+
+  query GetDriverStandings
+    sql 'SELECT ds.year, ds.positionDisplayOrder, ds.positionNumber, ds.positionText,
+                ds.driverId, d.name AS driverName, ds.points, ds.championshipWon
+         FROM read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
+         LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
+         ORDER BY ds.year DESC, ds.positionDisplayOrder'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_DriverStanding
+    map ( year as Year, positionDisplayOrder as PositionOrder,
+          positionNumber as PositionNumber, positionText as PositionText,
+          driverId as DriverId, driverName as DriverName, points as Points,
+          championshipWon as ChampionshipWon );
+
+  query GetConstructorStandings
+    sql 'SELECT cs.year, cs.positionDisplayOrder, cs.positionNumber, cs.positionText,
+                cs.constructorId, c.name AS constructorName, cs.engineManufacturerId,
+                cs.points, cs.championshipWon
+         FROM read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
+         ORDER BY cs.year DESC, cs.positionDisplayOrder'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_ConstructorStanding
+    map ( year as Year, positionDisplayOrder as PositionOrder,
+          positionNumber as PositionNumber, positionText as PositionText,
+          constructorId as ConstructorId, constructorName as ConstructorName,
+          engineManufacturerId as EngineManufacturer,
+          points as Points, championshipWon as ChampionshipWon );
+end;

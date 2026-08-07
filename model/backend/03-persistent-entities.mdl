@@ -1,0 +1,176 @@
+/*
+ * Service 2 of 2, part A — the persistent model behind F1CachedApi.
+ *
+ * Same data as the live service, materialised into Postgres so OData can do
+ * what it cannot do over a read microflow: paging, $filter and $orderby
+ * pushdown, and navigation properties.
+ *
+ * Whole numbers are `long` throughout, for the same reason as the staging
+ * entities — see FINDINGS.md §16.
+ */
+
+/*
+ * A published OData key on a PERSISTABLE entity must carry a unique validation
+ * rule — Mendix refuses otherwise ("Add a unique validation rule to attribute
+ * X ... to be able to use it as the key"). Non-persistable entities have no
+ * such requirement, which is why the live service's identical keys need
+ * nothing. See FINDINGS.md §17.
+ *
+ * Three tables have no naturally unique column: a race has ~20 results, and a
+ * season has ~20 driver and ~10 constructor standings. Those get a synthetic
+ * key built from the pair that is unique.
+ *
+ * For the standings that pair is (year, positionDisplayOrder), NOT
+ * (year, driverId/constructorId). f1db lists one constructor-standings row per
+ * constructor *and engine* — Brabham appears three times in 1966 (Repco, BRM,
+ * Climax) and Force India twice in 2018 on the same Mercedes engine. Only the
+ * display order is reliably unique within a season. See FINDINGS.md §18.
+ */
+
+create persistent entity Formula1Backend.Season (
+  Year: long unique error 'Season year must be unique',
+  ChampionDriverName: string(120),
+  ChampionConstructorName: string(120),
+  RaceCount: long
+) index (Year);
+
+create persistent entity Formula1Backend.Circuit (
+  CircuitId: string(60) unique error 'Circuit id must be unique',
+  Name: string(120),
+  FullName: string(200),
+  PlaceName: string(120),
+  Country: string(60),
+  Latitude: decimal,
+  Longitude: decimal,
+  Length: decimal,
+  Turns: long,
+  RacesHeld: long
+) index (CircuitId);
+
+create persistent entity Formula1Backend.Constructor (
+  ConstructorId: string(60) unique error 'Constructor id must be unique',
+  Name: string(120),
+  FullName: string(200),
+  Country: string(60),
+  ChampionshipWins: long,
+  RaceStarts: long,
+  RaceWins: long,
+  Podiums: long,
+  Points: decimal,
+  PolePositions: long
+) index (ConstructorId);
+
+create persistent entity Formula1Backend.Driver (
+  DriverId: string(60) unique error 'Driver id must be unique',
+  Name: string(120),
+  FullName: string(200),
+  Abbreviation: string(10),
+  PermanentNumber: string(10),
+  DateOfBirth: datetime,
+  PlaceOfBirth: string(120),
+  Nationality: string(60),
+  ChampionshipWins: long,
+  RaceStarts: long,
+  RaceWins: long,
+  Podiums: long,
+  Points: decimal,
+  PolePositions: long
+) index (DriverId);
+
+create persistent entity Formula1Backend.Race (
+  RaceId: long unique error 'Race id must be unique',
+  Year: long,
+  Round: long,
+  RaceDate: datetime,
+  OfficialName: string(200),
+  GrandPrixId: string(60),
+  CircuitName: string(120),
+  Laps: long,
+  Distance: decimal
+) index (RaceId);
+
+/*
+ * RaceResult keeps DriverId / ConstructorId / RaceId as plain attributes and
+ * has no associations, unlike the other three.
+ *
+ * That is deliberate. There are 27533 results, and linking each one would mean
+ * three RETRIEVEs per row inside the refresh loop — ~82k queries for a job that
+ * otherwise does none. The names are already denormalised into the row by the
+ * DuckDB join, so the ids are enough for every page this app has, and the
+ * cached service still demonstrates what it exists to demonstrate: paging and
+ * $filter over a table the live service cannot serve whole.
+ */
+create persistent entity Formula1Backend.RaceResult (
+  ResultKey: string(40) unique error 'Result key must be unique',
+  RaceId: long,
+  Year: long,
+  Round: long,
+  PositionOrder: long,
+  PositionNumber: long,
+  PositionText: string(20),
+  DriverId: string(60),
+  DriverName: string(120),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  DriverNumber: string(10),
+  Laps: long,
+  TimeText: string(60),
+  Gap: string(60),
+  ReasonRetired: string(120),
+  Points: decimal,
+  GridPosition: long,
+  PositionsGained: long,
+  FastestLap: boolean,
+  PolePosition: boolean
+) index (RaceId), index (DriverId), index (Year);
+
+create persistent entity Formula1Backend.DriverStanding (
+  StandingKey: string(80) unique error 'Standing key must be unique',
+  Year: long,
+  PositionOrder: long,
+  PositionNumber: long,
+  PositionText: string(20),
+  DriverId: string(60),
+  DriverName: string(120),
+  Points: decimal,
+  ChampionshipWon: boolean
+);
+
+create persistent entity Formula1Backend.ConstructorStanding (
+  StandingKey: string(80) unique error 'Standing key must be unique',
+  Year: long,
+  PositionOrder: long,
+  EngineManufacturer: string(60),
+  PositionNumber: long,
+  PositionText: string(20),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  Points: decimal,
+  ChampionshipWon: boolean
+);
+
+/* Associations — the thing the live service structurally cannot have. */
+
+create association Formula1Backend.Race_Season
+  from Formula1Backend.Race to Formula1Backend.Season
+  type Reference owner Default;
+
+create association Formula1Backend.Race_Circuit
+  from Formula1Backend.Race to Formula1Backend.Circuit
+  type Reference owner Default;
+
+create association Formula1Backend.DriverStanding_Season
+  from Formula1Backend.DriverStanding to Formula1Backend.Season
+  type Reference owner Default;
+
+create association Formula1Backend.DriverStanding_Driver
+  from Formula1Backend.DriverStanding to Formula1Backend.Driver
+  type Reference owner Default;
+
+create association Formula1Backend.ConstructorStanding_Season
+  from Formula1Backend.ConstructorStanding to Formula1Backend.Season
+  type Reference owner Default;
+
+create association Formula1Backend.ConstructorStanding_Constructor
+  from Formula1Backend.ConstructorStanding to Formula1Backend.Constructor
+  type Reference owner Default;

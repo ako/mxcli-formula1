@@ -1,0 +1,93 @@
+/*
+ * Row-count helpers.
+ *
+ * These exist so the two services can be checked against each other: the live
+ * service and the cached service are supposed to describe the same dataset, so
+ * their counts must agree. If a refresh half-ran, or a CSV changed under the
+ * cache, this is what catches it.
+ *
+ * They are also what tests/services.test.mdl asserts on.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Drivers ()
+  RETURNS Long AS $N
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Backend.Read_Drivers();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Seasons ()
+  RETURNS Long AS $N
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Backend.Read_Seasons();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Races ()
+  RETURNS Long AS $N
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Backend.Read_Races();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+/* Bounded on purpose — the live service cannot serve all 27533 results. */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_LatestResults ()
+  RETURNS Long AS $N
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Backend.Read_LatestRaceResults();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Cached_Drivers ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.Driver;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Cached_Seasons ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.Season;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Cached_Races ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.Race;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Cached_RaceResults ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.RaceResult;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+/* Does the cache agree with the CSVs it was built from? */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Check_ServicesAgree ()
+  RETURNS Boolean AS $Agree
+BEGIN
+  $LiveDrivers = CALL MICROFLOW Formula1Backend.Count_Live_Drivers();
+  $CachedDrivers = CALL MICROFLOW Formula1Backend.Count_Cached_Drivers();
+  $LiveSeasons = CALL MICROFLOW Formula1Backend.Count_Live_Seasons();
+  $CachedSeasons = CALL MICROFLOW Formula1Backend.Count_Cached_Seasons();
+  $LiveRaces = CALL MICROFLOW Formula1Backend.Count_Live_Races();
+  $CachedRaces = CALL MICROFLOW Formula1Backend.Count_Cached_Races();
+  DECLARE $Agree Boolean = $LiveDrivers = $CachedDrivers
+                       and $LiveSeasons = $CachedSeasons
+                       and $LiveRaces = $CachedRaces;
+  RETURN $Agree;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Check_ServicesAgree TO Formula1Backend.DataAdmin;

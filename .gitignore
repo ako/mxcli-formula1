@@ -29,3 +29,5 @@
 /Formula1Frontend/vendorlib/
 /Formula1Backend/userlib/*.jar
 /Formula1Frontend/userlib/*.jar
+/Formula1Backend/out.mda
+/Formula1Frontend/out.mda

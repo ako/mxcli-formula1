@@ -1,0 +1,25 @@
+/*
+ * Live-service tests. These need nothing but the CSVs, so they run under
+ * `mxcli test --local` on its scratch database.
+ */
+
+/**
+ * @test Live service: the drivers CSV has 917 rows
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Live_Drivers();
+/
+
+/**
+ * @test Live service: 77 seasons
+ * @expect $result = 77
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Live_Seasons();
+/
+
+/**
+ * @test Live service: 1171 races
+ * @expect $result = 1171
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Live_Races();
+/

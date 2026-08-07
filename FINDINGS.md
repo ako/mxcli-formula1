@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§15 on **`45ae6a6`**, where §1–§13 were all fixed upstream and re-verified |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§19 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -706,11 +706,149 @@ with `userlib/` empty and the jar landing at
   upgrading mxcli is two steps, and worth mxcli either versioning the copied skills
   or noticing they are stale.
 
+## 16. Gap: a published `Integer` attribute is written as `Edm.Int32`, but Mendix wants `Edm.Int64`
+
+*Verified 2026-08-07 on mxcli `45ae6a6` / Mendix 11.13.0, building the real model.*
+
+Every whole-number attribute published in either OData service failed the build:
+
+```
+ERROR at …, Published attribute Year from entity Formula1Backend.Stg_Season:
+Attribute Formula1Backend.Stg_Season.Year is has type Integer, but is published
+as Edm.Int32. Either change the attribute type or right-click this error to
+update the published type in the metadata.
+```
+
+Fourteen of these on the first build, one per Integer attribute. The mapping is
+in `mendixAttrTypeToEdm` (`mdl/executor/cmd_odata.go:1625`):
+
+```go
+case "String", "HashedString": return "Edm.String"
+case "Integer":                return "Edm.Int32"      // <- Mendix publishes Int64
+case "Long", "AutoNumber":     return "Edm.Int64"
+```
+
+and the function's own doc comment says exactly where the bug came from:
+
+> String/Decimal/Boolean/DateTimeOffset **verified against Studio Pro output; the
+> rest follow the standard OData mapping.**
+
+Integer was an unverified guess. Mendix publishes both `Integer` and `Long` as
+`Edm.Int64` — confirmed by switching every attribute to `long`, after which the
+served `$metadata` reads `<Property Name="year" Type="Edm.Int64"/>` and the build
+is green.
+
+**Fix:** `case "Integer", "Long", "AutoNumber": return "Edm.Int64"`. Worth
+re-verifying `Binary` and `Enumeration` against Studio Pro at the same time —
+they carry the same unverified caveat.
+
+**Workaround here:** every whole number in the model is `long`. Harmless (both are
+Int64 over the wire) but it should not be necessary, and the error message is
+confusing — it reads as if the *attribute* is wrong when the published type is.
+
+## 17. A published key needs a unique validation rule — but only on persistable entities
+
+*Verified 2026-08-07.*
+
+```
+ERROR …: Add a unique validation rule to attribute 'Year' of entity
+'Formula1Backend.Season' to be able to use it as the key.
+```
+
+Eight of these, one per cached-service resource. `KEY` in the `expose` clause is
+not enough: the attribute must also carry `unique` in the entity definition.
+
+The interesting part is the asymmetry. The **live** service publishes the same
+keys on the same attribute names, and needed nothing — non-persistable entities
+have no unique-validation requirement (they have no database to enforce it in).
+So the identical `expose (Year as 'year' (KEY, …))` is fine on `Stg_Season` and a
+build error on `Season`.
+
+Not an mxcli bug, but a sharp edge worth a lint rule: `mxcli check` could see
+`KEY` on a persistable attribute with no unique validation and say so, rather than
+leaving it to `mxbuild`.
+
+## 18. The dataset itself: constructor standings are not unique per (year, constructor)
+
+*Verified 2026-08-07 against f1db, by DuckDB query.*
+
+The refresh failed on a uniqueness violation that looked like a modelling mistake
+and was actually a fact about Formula 1:
+
+```
+year  constructorId  n
+1966  brabham        3
+1960  cooper         3
+2018  force-india    2
+```
+
+f1db records one constructor-standings row per constructor **and engine**. Brabham
+scored in 1966 with Repco (42 points, 1st), BRM (1 point) and Climax (1 point) —
+three legitimate rows. Force India appears twice in 2018 on the *same* Mercedes
+engine, so even `(year, constructorId, engineManufacturerId)` is not unique.
+
+`(year, positionDisplayOrder)` is unique, and that is what the synthetic key uses.
+`engineManufacturer` is now exposed on both services, because it is the thing that
+explains the duplication to anyone looking at the data.
+
+Driver standings, race results and races are all unique on the obvious key —
+checked, not assumed.
+
+## 19. `mxcli test --local` displaces the app's After-startup microflow
+
+*Verified 2026-08-07.*
+
+The test runner prints this on every `--local` run, and it is easy to read past:
+
+```
+After-startup set to MxTest.RegisterEndpoint (registers the endpoint; runs no tests)
+```
+
+It is doing the right thing — it needs the endpoint registered at boot and it
+restores the setting afterwards. But it means **whatever your app does at startup
+does not happen during a `--local` test run.** Here, `ASU_LoadCacheIfEmpty` fills
+the cached service from the CSVs on first boot, so under `--local` the scratch
+`formula1backend_test` database stays empty and every cached-service assertion
+fails against zero rows.
+
+Nothing is broken; the tests were asking for state the runner had deliberately
+prevented. The split is now explicit:
+
+| File | How to run | Why |
+|---|---|---|
+| `tests/live.test.mdl` | `--local` | needs only the CSVs |
+| `tests/cached.test.mdl` | `--attach` | needs a loaded cache, which is the running app's state |
+
+**Suggestion:** say so in the output — "After-startup set to … (your own
+after-startup microflow will not run)" — or offer to chain the original one after
+the endpoint registration. As it stands the failure mode is a suite that passes
+under `--attach` and fails under `--local` for reasons unrelated to the code.
+
 ## Suggested mxcli issues
 
-**All of the below were fixed upstream in `45ae6a6` and re-verified in §14.** The list
-is kept because the reasoning is still the record of why each mattered. Anything still
-open is in §15.
+### Still open
+
+1. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
+   `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
+   published service fails the build until you switch it to `long`. One line, and the
+   function's own comment flags Integer as unverified.
+2. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
+   a suite that needs startup state passes under `--attach` and fails under `--local`
+   for reasons unrelated to the code. Say so in the output, or chain the original.
+3. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
+   sits below the `--list` branch in `cmd_test_run.go:136`.
+4. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
+   which `fa0cdb6` added and the checker accepts.
+5. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
+   `mxcli` is rebuilt, with no warning.
+6. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
+7. **`create module role` has no `or modify` form**, so a security script cannot be
+   re-run — the reason this repo has a separate `07-demo-users.mdl`.
+
+### Fixed upstream in `45ae6a6`, re-verified in §14
+
+The list below is kept because the reasoning is still the record of why each mattered.
 
 1. ~~**`CREATE ODATA SERVICE` leaves `ServiceName` empty → every published service fails
    `mxbuild`** (§10.1). One-line fix, affects everyone, currently invisible because

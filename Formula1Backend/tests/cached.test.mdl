@@ -1,0 +1,36 @@
+/*
+ * Cached-service tests. These need a LOADED cache, so run them with --attach
+ * against an app that has already started:
+ *
+ *   ./mxcli run --local -p Formula1Backend.mpr --test-endpoint
+ *   ./mxcli test tests/cached.test.mdl -p Formula1Backend.mpr --attach
+ *
+ * They fail under plain `--local`, and that is not a bug in them. The test
+ * runner points After-startup at its own MxTest.RegisterEndpoint for the
+ * duration of the run, which displaces ASU_LoadCacheIfEmpty — so the scratch
+ * `formula1backend_test` database is never populated. See FINDINGS.md §19.
+ */
+
+/**
+ * @test Cached service: the refresh loaded all 917 drivers
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Cached_Drivers();
+/
+
+/**
+ * @test Cached service: all 27533 race results are materialised
+ * @expect $result = 27533
+ */
+$result = CALL MICROFLOW Formula1Backend.Count_Cached_RaceResults();
+/
+
+/**
+ * The invariant that matters: two services, one dataset. If a refresh
+ * half-ran or a CSV changed under the cache, this is what goes red.
+ *
+ * @test The live and cached services agree on what exists
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.Check_ServicesAgree();
+/

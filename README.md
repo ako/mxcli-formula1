@@ -21,7 +21,7 @@ Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main**.
 
 | App | Port / host | Owns |
 |---|---|---|
-| `Formula1Backend` | `http://backend.local:8080/` (admin 8090, serve 6543) | Reading the CSVs through DuckDB over JDBC, and publishing the result as OData |
+| `Formula1Backend` | `http://backend.local:8080/` (admin 8090, serve 6543) | Reading the CSVs through DuckDB over JDBC, and publishing the result as **two** OData services — see below |
 | `Formula1Frontend` | `http://frontend.local:8180/` (admin 8190, serve 6643) | Consuming that OData and presenting it — the browsing UI the enthusiast uses |
 
 Each app is a full Mendix project: its own `.mpr`, its own runtime, its own
@@ -35,12 +35,43 @@ resolve to `127.0.0.1` via `/etc/hosts`; each app's `ApplicationRootUrl` names
 its own host so the runtime generates absolute URLs (deep links, OIDC redirect
 URIs) against the name rather than the listen address.
 
-**How they talk.** The backend publishes an OData service; the frontend consumes
-it via an OData client plus external entities. Wire it in dependency order — the
-backend must be *running* when the OData client is created, because
-`CREATE ODATA CLIENT` fetches `$metadata` at that moment and caches it. The
-frontend's `ServiceUrl` points at a constant, not a literal, so the address is
-environment-overridable.
+**How they talk.** The backend publishes **two** OData services over the same
+eight resources, built two different ways, so they can be compared directly.
+Wire the frontend in dependency order — the backend must be *running* when the
+OData client is created, because `CREATE ODATA CLIENT` fetches `$metadata` at
+that moment and caches it. The frontend's `ServiceUrl` points at a constant, not
+a literal, so the address is environment-overridable.
+
+## The two services
+
+| | `F1LiveApi` — `/odata/f1-live/` | `F1CachedApi` — `/odata/f1/` |
+|---|---|---|
+| Data comes from | the CSVs, read on every request | Postgres, filled by a refresh job |
+| Entities | non-persistable + a read microflow each | persistent |
+| Paging | **none** — Mendix forbids it with a read microflow | yes, `PageSize` 100 (200 for results) |
+| `$filter` / `$orderby` | not pushed down | pushed into SQL |
+| `$count` | `400 non-countable` | works (27533 race results) |
+| Navigation properties | none — the rows are flat, DuckDB did the joins | `season`, `circuit`, `driver`, `constructor` |
+| Staleness | impossible | as old as the last refresh |
+| Setup cost | none | `ACT_RefreshAll`, ~33 s |
+
+Measured on this container, same request to each — the paging difference is the
+whole story:
+
+```
+resource       LIVE (bytes)   CACHED (bytes)
+Drivers            293422           32900      917 rows vs one page of 100
+Races              273403           22743
+DriverStandings    270590           19341
+```
+
+Both answer in ~0.4–0.7 s. The live service is not slower; it just cannot stop
+sending.
+
+The one asymmetry: race results. 27533 rows is too many to return unpaged, so the
+live service publishes `LatestRaceResults` (most recent season only, ~480 rows)
+while the cached service publishes the full `RaceResults`. That is the clearest
+illustration of what paging buys.
 
 ## The data
 

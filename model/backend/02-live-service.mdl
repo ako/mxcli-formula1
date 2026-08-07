@@ -1,0 +1,261 @@
+/*
+ * Service 1 of 2 — F1LiveApi: the CSVs, served straight through.
+ *
+ * Non-persistable entities published over OData v4, each backed by a read
+ * microflow that runs a DuckDB query at request time. Nothing is stored, so
+ * there is no refresh to run and no way for the service to be stale.
+ *
+ * What it gives up, and why:
+ *   - No paging. Mendix refuses UsePaging together with a read microflow, so
+ *     every resource returns its whole list.
+ *   - No $filter / $orderby pushdown. The microflow gets the request, not the
+ *     query options, so ordering is whatever the SQL says.
+ *   - No navigation properties. The rows are flat; DuckDB did the joins.
+ *   - Countable: No on every resource. It is what lets a read microflow take
+ *     no System.ODataResponse parameter, and a count would mean a second scan.
+ *
+ * Because there is no paging, RaceResults is the one resource that cannot be
+ * published whole here — 27533 rows in one response. The live service exposes
+ * LatestRaceResults instead, bounded to the most recent season (~480 rows).
+ * The cached service publishes the full set. That contrast is the point of
+ * having both.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons ()
+  RETURNS List of Formula1Backend.Stg_Season AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits ()
+  RETURNS List of Formula1Backend.Stg_Circuit AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors ()
+  RETURNS List of Formula1Backend.Stg_Constructor AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Drivers ()
+  RETURNS List of Formula1Backend.Stg_Driver AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races ()
+  RETURNS List of Formula1Backend.Stg_Race AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings ()
+  RETURNS List of Formula1Backend.Stg_DriverStanding AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings ()
+  RETURNS List of Formula1Backend.Stg_ConstructorStanding AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+/*
+ * The one bounded resource. A dynamic override replaces the SQL but does NOT
+ * remove the declared parameters, so dataDir still has to be supplied even
+ * though the override embeds its own reference to it.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LatestRaceResults ()
+  RETURNS List of Formula1Backend.Stg_RaceResult AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResults
+    dynamic 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder, rr.positionNumber,
+                    rr.positionText, rr.driverId, d.name AS driverName,
+                    rr.constructorId, c.name AS constructorName, rr.driverNumber,
+                    rr.laps, rr.time, rr.gap, rr.reasonRetired, rr.points,
+                    rr.gridPositionNumber, rr.positionsGained, rr.fastestLap, rr.polePosition
+             FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
+             LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = rr.driverId
+             LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
+             WHERE rr.year = (SELECT max(year) FROM read_csv({dataDir} || ''/f1db-races-race-results.csv''))
+             ORDER BY rr.round, rr.positionDisplayOrder'
+    (dataDir = @Formula1Backend.DataDir);
+  RETURN $Rows;
+END;
+
+/* ------------------------------------------------------------------------- */
+
+create odata service Formula1Backend.F1LiveApi (
+  path: 'odata/f1-live/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Live'
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Stg_Season as 'Seasons' (
+    ReadMode: microflow Formula1Backend.Read_Seasons,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    Year as 'year' (KEY, Filterable, Sortable),
+    ChampionDriverName as 'championDriver' (Filterable, Sortable),
+    ChampionConstructorName as 'championConstructor' (Filterable, Sortable),
+    RaceCount as 'raceCount' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Circuit as 'Circuits' (
+    ReadMode: microflow Formula1Backend.Read_Circuits,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    CircuitId as 'circuitId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    PlaceName as 'placeName' (Filterable, Sortable),
+    Country as 'country' (Filterable, Sortable),
+    Latitude as 'latitude' (Sortable),
+    Longitude as 'longitude' (Sortable),
+    Length as 'length' (Filterable, Sortable),
+    Turns as 'turns' (Filterable, Sortable),
+    RacesHeld as 'racesHeld' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Constructor as 'Constructors' (
+    ReadMode: microflow Formula1Backend.Read_Constructors,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    ConstructorId as 'constructorId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    Country as 'country' (Filterable, Sortable),
+    ChampionshipWins as 'championshipWins' (Filterable, Sortable),
+    RaceStarts as 'raceStarts' (Filterable, Sortable),
+    RaceWins as 'raceWins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    PolePositions as 'polePositions' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Driver as 'Drivers' (
+    ReadMode: microflow Formula1Backend.Read_Drivers,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    DriverId as 'driverId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    Abbreviation as 'abbreviation' (Filterable, Sortable),
+    PermanentNumber as 'permanentNumber' (Filterable, Sortable),
+    DateOfBirth as 'dateOfBirth' (Filterable, Sortable),
+    PlaceOfBirth as 'placeOfBirth' (Filterable, Sortable),
+    Nationality as 'nationality' (Filterable, Sortable),
+    ChampionshipWins as 'championshipWins' (Filterable, Sortable),
+    RaceStarts as 'raceStarts' (Filterable, Sortable),
+    RaceWins as 'raceWins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    PolePositions as 'polePositions' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Race as 'Races' (
+    ReadMode: microflow Formula1Backend.Read_Races,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    RaceId as 'raceId' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceDate as 'raceDate' (Filterable, Sortable),
+    OfficialName as 'officialName' (Filterable, Sortable),
+    GrandPrixId as 'grandPrixId' (Filterable, Sortable),
+    CircuitId as 'circuitId' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    Laps as 'laps' (Filterable, Sortable),
+    Distance as 'distance' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_RaceResult as 'LatestRaceResults' (
+    ReadMode: microflow Formula1Backend.Read_LatestRaceResults,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    PositionOrder as 'positionOrder' (KEY, Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Laps as 'laps' (Filterable, Sortable),
+    TimeText as 'time' (Filterable, Sortable),
+    Gap as 'gap' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    GridPosition as 'gridPosition' (Filterable, Sortable),
+    PositionsGained as 'positionsGained' (Filterable, Sortable),
+    FastestLap as 'fastestLap' (Filterable, Sortable),
+    PolePosition as 'polePosition' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_DriverStanding as 'DriverStandings' (
+    ReadMode: microflow Formula1Backend.Read_DriverStandings,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    DriverId as 'driverId' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    PositionOrder as 'positionOrder' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ChampionshipWon as 'championshipWon' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_ConstructorStanding as 'ConstructorStandings' (
+    ReadMode: microflow Formula1Backend.Read_ConstructorStandings,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No
+  )
+  expose (
+    ConstructorId as 'constructorId' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    PositionOrder as 'positionOrder' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    EngineManufacturer as 'engineManufacturer' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ChampionshipWon as 'championshipWon' (Filterable, Sortable)
+  );
+};

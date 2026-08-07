@@ -1,0 +1,9 @@
+/*
+ * Demo users, split out of 06 because that script is not re-runnable —
+ * `create module role` has no `or modify` form, so re-executing 06 stops at the
+ * first existing role. This file is safe to run on its own.
+ */
+
+/* A demo user per role, so both services can be exercised without a login page. */
+CREATE DEMO USER 'f1api' PASSWORD 'F1apiConsumer!2345' (ApiConsumer);
+CREATE DEMO USER 'f1admin' PASSWORD 'F1adminAccess!2345' (Administrator);
