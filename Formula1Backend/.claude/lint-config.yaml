@@ -1,0 +1,28 @@
+# mxcli lint configuration.
+# Docs: mxcli lint --help
+
+# Modules that 'mxcli lint' skips entirely.
+#
+# System is Mendix's own platform module — its entities, members and access
+# rules are not yours to change, so findings against it are noise. On a blank
+# app it accounts for the large majority of all issues.
+#
+# Marketplace modules (Atlas_Core, Atlas_Web_Content, Administration, …) are
+# equally read-only in practice; add them here if their findings distract you.
+#
+# NOTE: this list always wins. It is merged with '--exclude', and a module
+# listed here is skipped even if you ask for it with '--modules'. To lint
+# System, remove it from this list (or delete this file).
+excludeModules:
+  - System
+
+# Per-rule overrides. Examples:
+#
+# rules:
+#   QUAL002:            # missing documentation
+#     enabled: false
+#   CONV009:            # max microflow objects
+#     severity: warning
+#     options:
+#       maxObjects: 20
+rules: {}

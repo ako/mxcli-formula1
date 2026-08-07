@@ -1,0 +1,22 @@
+/*
+ * The DuckDB JDBC driver.
+ *
+ * Split from 01 because `ALTER MODULE … ADD JAR DEPENDENCY` has no
+ * `IF NOT EXISTS` form and errors on a second run, which would stop the rest of
+ * 01 from applying. Run this once, after `create module`.
+ *
+ * Declaring is not resolving: `mxcli sync-java-deps` downloads it into
+ * vendorlib/, and `run --local` does that before boot.
+ */
+
+create module Formula1Backend;
+
+-- The DuckDB JDBC driver. Declaring is not resolving: 'mxcli sync-java-deps'
+-- downloads it into vendorlib/, and 'run --local' does that before boot.
+alter module Formula1Backend
+  add jar dependency (
+    group    = 'org.duckdb',
+    artifact = 'duckdb_jdbc',
+    version  = '1.5.5.1',
+    included = true,
+  );

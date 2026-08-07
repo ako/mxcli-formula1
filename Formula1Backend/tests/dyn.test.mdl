@@ -1,0 +1,6 @@
+/**
+ * @test Dynamic SQL built at runtime honours a LIMIT passed in
+ * @expect $result = 7
+ */
+$result = CALL MICROFLOW Formula1Backend.Probe_DynamicSql(Limit = 7);
+/

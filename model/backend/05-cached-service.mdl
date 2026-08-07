@@ -1,0 +1,188 @@
+/*
+ * Service 2 of 2 — F1CachedApi: the same data, materialised.
+ *
+ * Published straight off persistent entities, so ReadMode is `source` and
+ * Mendix serves it from the database. Everything the live service gives up
+ * comes back:
+ *
+ *   - UsePaging with a real PageSize, including over the 27533-row result set
+ *   - $filter / $orderby / $skip / $top pushed into SQL
+ *   - Countable, so $count works
+ *   - navigation properties, because the entities have associations
+ *
+ * What it costs: ACT_RefreshAll has to have run, and between runs the answer
+ * is as old as the last run. F1LiveApi is never stale and needs no job.
+ *
+ * Same eight resources, same exposed names, so the two services are directly
+ * comparable — except RaceResults, which is complete here and bounded to the
+ * latest season on the live side.
+ */
+
+create or modify odata service Formula1Backend.F1CachedApi (
+  path: 'odata/f1/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Cached',
+  PublishAssociations: Yes
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Season as 'Seasons' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    Year as 'year' (KEY, Filterable, Sortable),
+    ChampionDriverName as 'championDriver' (Filterable, Sortable),
+    ChampionConstructorName as 'championConstructor' (Filterable, Sortable),
+    RaceCount as 'raceCount' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Circuit as 'Circuits' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    CircuitId as 'circuitId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    PlaceName as 'placeName' (Filterable, Sortable),
+    Country as 'country' (Filterable, Sortable),
+    Latitude as 'latitude' (Sortable),
+    Longitude as 'longitude' (Sortable),
+    Length as 'length' (Filterable, Sortable),
+    Turns as 'turns' (Filterable, Sortable),
+    RacesHeld as 'racesHeld' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Constructor as 'Constructors' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    ConstructorId as 'constructorId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    Country as 'country' (Filterable, Sortable),
+    ChampionshipWins as 'championshipWins' (Filterable, Sortable),
+    RaceStarts as 'raceStarts' (Filterable, Sortable),
+    RaceWins as 'raceWins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    PolePositions as 'polePositions' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Driver as 'Drivers' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    DriverId as 'driverId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    Abbreviation as 'abbreviation' (Filterable, Sortable),
+    PermanentNumber as 'permanentNumber' (Filterable, Sortable),
+    DateOfBirth as 'dateOfBirth' (Filterable, Sortable),
+    PlaceOfBirth as 'placeOfBirth' (Filterable, Sortable),
+    Nationality as 'nationality' (Filterable, Sortable),
+    ChampionshipWins as 'championshipWins' (Filterable, Sortable),
+    RaceStarts as 'raceStarts' (Filterable, Sortable),
+    RaceWins as 'raceWins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    PolePositions as 'polePositions' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Race as 'Races' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    RaceId as 'raceId' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceDate as 'raceDate' (Filterable, Sortable),
+    OfficialName as 'officialName' (Filterable, Sortable),
+    GrandPrixId as 'grandPrixId' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    Laps as 'laps' (Filterable, Sortable),
+    Distance as 'distance' (Filterable, Sortable),
+    Race_Season as 'season',
+    Race_Circuit as 'circuit'
+  );
+
+  -- The whole 27533 rows, paged. This is the resource the live service cannot
+  -- publish at all.
+  publish entity Formula1Backend.RaceResult as 'RaceResults' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 200
+  )
+  expose (
+    ResultKey as 'resultKey' (KEY, Filterable, Sortable),
+    PositionOrder as 'positionOrder' (Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Laps as 'laps' (Filterable, Sortable),
+    TimeText as 'time' (Filterable, Sortable),
+    Gap as 'gap' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    GridPosition as 'gridPosition' (Filterable, Sortable),
+    PositionsGained as 'positionsGained' (Filterable, Sortable),
+    FastestLap as 'fastestLap' (Filterable, Sortable),
+    PolePosition as 'polePosition' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.DriverStanding as 'DriverStandings' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    StandingKey as 'standingKey' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    PositionOrder as 'positionOrder' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ChampionshipWon as 'championshipWon' (Filterable, Sortable),
+    DriverStanding_Season as 'season',
+    DriverStanding_Driver as 'driver'
+  );
+
+  publish entity Formula1Backend.ConstructorStanding as 'ConstructorStandings' (
+    ReadMode: source,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    UsePaging: Yes, PageSize: 100
+  )
+  expose (
+    StandingKey as 'standingKey' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    PositionOrder as 'positionOrder' (Filterable, Sortable),
+    PositionNumber as 'position' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    EngineManufacturer as 'engineManufacturer' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ChampionshipWon as 'championshipWon' (Filterable, Sortable),
+    ConstructorStanding_Season as 'season',
+    ConstructorStanding_Constructor as 'constructor'
+  );
+};

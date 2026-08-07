@@ -1,0 +1,299 @@
+/*
+ * Service 2 of 2, part B — the load job.
+ *
+ * Runs the same DuckDB queries the live service runs per request, once, and
+ * writes the results into the persistent entities. This is the whole cost of
+ * the cached service: a step that has to happen, and data that can be stale
+ * between runs.
+ *
+ * Order matters — Seasons, Circuits, Constructors and Drivers first, because
+ * Races and the standings link to them by natural key.
+ *
+ * Each Refresh_X clears its table first, so the job is idempotent and a
+ * re-run after a dataset update replaces rather than duplicates.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_Seasons ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.Season;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    $New = CREATE Formula1Backend.Season (
+      Year = $Row/Year,
+      ChampionDriverName = $Row/ChampionDriverName,
+      ChampionConstructorName = $Row/ChampionConstructorName,
+      RaceCount = $Row/RaceCount
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Seasons loaded';
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_Circuits ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.Circuit;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    $New = CREATE Formula1Backend.Circuit (
+      CircuitId = $Row/CircuitId,
+      Name = $Row/Name,
+      FullName = $Row/FullName,
+      PlaceName = $Row/PlaceName,
+      Country = $Row/Country,
+      Latitude = $Row/Latitude,
+      Longitude = $Row/Longitude,
+      Length = $Row/Length,
+      Turns = $Row/Turns,
+      RacesHeld = $Row/RacesHeld
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Circuits loaded';
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_Constructors ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.Constructor;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    $New = CREATE Formula1Backend.Constructor (
+      ConstructorId = $Row/ConstructorId,
+      Name = $Row/Name,
+      FullName = $Row/FullName,
+      Country = $Row/Country,
+      ChampionshipWins = $Row/ChampionshipWins,
+      RaceStarts = $Row/RaceStarts,
+      RaceWins = $Row/RaceWins,
+      Podiums = $Row/Podiums,
+      Points = $Row/Points,
+      PolePositions = $Row/PolePositions
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Constructors loaded';
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_Drivers ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.Driver;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    $New = CREATE Formula1Backend.Driver (
+      DriverId = $Row/DriverId,
+      Name = $Row/Name,
+      FullName = $Row/FullName,
+      Abbreviation = $Row/Abbreviation,
+      PermanentNumber = $Row/PermanentNumber,
+      DateOfBirth = $Row/DateOfBirth,
+      PlaceOfBirth = $Row/PlaceOfBirth,
+      Nationality = $Row/Nationality,
+      ChampionshipWins = $Row/ChampionshipWins,
+      RaceStarts = $Row/RaceStarts,
+      RaceWins = $Row/RaceWins,
+      Podiums = $Row/Podiums,
+      Points = $Row/Points,
+      PolePositions = $Row/PolePositions
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Drivers loaded';
+  RETURN $Count;
+END;
+
+/* Races link to Season and Circuit — two retrieves per row, 1171 rows. */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_Races ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.Race;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
+    RETRIEVE $Circuit FROM Formula1Backend.Circuit WHERE CircuitId = $Row/CircuitId LIMIT 1;
+    $New = CREATE Formula1Backend.Race (
+      RaceId = $Row/RaceId,
+      Year = $Row/Year,
+      Round = $Row/Round,
+      RaceDate = $Row/RaceDate,
+      OfficialName = $Row/OfficialName,
+      GrandPrixId = $Row/GrandPrixId,
+      CircuitName = $Row/CircuitName,
+      Laps = $Row/Laps,
+      Distance = $Row/Distance,
+      Formula1Backend.Race_Season = $Season,
+      Formula1Backend.Race_Circuit = $Circuit
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Races loaded';
+  RETURN $Count;
+END;
+
+/*
+ * 27533 rows and no associations, so no retrieves in the loop — see the note on
+ * the RaceResult entity. This is the slow one regardless; it is the reason the
+ * cached service has a refresh cost worth talking about.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_RaceResults ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.RaceResult;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResults
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    $New = CREATE Formula1Backend.RaceResult (
+      ResultKey = toString($Row/RaceId) + '-' + toString($Row/PositionOrder),
+      RaceId = $Row/RaceId,
+      Year = $Row/Year,
+      Round = $Row/Round,
+      PositionOrder = $Row/PositionOrder,
+      PositionNumber = $Row/PositionNumber,
+      PositionText = $Row/PositionText,
+      DriverId = $Row/DriverId,
+      DriverName = $Row/DriverName,
+      ConstructorId = $Row/ConstructorId,
+      ConstructorName = $Row/ConstructorName,
+      DriverNumber = $Row/DriverNumber,
+      Laps = $Row/Laps,
+      TimeText = $Row/TimeText,
+      Gap = $Row/Gap,
+      ReasonRetired = $Row/ReasonRetired,
+      Points = $Row/Points,
+      GridPosition = $Row/GridPosition,
+      PositionsGained = $Row/PositionsGained,
+      FastestLap = $Row/FastestLap,
+      PolePosition = $Row/PolePosition
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Race results loaded';
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_DriverStandings ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.DriverStanding;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
+    RETRIEVE $Driver FROM Formula1Backend.Driver WHERE DriverId = $Row/DriverId LIMIT 1;
+    $New = CREATE Formula1Backend.DriverStanding (
+      StandingKey = toString($Row/Year) + '-' + toString($Row/PositionOrder),
+      Year = $Row/Year,
+      PositionOrder = $Row/PositionOrder,
+      DriverId = $Row/DriverId,
+      PositionNumber = $Row/PositionNumber,
+      PositionText = $Row/PositionText,
+      DriverName = $Row/DriverName,
+      Points = $Row/Points,
+      ChampionshipWon = $Row/ChampionshipWon,
+      Formula1Backend.DriverStanding_Season = $Season,
+      Formula1Backend.DriverStanding_Driver = $Driver
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Driver standings loaded';
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Refresh_ConstructorStandings ()
+  RETURNS Long AS $Count
+BEGIN
+  RETRIEVE $Existing FROM Formula1Backend.ConstructorStanding;
+  LOOP $Old IN $Existing BEGIN
+    DELETE $Old;
+  END LOOP;
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
+    (dataDir = @Formula1Backend.DataDir);
+  LOOP $Row IN $Rows BEGIN
+    RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
+    RETRIEVE $Constructor FROM Formula1Backend.Constructor
+      WHERE ConstructorId = $Row/ConstructorId LIMIT 1;
+    $New = CREATE Formula1Backend.ConstructorStanding (
+      StandingKey = toString($Row/Year) + '-' + toString($Row/PositionOrder),
+      Year = $Row/Year,
+      PositionOrder = $Row/PositionOrder,
+      EngineManufacturer = $Row/EngineManufacturer,
+      ConstructorId = $Row/ConstructorId,
+      PositionNumber = $Row/PositionNumber,
+      PositionText = $Row/PositionText,
+      ConstructorName = $Row/ConstructorName,
+      Points = $Row/Points,
+      ChampionshipWon = $Row/ChampionshipWon,
+      Formula1Backend.ConstructorStanding_Season = $Season,
+      Formula1Backend.ConstructorStanding_Constructor = $Constructor
+    ) COMMIT;
+  END LOOP;
+  $Count = COUNT($Rows);
+  LOG INFO NODE 'F1Refresh' 'Constructor standings loaded';
+  RETURN $Count;
+END;
+
+/* The whole job, in dependency order. */
+CREATE OR REPLACE MICROFLOW Formula1Backend.ACT_RefreshAll ()
+  RETURNS Long AS $Total
+BEGIN
+  $Seasons = CALL MICROFLOW Formula1Backend.Refresh_Seasons();
+  $Circuits = CALL MICROFLOW Formula1Backend.Refresh_Circuits();
+  $Constructors = CALL MICROFLOW Formula1Backend.Refresh_Constructors();
+  $Drivers = CALL MICROFLOW Formula1Backend.Refresh_Drivers();
+  $Races = CALL MICROFLOW Formula1Backend.Refresh_Races();
+  $Results = CALL MICROFLOW Formula1Backend.Refresh_RaceResults();
+  $DriverStandings = CALL MICROFLOW Formula1Backend.Refresh_DriverStandings();
+  $ConstructorStandings = CALL MICROFLOW Formula1Backend.Refresh_ConstructorStandings();
+  DECLARE $Total Long = $Seasons + $Circuits + $Constructors + $Drivers + $Races
+                        + $Results + $DriverStandings + $ConstructorStandings;
+  LOG INFO NODE 'F1Refresh' 'Refresh complete';
+  RETURN $Total;
+END;
+
+/*
+ * Load on first boot only. An empty Season table means the cache has never been
+ * filled — a fresh clone, or a dropped database — so fill it. Any later refresh
+ * is deliberate, via ACT_RefreshAll.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.ASU_LoadCacheIfEmpty ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  RETRIEVE $ExistingSeason FROM Formula1Backend.Season LIMIT 1;
+  IF $ExistingSeason = empty THEN
+    LOG INFO NODE 'F1Refresh' 'Cache empty on startup — loading from the CSVs';
+    $Loaded = CALL MICROFLOW Formula1Backend.ACT_RefreshAll();
+  END IF;
+  DECLARE $Ok Boolean = true;
+  RETURN $Ok;
+END;

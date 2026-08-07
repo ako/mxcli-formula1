@@ -1,0 +1,46 @@
+/*
+ * Query pushdown for the live service.
+ *
+ * A datagrid over an external entity asks for a window: "rows 80-100, ordered by
+ * driver name". Mendix turns that into OData query options on the URL — and for
+ * a resource backed by a read microflow it applies NONE of them itself. Verified:
+ * `?$top=5` against F1LiveApi/Drivers still returned all 917 rows, and
+ * `?$orderby=raceWins desc` still came back alphabetical. Whatever the microflow
+ * returns is exactly what the client gets.
+ *
+ * So the microflow has to do it. These three Java actions read the options off
+ * System.HttpRequest.Uri and hand back SQL fragments, so a 20-row page costs a
+ * 20-row scan instead of shipping 917 rows.
+ *
+ * The logic lives in javasource/formula1backend/ODataQuery.java — a Java action
+ * body is a method body, so shared helpers need a real class. The whitelist and
+ * escaping rules are documented there.
+ */
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataOrderLimitSql(
+  Uri: String,
+  ColumnMap: String NOT NULL,
+  DefaultOrderBy: String,
+  MaxTop: Long NOT NULL
+) RETURNS String
+EXPOSED AS 'OData $orderby/$top/$skip to SQL' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.orderLimit(Uri, ColumnMap, DefaultOrderBy, MaxTop);
+$$;
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataWhereSql(
+  Uri: String,
+  ColumnMap: String NOT NULL
+) RETURNS String
+EXPOSED AS 'OData $filter to SQL WHERE' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.where(Uri, ColumnMap);
+$$;
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataWantsCount(
+  Uri: String
+) RETURNS Boolean
+EXPOSED AS 'OData $count requested?' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.wantsCount(Uri);
+$$;

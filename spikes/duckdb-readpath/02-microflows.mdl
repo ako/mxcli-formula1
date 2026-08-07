@@ -1,0 +1,22 @@
+CREATE OR REPLACE MICROFLOW DuckProbe.GetDriverWins ($DriverId: String)
+  RETURNS Integer AS $Wins
+BEGIN
+  $Rows = execute database query DuckProbe.F1Warehouse.GetDriverById
+    (dataDir = @DuckProbe.DataDir, driverId = $DriverId);
+  $First = HEAD($Rows);
+  DECLARE $Wins Integer = -1;
+  IF $First != empty THEN
+    SET $Wins = $First/TotalRaceWins;
+  END IF;
+  RETURN $Wins;
+END;
+
+CREATE OR REPLACE MICROFLOW DuckProbe.CountAllDrivers ()
+  RETURNS Integer AS $Total
+BEGIN
+  $Rows = execute database query DuckProbe.F1Warehouse.GetDriverById
+    dynamic 'SELECT id, name, totalRaceWins FROM read_csv(''/home/user/mxcli-formula1/data/f1db/f1db-drivers.csv'')'
+    (dataDir = @DuckProbe.DataDir, driverId = 'unused');
+  $Total = COUNT($Rows);
+  RETURN $Total;
+END;

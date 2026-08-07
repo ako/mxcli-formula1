@@ -1,0 +1,34 @@
+# Mendix project
+/**/node_modules/
+!/javascriptsource/**/node_modules/
+/*.launch
+/.classpath
+/.mendix-cache/
+/.project
+/deployment/
+/javasource/*/proxies/
+/javasource/system/
+/modeler-merge-marker
+/nativemobile/builds/
+/packages/
+/project-settings.user.json
+/releases/
+# Compiled theme output. MxBuild regenerates it on every build, so tracking it
+# means a fresh clone goes dirty the first time anyone builds. (mxcli-todo #7)
+/theme-cache/
+*.mpr.lock
+*.mpr.bak
+/vendorlib/temp/
+/.svn/
+
+# MPR v2 journal files
+/mprcontents/mprjournal*
+
+# OS
+.DS_Store
+
+# mxcli
+.claude/settings.local.json
+mxcli
+mxcli.exe
+.mxcli/
