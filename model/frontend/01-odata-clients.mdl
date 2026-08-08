@@ -71,3 +71,33 @@ create or modify odata client F1Cached.CachedApi (
   HttpUsername: '@F1Cached.ApiUser',
   HttpPassword: '@F1Cached.ApiPassword'
 );
+
+/* ------------------------------------------------------------------- fan -- */
+
+/*
+ * The third service, and the one the browsing pages are actually built on:
+ * careers, season progressions, reliability, and the sourced prose. Its own
+ * module for the same reason as the other two — `Facts` and `DriverSeasons`
+ * would otherwise have to share a namespace with the raw tables.
+ */
+
+create module F1Fan;
+
+create or modify constant F1Fan.ServiceUrl type string
+  default 'http://backend.local:8080/odata/f1-fan/'
+  comment 'Base URL of the backend fan service. Override per environment.';
+
+create or modify constant F1Fan.ApiUser type string default 'f1api';
+create or modify constant F1Fan.ApiPassword type string
+  default 'F1apiConsumer!2345' PRIVATE;
+
+create or modify odata client F1Fan.FanApi (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-fan-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: @F1Fan.ServiceUrl,
+  UseAuthentication: 'true',
+  HttpUsername: '@F1Fan.ApiUser',
+  HttpPassword: '@F1Fan.ApiPassword'
+);

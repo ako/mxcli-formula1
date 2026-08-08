@@ -1,0 +1,38 @@
+/**
+ * The three fan pages, exercised through the datasource microflows they bind.
+ * Needs the backend running: every one of these is an OData round trip that
+ * ends in a DuckDB scan of the CSVs.
+ *
+ * @test Driver career: Senna drove 11 seasons
+ * @expect $result = 11
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaSeasons();
+/
+
+/**
+ * @test Driver career: 162 races, each with its practice and qualifying columns
+ * @expect $result = 162
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaRaces();
+/
+
+/**
+ * @test Season summary: 1988 has 16 rounds of cumulative points
+ * @expect $result = 16
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1988Rounds();
+/
+
+/**
+ * @test Constructor: Ferrari's cars have stopped for 72 distinct reasons
+ * @expect $result = 72
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_FerrariReasons();
+/
+
+/**
+ * @test Facts: the sourced paragraph resolves for a driver
+ * @expect $result = 'Ayrton Senna'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaFactTitle();
+/

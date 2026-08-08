@@ -24,6 +24,13 @@ cd "$DIR"
 sh scripts/build-mxcli.sh
 sh scripts/fetch-f1-data.sh
 
+# The Wikipedia paragraphs behind the fan pages. Skipped when the file is
+# already there; never fatal, because the backend only needs the CSV to exist
+# and a header-only file yields an empty Facts resource rather than a 500.
+if [ ! -f data/facts/f1db-facts.csv ]; then
+  sh scripts/fetch-f1-facts.sh || echo "Facts fetch failed; pages will show no summaries."
+fi
+
 # Two apps, two hostnames. Cookies are keyed on host name and ignore the port,
 # so backend and frontend on localhost:8080 / localhost:8180 would share one
 # cookie jar and silently overwrite each other's XASSESSIONID.

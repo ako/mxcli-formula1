@@ -77,3 +77,60 @@ BEGIN
   END IF;
   RETURN $Name;
 END;
+
+/*
+ * The fan pages, reached the way the pages reach them.
+ *
+ * Each of these retrieves the page's parameter object and calls the same
+ * datasource microflow the page binds, so a test failing here means a page is
+ * broken — not merely that the backend answered.
+ *
+ * No empty-guard around the call: `SET` inside an IF is treated as a second
+ * declaration of the return variable and the build fails with "Duplicate
+ * variable name". These ids exist; if one did not, the datasource would return
+ * nothing and the count would be 0, which the assertion catches anyway.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaSeasons ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverSeasons (Driver = $Driver);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaRaces ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverRaces (Driver = $Driver);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988Rounds ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_FerrariReasons ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Team FROM F1Cached.Constructors WHERE constructorId = 'ferrari' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_Retirements (Constructor = $Team);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaFactTitle ()
+  RETURNS String AS $Title
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Fact = CALL MICROFLOW Formula1Frontend.DS_DriverFact (Driver = $Driver);
+  $Title = $Fact/title;
+  RETURN $Title;
+END;

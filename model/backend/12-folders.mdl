@@ -17,7 +17,8 @@
  *   Live/Pushdown/  the Java actions that turn OData query options into SQL
  *   Cached/         the refresh jobs that fill Postgres behind F1CachedApi
  *   Health/         row counts and the invariant that the two services agree
- *   Services/       both published OData services
+ *   Fan/            the read microflows behind F1FanApi
+ *   Services/       all three published OData services
  *   TestSupport/    wrappers that exist only so tests can call Java actions
  *
  * The last two folders were impossible when this file was written: MOVE had no
@@ -70,9 +71,19 @@ MOVE MICROFLOW Formula1Backend.Check_ServicesAgree      TO FOLDER 'Health';
 MOVE JAVA ACTION Formula1Backend.ODataOrderLimitSql TO FOLDER 'Live/Pushdown';
 MOVE JAVA ACTION Formula1Backend.ODataWhereSql      TO FOLDER 'Live/Pushdown';
 MOVE JAVA ACTION Formula1Backend.ODataWantsCount    TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataFilterId      TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataFilterYear    TO FOLDER 'Live/Pushdown';
 
 MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
+
+-- The fan-facing reads: a career, a season's title fight, a team's failures.
+MOVE MICROFLOW Formula1Backend.Read_DriverSeasons  TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_DriverRaces    TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_SeasonProgress TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_Retirements    TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_Facts          TO FOLDER 'Fan';
 
 -- Not part of the running app: these exist so tests can reach the Java actions
 -- and the dynamic-SQL path directly. Kept together so they are easy to ignore.

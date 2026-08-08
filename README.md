@@ -42,7 +42,15 @@ OData client is created, because `CREATE ODATA CLIENT` fetches `$metadata` at
 that moment and caches it. The frontend's `ServiceUrl` points at a constant, not
 a literal, so the address is environment-overridable.
 
-## The two services
+## The three services
+
+Two of them publish the dataset the same eight ways, so the trade-off between
+reading CSVs per request and materialising them can be measured. The third,
+`F1FanApi` — `/odata/f1-fan/` — publishes answers rather than tables: a driver's
+career season by season, a season's title fight round by round, a team's
+retirements by cause, and a sourced paragraph about any of them. Same DuckDB,
+same nothing-materialised, five resources, all filtered to one driver, season or
+team by `$filter`.
 
 | | `F1LiveApi` — `/odata/f1-live/` | `F1CachedApi` — `/odata/f1/` |
 |---|---|---|
@@ -120,6 +128,22 @@ touch, including a pager caption at 1.02:1 contrast. mxcli `c76d4b7` generates
 down to what it still misses: the filter-operator popover, and the header logo
 (an `<img>`, replaced with a mask painted from `--mxt-brand`). It sits outside
 the `mxcli:theme` fence, so `mxcli theme apply` leaves it alone. FINDINGS §33, §34.
+
+## The fan pages
+
+Three pages, each opened from a row in an overview:
+
+| Page | Shows |
+|---|---|
+| **Driver career** | Every season — teams, championship position, wins, poles, average qualifying and finishing position — then every race with its three practice sessions, qualifying, grid slot and result side by side. The practice columns are empty before timed practice was recorded, which is itself the answer to "how did they practise". |
+| **Season summary** | A line chart of cumulative points round by round for the top five, computed with a DuckDB window function over the race results, plus both final standings. |
+| **Constructor** | Every reason that team's cars stopped, how often, and what share of their entries it accounts for — Ferrari: 72 distinct reasons, `Engine` 146 times, 5.8% of 2515 entries, 1950 to 2024. |
+
+Each page opens with a paragraph from Wikipedia — 224 of them, covering all 77
+seasons, 116 race-winning drivers and 31 winning constructors, fetched by
+`scripts/fetch-f1-facts.sh` and read by DuckDB from `data/facts/f1db-facts.csv`
+like everything else. The text is CC BY-SA 4.0; the article link and licence
+travel with every row and are shown on the page.
 
 ## The data
 

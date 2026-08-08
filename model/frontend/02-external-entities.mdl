@@ -13,3 +13,5 @@
 create external entities from F1Live.LiveApi into F1Live;
 
 create external entities from F1Cached.CachedApi into F1Cached;
+
+create external entities from F1Fan.FanApi into F1Fan;

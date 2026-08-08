@@ -1,0 +1,477 @@
+/*
+ * Service 3 of 3 — F1FanApi: the questions a fan asks, not the tables.
+ *
+ * The other two services publish the dataset: drivers, races, results. This one
+ * publishes answers — what a driver's career looked like, how a season's title
+ * fight unfolded, where a team's cars keep breaking — each computed by DuckDB in
+ * one pass over the CSVs, and none of it materialised.
+ *
+ * Why a third service rather than five more resources on F1LiveApi: 02 owns
+ * F1LiveApi's definition, and a second file modifying the same service is the
+ * split-ownership trap 10 already documents for two microflows. Here everything
+ * — Java actions, read microflows, service, grants — lives in one file.
+ *
+ * Every resource is answered *for one thing*: a driver, a season, a team. The
+ * id arrives as `$filter=driverId eq 'ayrton-senna'`, which the read microflow
+ * lifts out of the URL and interpolates, because the value does not go into a
+ * WHERE clause — it shapes the query. Interpolation is why the two Java actions
+ * below whitelist rather than escape. Asking without a filter is not "give me
+ * everything": DriverSeasons and DriverRaces return nothing, because a career
+ * page with no driver is a bug, not a request for all 27533 results.
+ */
+
+/* ---------------------------------------------------------------------- java */
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataFilterId(
+  Uri: String,
+  Field: String NOT NULL
+) RETURNS String
+EXPOSED AS 'Read an id out of $filter' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.filterIdentifier(Uri, Field);
+$$;
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataFilterYear(
+  Uri: String,
+  Field: String NOT NULL,
+  Fallback: Long NOT NULL
+) RETURNS Long
+EXPOSED AS 'Read a year out of $filter' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.filterLong(Uri, Field, Fallback);
+$$;
+
+/* ----------------------------------------------------------------- microflows */
+
+/*
+ * A driver's career, one row per season: who they drove for, where they
+ * finished, and the averages that say how the year actually went.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverSeasons (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_DriverSeason AS $Rows
+BEGIN
+  $DriverId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'driverId');
+
+  -- No driver, no career. 1=0 costs one scan of nothing rather than grouping
+  -- every result the sport has ever recorded.
+  DECLARE $Where String = ' WHERE 1=0';
+  IF $DriverId != '' THEN
+    SET $Where = ' WHERE rr.driverId = ''' + $DriverId + '''';
+  END IF;
+
+  DECLARE $Sql String = 'SELECT rr.year || ''-'' || rr.driverId AS seasonKey,'
+    + ' rr.driverId AS driverId, rr.year AS year,'
+    + ' COALESCE(string_agg(DISTINCT c.name, '', ''), ''-'') AS constructors,'
+    + ' COALESCE(max(ds.positionText), ''-'') AS standingPosition,'
+    + ' COALESCE(max(ds.positionDisplayOrder), 999) AS standingOrder,'
+    + ' COALESCE(max(ds.points), sum(COALESCE(rr.points, 0))) AS points,'
+    + ' count(*) AS starts,'
+    + ' sum(CASE WHEN rr.positionNumber = 1 THEN 1 ELSE 0 END) AS wins,'
+    + ' sum(CASE WHEN rr.positionNumber <= 3 THEN 1 ELSE 0 END) AS podiums,'
+    + ' sum(CASE WHEN rr.polePosition THEN 1 ELSE 0 END) AS poles,'
+    + ' min(rr.positionNumber) AS bestFinish,'
+    + ' round(avg(rr.qualificationPositionNumber), 1) AS avgQualifying,'
+    + ' round(avg(rr.positionNumber), 1) AS avgFinish,'
+    + ' sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements'
+    + ' FROM read_csv(''' + @Formula1Backend.DataDir + '/f1db-races-race-results.csv'') rr'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c'
+    + '   ON c.id = rr.constructorId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-seasons-driver-standings.csv'') ds'
+    + '   ON ds.year = rr.year AND ds.driverId = rr.driverId'
+    + $Where
+    + ' GROUP BY rr.year, rr.driverId ORDER BY rr.year DESC';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverSeasons
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  -- A career is tens of rows, so the count is what was just fetched. No second
+  -- scan, unlike the paged resources in 10.
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/*
+ * Every race a driver entered, with each session beside the next: three
+ * practices, qualifying, the grid slot, the finish.
+ *
+ * The practice columns are empty for most of the sport's history because timed
+ * practice results only exist from the era they were recorded — that gap is
+ * data, not a fault, and the page says so.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverRaces (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_DriverRace AS $Rows
+BEGIN
+  $DriverId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'driverId');
+
+  DECLARE $Where String = ' WHERE 1=0';
+  IF $DriverId != '' THEN
+    SET $Where = ' WHERE rr.driverId = ''' + $DriverId + '''';
+  END IF;
+
+  DECLARE $Sql String = 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey,'
+    + ' rr.driverId AS driverId, rr.year AS year, rr.round AS round,'
+    + ' COALESCE(r.officialName, ''Round '' || rr.round) AS raceName,'
+    + ' COALESCE(c.name, ''-'') AS constructorName,'
+    + ' fp1.positionNumber AS fp1Position, fp2.positionNumber AS fp2Position,'
+    + ' fp3.positionNumber AS fp3Position,'
+    + ' rr.qualificationPositionNumber AS qualifyingPosition,'
+    + ' rr.gridPositionNumber AS gridPosition,'
+    + ' rr.positionNumber AS finishPosition, rr.positionText AS positionText,'
+    + ' rr.positionsGained AS positionsGained, rr.points AS points,'
+    + ' rr.reasonRetired AS reasonRetired'
+    + ' FROM read_csv(''' + @Formula1Backend.DataDir + '/f1db-races-race-results.csv'') rr'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-races.csv'') r'
+    + '   ON r.id = rr.raceId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c'
+    + '   ON c.id = rr.constructorId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-free-practice-1-results.csv'') fp1'
+    + '   ON fp1.raceId = rr.raceId AND fp1.driverId = rr.driverId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-free-practice-2-results.csv'') fp2'
+    + '   ON fp2.raceId = rr.raceId AND fp2.driverId = rr.driverId'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-free-practice-3-results.csv'') fp3'
+    + '   ON fp3.raceId = rr.raceId AND fp3.driverId = rr.driverId'
+    + $Where
+    + ' ORDER BY rr.year DESC, rr.round';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverRaces
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/*
+ * A season's title fight, round by round: the running points total of the five
+ * drivers who ended the year on top of the championship.
+ *
+ * The window function is the whole trick — `sum(points) OVER (PARTITION BY
+ * driver ORDER BY round)` turns per-race points into a curve. Rounds are
+ * CROSS JOINed against the five drivers first, so a driver who missed a race
+ * holds their total instead of leaving a hole in the line.
+ *
+ * Positions, not names, decide the five series: a chart series binds its Y
+ * attribute when the page is authored, so the columns have to mean the same
+ * thing in every season. The names travel as data and the page shows them.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_SeasonProgress (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_SeasonProgress AS $Rows
+BEGIN
+  -- No year means the most recent season, so the page has something to draw
+  -- before a user has chosen anything.
+  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+
+  -- The target year is resolved in SQL rather than here, so "no filter" means
+  -- "the latest season the data has" without a second round trip.
+  DECLARE $YearWhere String = '';
+  IF $Year != 0 THEN
+    SET $YearWhere = ' WHERE year = ' + toString($Year);
+  END IF;
+
+  DECLARE $Results String = 'read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-race-results.csv'')';
+  DECLARE $Races String = 'read_csv(''' + @Formula1Backend.DataDir + '/f1db-races.csv'')';
+  DECLARE $Standings String = 'read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-seasons-driver-standings.csv'')';
+  DECLARE $Drivers String = 'read_csv(''' + @Formula1Backend.DataDir + '/f1db-drivers.csv'')';
+
+  DECLARE $Sql String = 'WITH target AS ('
+    + ' SELECT max(year) AS year FROM ' + $Races + $YearWhere + '),'
+    + ' top5 AS ('
+    + '   SELECT row_number() OVER (ORDER BY ds.positionDisplayOrder) AS rk,'
+    + '          ds.driverId AS driverId, d.name AS driverName'
+    + '   FROM ' + $Standings + ' ds'
+    + '   JOIN ' + $Drivers + ' d ON d.id = ds.driverId'
+    + '   WHERE ds.year = (SELECT year FROM target)'
+    + '   ORDER BY ds.positionDisplayOrder LIMIT 5),'
+    + ' rounds AS ('
+    + '   SELECT r.round AS round,'
+    + '          COALESCE(r.officialName, ''Round '' || r.round) AS raceName'
+    + '   FROM ' + $Races + ' r WHERE r.year = (SELECT year FROM target)),'
+    + ' scored AS ('
+    + '   SELECT rr.round AS round, rr.driverId AS driverId,'
+    + '          sum(COALESCE(rr.points, 0)) AS pts'
+    + '   FROM ' + $Results + ' rr WHERE rr.year = (SELECT year FROM target)'
+    + '   GROUP BY rr.round, rr.driverId),'
+    + ' grid AS ('
+    + '   SELECT rounds.round, rounds.raceName, top5.rk, top5.driverId, top5.driverName'
+    + '   FROM rounds CROSS JOIN top5),'
+    + ' cumulative AS ('
+    + '   SELECT g.round, g.raceName, g.rk, g.driverName,'
+    + '          sum(COALESCE(s.pts, 0)) OVER ('
+    + '            PARTITION BY g.driverId ORDER BY g.round) AS cumPoints'
+    + '   FROM grid g LEFT JOIN scored s'
+    + '     ON s.round = g.round AND s.driverId = g.driverId)'
+    + ' SELECT (SELECT year FROM target) || ''-'' || round AS progressKey,'
+    + '        (SELECT year FROM target) AS year, round, raceName,'
+    + '        max(CASE WHEN rk = 1 THEN driverName END) AS d1Name,'
+    + '        max(CASE WHEN rk = 2 THEN driverName END) AS d2Name,'
+    + '        max(CASE WHEN rk = 3 THEN driverName END) AS d3Name,'
+    + '        max(CASE WHEN rk = 4 THEN driverName END) AS d4Name,'
+    + '        max(CASE WHEN rk = 5 THEN driverName END) AS d5Name,'
+    + '        max(CASE WHEN rk = 1 THEN cumPoints END) AS d1Points,'
+    + '        max(CASE WHEN rk = 2 THEN cumPoints END) AS d2Points,'
+    + '        max(CASE WHEN rk = 3 THEN cumPoints END) AS d3Points,'
+    + '        max(CASE WHEN rk = 4 THEN cumPoints END) AS d4Points,'
+    + '        max(CASE WHEN rk = 5 THEN cumPoints END) AS d5Points'
+    + ' FROM cumulative GROUP BY round, raceName ORDER BY round';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasonProgress
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/*
+ * Why a team's cars stopped, and how often — every reason f1db records, with
+ * the share of that team's entries it accounts for.
+ *
+ * Unfiltered this is the whole grid's reliability history, which is a real
+ * question ("who breaks most, and how?"), so it is allowed — capped at 500 rows
+ * so an unfiltered call cannot become the expensive one.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Retirements (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_Retirement AS $Rows
+BEGIN
+  $ConstructorId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'constructorId');
+
+  DECLARE $Where String = '';
+  IF $ConstructorId != '' THEN
+    SET $Where = ' AND rr.constructorId = ''' + $ConstructorId + '''';
+  END IF;
+
+  DECLARE $Results String = 'read_csv(''' + @Formula1Backend.DataDir
+    + '/f1db-races-race-results.csv'')';
+
+  DECLARE $Sql String = 'WITH entries AS ('
+    + '   SELECT constructorId, count(*) AS entries FROM ' + $Results
+    + '   GROUP BY constructorId)'
+    + ' SELECT rr.constructorId || ''|'' || COALESCE(rr.reasonRetired, ''Unknown'')'
+    + '          AS retirementKey,'
+    + '        rr.constructorId AS constructorId,'
+    + '        COALESCE(c.name, rr.constructorId) AS constructorName,'
+    + '        COALESCE(rr.reasonRetired, ''Unknown'') AS reasonRetired,'
+    + '        count(*) AS retirements,'
+    + '        max(e.entries) AS entries,'
+    + '        round(100.0 * count(*) / max(e.entries), 1) AS sharePercent,'
+    + '        min(rr.year) AS firstYear, max(rr.year) AS lastYear'
+    + ' FROM ' + $Results + ' rr'
+    + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c'
+    + '   ON c.id = rr.constructorId'
+    + ' LEFT JOIN entries e ON e.constructorId = rr.constructorId'
+    + ' WHERE rr.positionNumber IS NULL' + $Where
+    + ' GROUP BY rr.constructorId, c.name, rr.reasonRetired'
+    + ' ORDER BY count(*) DESC LIMIT 500';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRetirements
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/*
+ * The prose. Filtered by scope and id from the page that shows it; unfiltered it
+ * is the whole set, which is 224 rows and useful for checking coverage.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Facts (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_Fact AS $Rows
+BEGIN
+  $Scope = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'scope');
+  $EntityId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'entityId');
+
+  DECLARE $Where String = '';
+  IF $Scope != '' THEN
+    SET $Where = ' WHERE scope = ''' + $Scope + '''';
+  END IF;
+  IF $EntityId != '' THEN
+    IF $Where = '' THEN
+      SET $Where = ' WHERE entityId = ''' + $EntityId + '''';
+    ELSE
+      SET $Where = $Where + ' AND entityId = ''' + $EntityId + '''';
+    END IF;
+  END IF;
+
+  DECLARE $Sql String = 'SELECT scope || ''-'' || entityId AS factKey, scope AS scope,'
+    + ' entityId AS entityId, title AS title, extract AS extract,'
+    + ' sourceUrl AS sourceUrl, license AS license'
+    + ' FROM read_csv(''' + @Formula1Backend.DataDir + '/../facts/f1db-facts.csv'','
+    + '   header = true,'
+    + '   columns = {''scope'': ''VARCHAR'', ''entityId'': ''VARCHAR'','
+    + '              ''title'': ''VARCHAR'', ''extract'': ''VARCHAR'','
+    + '              ''sourceUrl'': ''VARCHAR'', ''license'': ''VARCHAR''})'
+    + $Where
+    + ' ORDER BY scope, entityId';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetFacts
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* -------------------------------------------------------------------- service */
+
+create or modify odata service Formula1Backend.F1FanApi (
+  path: 'odata/f1-fan/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Fan'
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Stg_DriverSeason as 'DriverSeasons' (
+    ReadMode: microflow Formula1Backend.Read_DriverSeasons,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    SeasonKey as 'seasonKey' (KEY, Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Constructors as 'constructors' (Filterable, Sortable),
+    StandingPosition as 'standingPosition' (Filterable, Sortable),
+    StandingOrder as 'standingOrder' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    Starts as 'starts' (Filterable, Sortable),
+    Wins as 'wins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Poles as 'poles' (Filterable, Sortable),
+    BestFinish as 'bestFinish' (Filterable, Sortable),
+    AvgQualifying as 'avgQualifying' (Filterable, Sortable),
+    AvgFinish as 'avgFinish' (Filterable, Sortable),
+    Retirements as 'retirements' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_DriverRace as 'DriverRaces' (
+    ReadMode: microflow Formula1Backend.Read_DriverRaces,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    RaceKey as 'raceKey' (KEY, Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceName as 'raceName' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    Fp1Position as 'fp1Position' (Filterable, Sortable),
+    Fp2Position as 'fp2Position' (Filterable, Sortable),
+    Fp3Position as 'fp3Position' (Filterable, Sortable),
+    QualifyingPosition as 'qualifyingPosition' (Filterable, Sortable),
+    GridPosition as 'gridPosition' (Filterable, Sortable),
+    FinishPosition as 'finishPosition' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    PositionsGained as 'positionsGained' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_SeasonProgress as 'SeasonProgress' (
+    ReadMode: microflow Formula1Backend.Read_SeasonProgress,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    ProgressKey as 'progressKey' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceName as 'raceName' (Filterable, Sortable),
+    D1Name as 'd1Name' (Filterable, Sortable),
+    D2Name as 'd2Name' (Filterable, Sortable),
+    D3Name as 'd3Name' (Filterable, Sortable),
+    D4Name as 'd4Name' (Filterable, Sortable),
+    D5Name as 'd5Name' (Filterable, Sortable),
+    D1Points as 'd1Points' (Filterable, Sortable),
+    D2Points as 'd2Points' (Filterable, Sortable),
+    D3Points as 'd3Points' (Filterable, Sortable),
+    D4Points as 'd4Points' (Filterable, Sortable),
+    D5Points as 'd5Points' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Retirement as 'Retirements' (
+    ReadMode: microflow Formula1Backend.Read_Retirements,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    RetirementKey as 'retirementKey' (KEY, Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
+    Retirements as 'retirements' (Filterable, Sortable),
+    Entries as 'entries' (Filterable, Sortable),
+    SharePercent as 'sharePercent' (Filterable, Sortable),
+    FirstYear as 'firstYear' (Filterable, Sortable),
+    LastYear as 'lastYear' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Fact as 'Facts' (
+    ReadMode: microflow Formula1Backend.Read_Facts,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    FactKey as 'factKey' (KEY, Filterable, Sortable),
+    Scope as 'scope' (Filterable, Sortable),
+    EntityId as 'entityId' (Filterable, Sortable),
+    Title as 'title' (Filterable, Sortable),
+    Extract as 'extract' (Filterable, Sortable),
+    SourceUrl as 'sourceUrl' (Filterable, Sortable),
+    License as 'license' (Filterable, Sortable)
+  );
+};
+
+/*
+ * A read microflow reached from a published service needs an allowed role of
+ * its own — the grant on the service is not enough, and the build says so
+ * (CE0106, "At least one allowed role must be selected").
+ */
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverSeasons TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverRaces TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_SeasonProgress TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Retirements TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Facts TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverSeasons TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverRaces TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_SeasonProgress TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Retirements TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Facts TO Formula1Backend.DataAdmin;
+
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;

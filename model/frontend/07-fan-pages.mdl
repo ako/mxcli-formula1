@@ -1,0 +1,347 @@
+/*
+ * The pages a fan actually wants: a driver's career, a season's title fight, a
+ * team's reliability record.
+ *
+ * All three follow the same shape — a page parameter (the driver, season or
+ * constructor picked from an overview), a sourced paragraph about it, and
+ * grids fed by F1FanApi. Each grid's datasource is a microflow rather than a
+ * plain database retrieve, because the constraint has to reach the backend: a
+ * retrieve constrained on the parameter becomes `$filter=driverId eq '...'` on
+ * the OData request, which is what the read microflow lifts out and turns into
+ * SQL. Retrieving unconstrained and filtering in Mendix would drag every row
+ * across the wire for nothing.
+ */
+
+/* ---------------------------------------------------------- datasources -- */
+
+/*
+ * The prose. Wikipedia summaries, fetched by scripts/fetch-f1-facts.sh; a
+ * missing one is normal (the title guess did not resolve) and the page simply
+ * shows no card.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverFact ($Driver: F1Live.Drivers)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'driver' and entityId = $Driver/driverId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonFact ($Season: F1Cached.Seasons)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  DECLARE $Year String = toString($Season/year);
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'season' and entityId = $Year LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ConstructorFact (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'constructor' and entityId = $Constructor/constructorId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverSeasons ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverSeasons AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverRaces ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverRaces AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverRaces WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
+  RETURNS List of F1Fan.SeasonProgress AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.SeasonProgress WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Live.DriverStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Live.DriverStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Live.ConstructorStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Live.ConstructorStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_Retirements (
+  $Constructor: F1Cached.Constructors)
+  RETURNS List of F1Fan.Retirements AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Retirements
+    WHERE constructorId = $Constructor/constructorId;
+  RETURN $Rows;
+END;
+
+/* --------------------------------------------------------- driver career -- */
+
+create or replace page Formula1Frontend.Driver_Career
+(
+  title: 'Driver career',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'driver/{Driver}',
+  Params: { $Driver: F1Live.Drivers }
+)
+{
+  container pageBody {
+    dataview dvDriver (datasource: $Driver) {
+      dynamictext heading (content: '{1}', contentparams: [{1} = fullName], rendermode: H2)
+      dynamictext subhead (
+        content: '{1} · {2} starts · {3} wins · {4} podiums · {5} poles · {6} titles',
+        contentparams: [{1} = nationality, {2} = raceStarts, {3} = raceWins,
+                        {4} = podiums, {5} = polePositions, {6} = championshipWins],
+        class: 'mx-spacing-bottom-medium')
+    }
+
+    dataview dvFact (datasource: MICROFLOW Formula1Frontend.DS_DriverFact(Driver: $Driver),
+                     class: 'card mx-spacing-bottom-medium') {
+      container factBody {
+        dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      }
+      container factCredit {
+        dynamictext factSource (content: 'Source: {1} — {2}',
+          contentparams: [{1} = sourceUrl, {2} = license])
+      }
+    }
+
+    dynamictext seasonsHeading (content: 'Season by season', rendermode: H3)
+    datagrid dgSeasons (
+      datasource: MICROFLOW Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+      PageSize: 30,
+      PagingPosition: bottom
+    ) {
+      column colYear (attribute: year, caption: 'Season', Alignment: right)
+      column colTeams (attribute: constructors, caption: 'Team(s)')
+      column colPos (attribute: standingPosition, caption: 'Champ.', Alignment: right)
+      column colPts (attribute: points, caption: 'Points', Alignment: right)
+      column colStarts (attribute: starts, caption: 'Starts', Alignment: right)
+      column colWins (attribute: wins, caption: 'Wins', Alignment: right)
+      column colPodiums (attribute: podiums, caption: 'Podiums', Alignment: right)
+      column colPoles (attribute: poles, caption: 'Poles', Alignment: right)
+      column colDnf (attribute: retirements, caption: 'DNF', Alignment: right)
+      column colAvgQ (attribute: avgQualifying, caption: 'Avg qual', Alignment: right)
+      column colAvgF (attribute: avgFinish, caption: 'Avg finish', Alignment: right)
+    }
+
+    dynamictext racesHeading (content: 'Every race: practice, qualifying, result',
+                              rendermode: H3, class: 'mx-spacing-top-large')
+    container racesNote (class: 'mx-spacing-bottom-medium') {
+      dynamictext racesNoteText (content: 'Practice columns are empty before timed practice results were recorded, and for any session a driver sat out. Grid differs from qualifying when a penalty or a pit-lane start intervened.')
+    }
+    datagrid dgRaces (
+      datasource: MICROFLOW Formula1Frontend.DS_DriverRaces(Driver: $Driver),
+      PageSize: 25,
+      PagingPosition: both
+    ) {
+      column colRYear (attribute: year, caption: 'Season', Alignment: right)
+      column colRound (attribute: round, caption: 'Rd', Alignment: right)
+      column colRace (attribute: raceName, caption: 'Grand Prix') {
+        textfilter fRace (attribute: raceName)
+      }
+      column colTeam (attribute: constructorName, caption: 'Team')
+      column colFp1 (attribute: fp1Position, caption: 'FP1', Alignment: right)
+      column colFp2 (attribute: fp2Position, caption: 'FP2', Alignment: right)
+      column colFp3 (attribute: fp3Position, caption: 'FP3', Alignment: right)
+      column colQual (attribute: qualifyingPosition, caption: 'Qual', Alignment: right)
+      column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
+      column colFinish (attribute: positionText, caption: 'Finish', Alignment: right)
+      column colGained (attribute: positionsGained, caption: '+/-', Alignment: right)
+      column colRPts (attribute: points, caption: 'Points', Alignment: right)
+      column colReason (attribute: reasonRetired, caption: 'Retired') {
+        textfilter fReason (attribute: reasonRetired)
+      }
+    }
+  }
+}
+
+/* -------------------------------------------------------- season summary -- */
+
+create or replace page Formula1Frontend.Season_Summary
+(
+  title: 'Season summary',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'season/{Season}',
+  Params: { $Season: F1Cached.Seasons }
+)
+{
+  container pageBody {
+    dataview dvSeason (datasource: $Season) {
+      dynamictext heading (content: '{1} season', contentparams: [{1} = year],
+                           rendermode: H2)
+      dynamictext subhead (
+        content: '{1} races · drivers'' champion {2} · constructors'' champion {3}',
+        contentparams: [{1} = raceCount, {2} = championDriver, {3} = championConstructor],
+        class: 'mx-spacing-bottom-medium')
+    }
+
+    dataview dvFact (datasource: MICROFLOW Formula1Frontend.DS_SeasonFact(Season: $Season),
+                     class: 'card mx-spacing-bottom-medium') {
+      container factBody {
+        dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      }
+      container factCredit {
+        dynamictext factSource (content: 'Source: {1} — {2}',
+          contentparams: [{1} = sourceUrl, {2} = license])
+      }
+    }
+
+    dynamictext chartHeading (content: 'How the championship was won', rendermode: H3)
+    /*
+     * Five lines, one per finishing position in the final standings — not per
+     * named driver, because a series binds its Y attribute when the page is
+     * authored and this page serves all 77 seasons. The names for the season
+     * being viewed are underneath.
+     */
+    container chartNote (class: 'mx-spacing-bottom-medium') {
+      dynamictext chartNoteText (content: 'One line per finishing position in the final standings, not per named driver: a chart series binds its attribute when the page is authored, and this page serves every season. The standings below name them, in the same order.')
+    }
+
+    pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress {
+      line lineP1 (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+        StaticXAttribute: round,
+        StaticYAttribute: d1Points,
+        StaticName: '1st in final standings',
+        Interpolation: 'linear'
+      )
+      line lineP2 (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+        StaticXAttribute: round,
+        StaticYAttribute: d2Points,
+        StaticName: '2nd',
+        Interpolation: 'linear'
+      )
+      line lineP3 (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+        StaticXAttribute: round,
+        StaticYAttribute: d3Points,
+        StaticName: '3rd',
+        Interpolation: 'linear'
+      )
+      line lineP4 (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+        StaticXAttribute: round,
+        StaticYAttribute: d4Points,
+        StaticName: '4th',
+        Interpolation: 'linear'
+      )
+      line lineP5 (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+        StaticXAttribute: round,
+        StaticYAttribute: d5Points,
+        StaticName: '5th',
+        Interpolation: 'linear'
+      )
+    }
+
+    dynamictext standingsHeading (content: 'Final standings', rendermode: H3,
+                                  class: 'mx-spacing-top-large')
+    datagrid dgDriverStandings (
+      datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverStandings(Season: $Season),
+      PageSize: 15,
+      PagingPosition: bottom
+    ) {
+      column colPos (attribute: positionText, caption: 'Pos', Alignment: right)
+      column colDriver (attribute: driverName, caption: 'Driver')
+      column colPts (attribute: points, caption: 'Points', Alignment: right)
+    }
+
+    dynamictext consHeading (content: 'Constructors', rendermode: H3,
+                             class: 'mx-spacing-top-large')
+    datagrid dgConstructorStandings (
+      datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
+      PageSize: 15,
+      PagingPosition: bottom
+    ) {
+      column colCPos (attribute: positionText, caption: 'Pos', Alignment: right)
+      column colTeam (attribute: constructorName, caption: 'Constructor')
+      column colEngine (attribute: engineManufacturer, caption: 'Engine')
+      column colCPts (attribute: points, caption: 'Points', Alignment: right)
+    }
+  }
+}
+
+/* ---------------------------------------------------- constructor detail -- */
+
+create or replace page Formula1Frontend.Constructor_Detail
+(
+  title: 'Constructor',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'constructor/{Constructor}',
+  Params: { $Constructor: F1Cached.Constructors }
+)
+{
+  container pageBody {
+    dataview dvConstructor (datasource: $Constructor) {
+      dynamictext heading (content: '{1}', contentparams: [{1} = fullName], rendermode: H2)
+      dynamictext subhead (
+        content: '{1} · {2} starts · {3} wins · {4} podiums · {5} titles',
+        contentparams: [{1} = country, {2} = raceStarts, {3} = raceWins,
+                        {4} = podiums, {5} = championshipWins],
+        class: 'mx-spacing-bottom-medium')
+    }
+
+    dataview dvFact (datasource: MICROFLOW Formula1Frontend.DS_ConstructorFact(Constructor: $Constructor),
+                     class: 'card mx-spacing-bottom-medium') {
+      container factBody {
+        dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      }
+      container factCredit {
+        dynamictext factSource (content: 'Source: {1} — {2}',
+          contentparams: [{1} = sourceUrl, {2} = license])
+      }
+    }
+
+    dynamictext dnfHeading (content: 'What stopped the cars', rendermode: H3)
+    container dnfNote (class: 'mx-spacing-bottom-medium') {
+      dynamictext dnfNoteText (content: 'Every classified non-finish in f1db, by the reason recorded. Share is of all entries this constructor has ever made, so eras with 20-race seasons and eras with 8 are directly comparable.')
+    }
+
+    pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartDnf {
+      series dnfSeries (
+        DataSet: 'static',
+        DataSource: microflow Formula1Frontend.DS_Retirements(Constructor: $Constructor),
+        StaticXAttribute: reasonRetired,
+        StaticYAttribute: retirements,
+        StaticName: 'Retirements'
+      )
+    }
+
+    datagrid dgRetirements (
+      datasource: MICROFLOW Formula1Frontend.DS_Retirements(Constructor: $Constructor),
+      PageSize: 20,
+      PagingPosition: bottom
+    ) {
+      column colReason (attribute: reasonRetired, caption: 'Reason') {
+        textfilter fReason (attribute: reasonRetired)
+      }
+      column colCount (attribute: retirements, caption: 'Times', Alignment: right)
+      column colShare (attribute: sharePercent, caption: '% of entries', Alignment: right)
+      column colFirst (attribute: firstYear, caption: 'First', Alignment: right)
+      column colLast (attribute: lastYear, caption: 'Last', Alignment: right)
+    }
+  }
+}

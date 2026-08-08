@@ -13,6 +13,11 @@
 # The F1 CSV dataset (~25 MB, 47 files). Re-fetched by scripts/fetch-f1-data.sh.
 /data/f1db/
 
+# Wikipedia summaries fetched by scripts/fetch-f1-facts.sh. Derived third-party
+# content (CC BY-SA 4.0), re-fetchable, and re-fetched by the bootstrap hook —
+# so the script is committed and the data is not, same as the f1db CSVs.
+/data/facts/
+
 # DuckDB scratch files, if any are ever materialised next to the CSVs.
 *.duckdb
 *.duckdb.wal

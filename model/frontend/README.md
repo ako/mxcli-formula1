@@ -70,6 +70,26 @@ Fix the published contract instead and regenerate. That is why all eight live
 resources are `Countable`: each read microflow takes a `System.ODataResponse` and
 reports a count, so the generator's optimistic default happens to be correct.
 
+## The fan pages
+
+`07-fan-pages.mdl` adds three parameterised pages — a driver's career, a
+season's summary, a constructor's reliability record — plus the microflows that
+feed them. Three things about them are worth knowing before editing:
+
+- **Every grid binds a microflow, not a database source.** The constraint has to
+  reach the backend: a retrieve constrained on the page parameter becomes
+  `$filter=driverId eq '...'` on the OData request, which the read microflow
+  turns into SQL. An unconstrained retrieve would pull the whole resource.
+- **A page with a parameter needs it in the URL** — `url: 'driver/{Driver}'`.
+  Without the segment the build fails.
+- **XPath wants lowercase `and`.** MDL passes the operator through verbatim, so
+  `WHERE scope = 'driver' AND entityId = ...` compiles and then fails the build
+  with CE0161.
+
+The chart's five lines are bound to positions in the final standings, not to
+named drivers: a series binds its Y attribute when the page is authored, and one
+page serves all 77 seasons.
+
 ## Testing
 
 `tests/external-entities.test.mdl` needs the **backend running** — it retrieves

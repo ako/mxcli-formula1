@@ -50,6 +50,10 @@ create or replace page Formula1Frontend.Drivers_Live
           column colPoles (attribute: polePositions, caption: 'Poles', Alignment: right)
           column colStarts (attribute: raceStarts, caption: 'Starts', Alignment: right)
           column colTitles (attribute: championshipWins, caption: 'Titles', Alignment: right)
+          column colOpen (caption: '') {
+            linkbutton btnCareer (Caption: 'Career',
+              Action: SHOW_PAGE Formula1Frontend.Driver_Career(Driver: $currentObject))
+          }
         }
   }
 }
@@ -109,6 +113,10 @@ create or replace page Formula1Frontend.Seasons_Overview
           }
           column colConstructor (attribute: championConstructor, caption: 'Constructors champion')
           column colRaces (attribute: raceCount, caption: 'Races', Alignment: right)
+          column colOpenSeason (caption: '') {
+            linkbutton btnSeason (Caption: 'Summary',
+              Action: SHOW_PAGE Formula1Frontend.Season_Summary(Season: $currentObject))
+          }
         }
   }
 }
@@ -139,6 +147,10 @@ create or replace page Formula1Frontend.Constructors_Overview
           column colPodiums (attribute: podiums, caption: 'Podiums', Alignment: right)
           column colTitles (attribute: championshipWins, caption: 'Titles', Alignment: right)
           column colPoints (attribute: points, caption: 'Points', Alignment: right)
+          column colOpenTeam (caption: '') {
+            linkbutton btnTeam (Caption: 'Reliability',
+              Action: SHOW_PAGE Formula1Frontend.Constructor_Detail(Constructor: $currentObject))
+          }
         }
   }
 }

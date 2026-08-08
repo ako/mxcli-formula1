@@ -213,6 +213,61 @@ public final class ODataQuery {
         return v != null && "true".equalsIgnoreCase(v.trim());
     }
 
+    /**
+     * The right-hand side of `<field> eq <value>` in $filter, as an identifier
+     * safe to paste into SQL.
+     *
+     * The resources built on it — a driver's career, a season's points
+     * progression — are not a filtered projection of one table but a query whose
+     * *shape* depends on the value: it appears in three subqueries, inside a
+     * window function, in a CROSS JOIN. {@link #where} cannot express that, so
+     * the value is lifted out and interpolated instead.
+     *
+     * Interpolating anything from a URL is the injection case, so this is a
+     * whitelist, not an escape: the return value is guaranteed to match
+     * [A-Za-z0-9_-]{1,64} or be empty. f1db keys are all slugs, so nothing legal
+     * is lost. Empty means absent — the caller decides whether that is a default
+     * or an empty result, and must never treat it as "no filter, return
+     * everything".
+     */
+    public static String filterIdentifier(String uri, String field) {
+        String filter = parseQuery(uri).get("$filter");
+        if (filter == null || field == null || field.isEmpty()) {
+            return "";
+        }
+        Matcher m = Pattern.compile(
+                "(?:^|\\s|\\()" + Pattern.quote(field) + "\\s+eq\\s+'([^']*)'",
+                Pattern.CASE_INSENSITIVE).matcher(filter);
+        if (!m.find()) {
+            return "";
+        }
+        String value = m.group(1);
+        return value.matches("[A-Za-z0-9_-]{1,64}") ? value : "";
+    }
+
+    /**
+     * The right-hand side of `<field> eq <number>` in $filter, as a long.
+     * Returns {@code fallback} when the term is absent or not a plain integer —
+     * a year, a round, nothing else.
+     */
+    public static long filterLong(String uri, String field, long fallback) {
+        String filter = parseQuery(uri).get("$filter");
+        if (filter == null || field == null || field.isEmpty()) {
+            return fallback;
+        }
+        Matcher m = Pattern.compile(
+                "(?:^|\\s|\\()" + Pattern.quote(field) + "\\s+eq\\s+(-?\\d{1,9})(?:\\s|\\)|$)",
+                Pattern.CASE_INSENSITIVE).matcher(filter);
+        if (!m.find()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(m.group(1));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     private static String requireColumn(Map<String, String> cols, String name) {
         String col = cols.get(name.toLowerCase());
         if (col == null) {
