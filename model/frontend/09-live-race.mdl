@@ -93,7 +93,13 @@ create or replace page Formula1Frontend.Live_Race
       }
     }
 
-    container liveSplit (class: 'split') {
+    /*
+     * The running order gets the full width and race control sits under it.
+     * Sixteen columns in the 1.6fr half of a split is about 60px a column, and
+     * every driver name renders as "M…" — the grid was technically correct and
+     * completely unreadable.
+     */
+    container liveStack {
       container orderPanel (class: 'panel') {
         container orderHead (class: 'panel-head') {
           dynamictext orderTitle (content: 'Running order', class: 'panel-title')
@@ -127,7 +133,7 @@ create or replace page Formula1Frontend.Live_Race
         }
       }
 
-      container msgPanel (class: 'panel') {
+      container msgPanel (class: 'panel section-gap') {
         container msgHead (class: 'panel-head') {
           dynamictext msgTitle (content: 'Race control', class: 'panel-title')
           dynamictext msgSub (content: 'newest first', class: 'panel-sub')

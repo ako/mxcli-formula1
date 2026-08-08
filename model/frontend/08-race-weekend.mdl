@@ -40,13 +40,12 @@ BEGIN
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_Calendar ($Season: F1Cached.Seasons)
-  RETURNS List of F1Fan.Calendar AS $Rows
-BEGIN
-  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Season/year;
-  RETURN $Rows;
-END;
-
+/*
+ * The URL carries the race, so a weekend can be linked to. That only works
+ * because Read_Calendar answers a lookup by key — resolving `{Race}` back into
+ * an object is exactly the read that used to fall through to the collection
+ * default. FINDINGS §37.
+ */
 create or replace page Formula1Frontend.Race_Weekend
 (
   title: 'Race weekend',

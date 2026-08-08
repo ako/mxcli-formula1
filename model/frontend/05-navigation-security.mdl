@@ -86,7 +86,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Weekend TO Formula1Frontend.Enthu
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;
-GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Calendar TO Formula1Frontend.Enthusiast;
+
+
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveSession TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveOrder TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessages TO Formula1Frontend.Enthusiast;

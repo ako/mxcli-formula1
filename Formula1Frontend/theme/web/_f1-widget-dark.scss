@@ -21,6 +21,79 @@
 // leaves it alone — it survived the c76d4b7 re-apply untouched.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Charts.
+//
+// The line chart widget renders through Plotly, which paints its own paper: a
+// white <rect class="bg"> and a white background on .main-svg, both written as
+// inline style, plus dark grey ticks and gridlines. None of it reads a CSS
+// custom property, so on a #0E1116 page every chart came out as a white slab
+// with the rest of the page dark around it — the single loudest thing left in
+// the theme.
+//
+// Plotly's own way out is a layout JSON per chart (paper_bgcolor, font.color,
+// gridcolor), which would be five copies of the palette in the model, drifting
+// the moment a token changes. Overriding the paint here keeps one source of
+// truth. Inline style is what we are competing with, hence !important — the
+// one place in this theme that needs it.
+//
+// The traces themselves are left alone: Plotly's default categorical colours
+// read fine on the dark ground and are what the series legends are matched to.
+// ---------------------------------------------------------------------------
+.js-plotly-plot {
+  .main-svg { background: transparent !important; }
+
+  // The plot area and the paper behind it.
+  .bg { fill: var(--mxt-surface) !important; }
+
+  // Gridlines and the zero line: structure, not content — the same weight as a
+  // table rule.
+  .gridlayer path,
+  .zerolinelayer path { stroke: var(--mxt-line) !important; }
+
+  // Axis ticks, axis titles and the legend, all as muted ink.
+  .xtick text,
+  .ytick text,
+  .legendtext,
+  .g-xtitle text,
+  .g-ytitle text,
+  .infolayer text {
+    fill: var(--mxt-ink-muted) !important;
+    font-family: var(--mxt-font-mono) !important;
+  }
+
+  // The legend sits on the surface it labels; it does not need its own plane.
+  .legend .bg { fill: transparent !important; stroke: transparent !important; }
+
+  // Hover readouts are drawn as SVG, so they miss the popover styling entirely.
+  .hoverlayer .hovertext {
+    path, rect { fill: var(--mxt-ground) !important; stroke: var(--mxt-line) !important; }
+    text { fill: var(--mxt-ink) !important; }
+  }
+
+  // The modebar is a light-mode toolbar floating over a dark chart.
+  .modebar-btn path { fill: var(--mxt-ink-faint) !important; }
+  .modebar-btn:hover path { fill: var(--mxt-brand) !important; }
+  .modebar-group { background: transparent !important; }
+}
+
+// ---------------------------------------------------------------------------
+// The closed navigation rail.
+//
+// Atlas collapses the sidebar to --navsidebar-width-closed (48px) rather than
+// to nothing, because it expects every menu item to carry an icon: 48px is one
+// icon wide. MDL's MENU ITEM has no icon clause (FINDINGS §36), so every item
+// is text only and the rail renders "Constru", "Race re", "Live rac" — clipped
+// words down the left edge of every page.
+//
+// Until the items can carry icons, collapse it the whole way. The toggle is in
+// the header and opens the full 232px sidebar; a rail that shows nothing is
+// better than one that shows half a word.
+// ---------------------------------------------------------------------------
+.layout-atlas-responsive,
+.layout-atlas-responsive-default,
+.layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
+
 // datawidgets/web/_datagrid-filters.scss:71,143,153,206 — box-shadow with a
 // baked rgba(5,15,129,.05). Console separates planes by lightness, not shadow,
 // so this reads as a smudge under the filter-operator list. `--mxt-shadow` is

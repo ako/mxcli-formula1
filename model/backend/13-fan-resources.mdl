@@ -41,6 +41,22 @@ AS $$
 return formula1backend.ODataQuery.filterLong(Uri, Field, Fallback);
 $$;
 
+/*
+ * The other half of "which one did you mean": a key in the path rather than a
+ * term in $filter. A client resolving an object it already holds asks for
+ * /Calendar('1036-c'), and a read that only looks at $filter answers with its
+ * collection default — so the client takes the first row and every drill-down
+ * opens the same record. FINDINGS §37.
+ */
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataEntityKeyId(
+  Uri: String,
+  Fallback: Long NOT NULL
+) RETURNS Long
+EXPOSED AS 'Read the id out of a key-addressed path' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.entityKeyLong(Uri, Fallback);
+$$;
+
 /* ----------------------------------------------------------------- microflows */
 
 /*

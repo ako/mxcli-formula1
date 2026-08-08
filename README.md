@@ -17,6 +17,14 @@ A Mendix **solution**: two apps in one repo, provisioned and developed with
 
 Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main** (`c76d4b7`).
 
+## What it looks like
+
+![The home page](docs/screenshots/01-home.png)
+
+Every screenshot below is the running app, captured against a live backend by
+`scripts/shoot-screenshots.mjs`. They are regenerated rather than curated, so a
+panel that is empty here is empty in the app.
+
 ## The two apps
 
 | App | Port / host | Owns |
@@ -154,6 +162,20 @@ seasons, 116 race-winning drivers and 31 winning constructors, fetched by
 like everything else. The text is CC BY-SA 4.0; the article link and licence
 travel with every row and are shown on the page.
 
+The 2021 season, its title fight as a points curve, and the calendar each round
+opens from:
+
+![Season summary](docs/screenshots/04-season-summary.png)
+
+A career — here Jos Verstappen's, eight seasons across five teams, every round
+with practice, qualifying, grid and result on one line:
+
+![Driver career](docs/screenshots/07-driver-career.png)
+
+And what stopped a team's cars:
+
+![Constructor reliability](docs/screenshots/09-constructor-detail.png)
+
 ## The race weekend
 
 A fourth page, opened from any row of a season's calendar: one Grand Prix with
@@ -166,6 +188,12 @@ every session beside the next.
 | Race position by lap | the lap-by-lap traces — the one thing f1db does not carry |
 | Session pace | each driver's gap to that session's own best, in seconds, so a wet FP1 does not skew the chart |
 | The table | code, team, all three practices, qualifying position and lap, grid, Δ, best lap, pit stops, points, retirement |
+
+![Race weekend](docs/screenshots/05-race-weekend.png)
+
+Bahrain 2021: Verstappen quickest in all three practices and on pole, Hamilton
+winning it, Bottas taking the fastest lap. The lap-trace panel is empty because
+traces are fetched for 2024 only — the panel says so rather than pretending.
 
 **Where the lap traces come from.** f1db has every session's *result* — 17085
 fastest laps back to 1950, qualifying with Q1/Q2/Q3 splits, practice from 1986,
@@ -202,8 +230,20 @@ session into `data/live/`; the page reads the last snapshot and **shows when it
 was taken**. Re-run and reload for the next one; on a race Sunday run it on a
 timer with `SESSION=latest`.
 
+![Live race overview](docs/screenshots/02-live-race.png)
+
 One trap: OpenF1 **404s the entire request if you pass `limit`**. Filter with
 `session_key` / `driver_number` instead.
+
+## The overviews
+
+The four browse pages every detail page is opened from — seasons, drivers,
+constructors, and all 27533 classifications with filters on driver and team:
+
+| | |
+|---|---|
+| ![Seasons](docs/screenshots/03-seasons.png) | ![Drivers](docs/screenshots/06-drivers.png) |
+| ![Constructors](docs/screenshots/08-constructors.png) | ![Race results](docs/screenshots/10-race-results.png) |
 
 ## The data
 
@@ -256,6 +296,31 @@ cd Formula1Backend  && ./mxcli run --local -p Formula1Backend.mpr
 cd Formula1Frontend && ./mxcli run --local -p Formula1Frontend.mpr \
     --app-port 8180 --admin-port 8190 --serve-port 6643
 ```
+
+Prefer `scripts/run-app.sh`, which does the same thing and then puts back the
+browser client the boot deletes — see FINDINGS §35, and note `mxcli test --local`
+deletes it too.
+
+**Regenerating the screenshots.** With both apps up:
+
+```bash
+node scripts/shoot-screenshots.mjs
+```
+
+It logs in as the demo user, walks every page and writes `docs/screenshots/`.
+Two things to know before believing a bad-looking result: the race weekend page
+needs the better part of a minute for its last chart series, and the trial
+licence caps concurrent sessions — enough runs and the client 401s at startup
+and pages come up empty. Clear them with
+
+```bash
+sudo -u postgres psql -d formula1frontend -c 'delete from system$session;'
+```
+
+Rendering the real pages is not decoration. It is the only check in this project
+that catches a chart on a white ground, a column header reading `COLOPENWEEKEND`,
+or a drill-down that opens the wrong record — none of which `check`, the build,
+the runtime log or `curl` report. FINDINGS §38 lists what one pass found.
 
 `./mxcli` is built from source rather than downloaded — see
 `scripts/build-mxcli.sh` and the note in `FINDINGS.md`. Both the binary (~85 MB)

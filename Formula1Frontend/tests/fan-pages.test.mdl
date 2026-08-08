@@ -100,3 +100,23 @@ $result = CALL MICROFLOW Formula1Frontend.Test_LiveOrder();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_LiveHasLeader();
 /
+
+/**
+ * The regression for FINDINGS §37: a resource has to answer a lookup by its own
+ * key. Read_Calendar used to ignore that request and return the newest season,
+ * whose first row the client then adopted as the object it was holding — so
+ * every calendar row resolved to the same race. `1036-c` is Bahrain 2021; the
+ * wrong answer was 2026.
+ *
+ * @test Calendar: a lookup by key returns that race, not the newest season
+ * @expect $result = 2021
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_CalendarByKey();
+/
+
+/**
+ * @test Race weekend: the weekend that opens is the round that was clicked
+ * @expect $result = 'Bahrain International Circuit'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked();
+/

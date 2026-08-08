@@ -1565,37 +1565,46 @@ the scripts quietly stop being the source of truth.
    so the app serves a 200 HTML shell and a black screen. Highest impact of anything
    on this list: it makes the app unusable, and nothing in check, build, log or curl
    reports it. Bundle after the boot's packaging, or exclude `dist/` from it.
-2. **`create or modify odata service` still drops role grants** (§34, §26) — the
+2. **A published resource declares a `KEY` its read microflow is never told about**
+   (§37) — `publish entity … (ReadMode: microflow …)` promises the service can be
+   asked for one row by key, but the microflow only sees a URI. Answer the key
+   request with the collection default and the client adopts the first row as the
+   object's identity, silently and permanently. Warn when a read microflow never
+   reads its resource's KEY out of the request, or generate the branch.
+3. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+   icon rail, and a text-only menu renders "Constru" down the left edge of every
+   page. There is no way to fix it in the navigation model.
+4. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
-3. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+5. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
    MDL passes it through and the build fails with "Error(s) in expression". Either
    strip comments from expression text or reject them at check time.
-4. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+6. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
    constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
    reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
    entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
    tool insists on for the URL is the shape whose credentials it will not read.
-2. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+7. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
    document's folder, which closes half the gap; there is still no way to see a
    module's layout in one place, or to diff an intended layout against the real one,
    without reading the `.mpr` as SQLite.
-3. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-4. **The widget layer misses the filter-operator popover** (§33, §34) —
+9. **The widget layer misses the filter-operator popover** (§33, §34) —
    `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
    `.dropdown-list` or `.dropdown-content`, which still carry a baked
    `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
    fixed.
-5. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+10. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
-6. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-7. **Design-property lint does not know the theme** (§29) — `check` green-lights
+12. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
@@ -1736,3 +1745,201 @@ has. `mxcli check` passes, the build reports success, the runtime logs nothing,
 answer correctly. Only a browser sees it — which is exactly the gap that let it
 survive several restarts and a commit. Rendering the real app, not a probe page,
 is the only thing that catches this class.
+
+### A second way in
+
+`mxcli test --local` clears the bundle too. Its "project restored" step
+repopulates `deployment/` the same way the boot's packaging does, so a test run
+between a boot and a browser leaves the app serving a black screen even though
+nothing was rebuilt. `scripts/run-app.sh` does not cover that path — it only
+runs at boot. Re-run the bundler by hand after a local test, or re-run
+`run-app.sh`.
+
+## 36. Gap: `MENU ITEM` cannot carry an icon, and Atlas's collapsed rail assumes one
+
+Atlas collapses its sidebar to `--navsidebar-width-closed`, which is **48px** —
+one icon wide. That is a deliberate design: the closed state is meant to be a
+rail of icons you can still navigate by.
+
+MDL has no icon clause. `CREATE OR REPLACE NAVIGATION` accepts
+`MENU ITEM 'Label' PAGE Module.Page` and nothing else, so every item is text
+only, and the closed rail renders the first 48px of each label down the left
+edge of every page:
+
+```
+Home
+Live rac
+Season
+Drivers
+Constru
+Circuits
+Race re
+```
+
+Not a rendering bug — Atlas is doing what it says, on a menu that cannot hold up
+its end. There is no way to fix it in the navigation model, so the theme has to
+opt out of the rail entirely:
+
+```scss
+.layout-atlas-responsive,
+.layout-atlas-responsive-default,
+.layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
+```
+
+which trades a permanent nav affordance for not showing half a word. An icon
+clause — `MENU ITEM 'Home' PAGE Module.Home ICON 'home'` — would make the rail
+work as designed.
+
+## 37. A published resource has two ways to be asked for one row, and answering
+only one of them corrupts the client's object
+
+The bug, as it looked: on the 2021 season page, the calendar lists the 22 rounds
+of 2021 correctly — Bahrain, Imola, Portimão. Click *Weekend* on Bahrain and the
+race weekend page opens **round 1 of 2026**. Click round 5 instead: still round 1
+of 2026. The grid was right, the page was wrong, and the wrong answer was the
+same for every row.
+
+### What it was not
+
+Four plausible causes, each disproved by measurement, because each one is the
+kind of thing that looks obviously responsible:
+
+| Suspected | Test | Result |
+|---|---|---|
+| The read microflow ignores `$filter` | `curl '…/Calendar?$filter=year eq 2021'` | 22 rows, all 2021. Correct. |
+| The page's `url: 'weekend/{Race}'` re-resolves and discards the argument | removed the URL | unchanged |
+| A grid column's button maps from the page context, not the row | replaced the link button with a microflow call, then with a container `OnClick`, then with a dataview on the grid's selection | unchanged, all three |
+| A microflow datasource yields rows with no addressable identity | switched to `database from … where [year = $Season/year]` | unchanged |
+
+The last one is worth keeping in mind for its own sake: the XPath form *does*
+push down. It becomes `$filter=year eq 2021` and the backend parses it. That was
+briefly blamed here and it was innocent.
+
+What finally located it was logging `$Request/Uri` in the read microflow and
+reading the sequence:
+
+```
+/odata/f1-fan/Calendar?$top=12&$orderby=round asc&$filter=year eq 2021     ← the grid
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1036-c'                     ← Bahrain 2021
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1150-c'                     ← ...and from here on
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1150-c'
+```
+
+### What it was
+
+A client that is **holding** a row re-reads it by key, on its own, without being
+asked to. `Read_Calendar` parsed `year` out of `$filter` and nothing else, so the
+key request fell through to the collection default — "the most recent season" —
+and returned 22 rows. The client took the first one and concluded *that* is the
+object it was holding.
+
+From that moment the corruption is self-sustaining: every later read asks for
+`1150-c`, the key it was mistakenly handed, and gets a consistent answer. Two
+different objects are now on screen at once — the row the grid painted, and the
+row the client believes the row is — and nothing distinguishes them until one of
+them travels to another page.
+
+There is no error. The request is well-formed, the response is a valid
+collection, the count is right, and the status is 200.
+
+### The fix
+
+Answer the key lookup. Both spellings, because clients choose between them and
+Mendix's own OData client sends the one that is easiest to miss:
+
+```
+?$filter=calendarKey eq '1036-c'     ← what the runtime actually sends
+/Calendar('1036-c')                  ← the bare path key
+/Calendar(calendarKey='1036-c')      ← the named path key
+```
+
+`ODataQuery.entityKey` reads either path form; `filterIdentifier` already read
+the `$filter` form. `Read_Calendar` now branches key → id → year → default.
+
+### The rule this leaves
+
+**Every microflow-backed OData resource whose rows a client can hold must answer
+a lookup by its own key.** Not as a nicety — a resource that answers the key
+request with its collection default actively teaches the client the wrong
+identity for an object it is already displaying.
+
+The resource is at risk exactly when its rows leave the widget that fetched
+them: selected, passed as a page parameter, or written into a URL. In this app
+that is `Calendar` and nothing else, which is why it took a while to find: the
+three drill-downs that work — driver, season, constructor — happen to sit on
+resources that already parse the id their pages filter by.
+
+### For mxcli
+
+Worth generating rather than remembering. `publish entity … as 'X' (ReadMode:
+microflow …)` already knows which exposed attribute is `KEY`; it could either
+warn when the read microflow never reads that attribute out of the request, or
+emit the key branch. As it stands the KEY declaration is a promise the service
+makes on the microflow's behalf, which the microflow has no idea it made.
+
+## 38. What rendering the app found that nothing else did
+
+Adding screenshots to the README meant driving the real pages in a browser for
+the first time — the hub's `Secure` cookies had blocked headless login all
+along, and running the frontend without `--hub` for the capture lifted that.
+Five defects fell out of one pass, none of which any check, build, log or `curl`
+had reported:
+
+| | Symptom | Cause |
+|---|---|---|
+| §37 | Every calendar row opened the same race | key lookups unanswered |
+| | Race control panel: *"An error occurred"* | `at` is reserved in DuckDB |
+| | Running order unreadable: `N…`, `L…`, `M…` | 16 columns in a 1.6fr panel |
+| | Every chart a white slab on a black page | Plotly paints its own paper |
+| §36 | `Constru`, `Race re` down the left edge | Atlas's rail wants icons |
+
+Three are worth keeping as rules.
+
+**`at` is a reserved word in DuckDB.** It introduces time travel
+(`FROM t AT (VERSION => …)`), so an unquoted `at` in a select list is a parse
+error — and the `map` clause cannot reference a quoted identifier, so it has to
+be aliased on the way out:
+
+```sql
+SELECT "at" AS atTime, …          -- map ( atTime as At, … )
+```
+
+The whole resource 500s until it is. The error surfaces as
+`Exception occurred while processing REST request` on the wire, with the actual
+`syntax error at or near ","` only in the runtime log.
+
+**A chart is not themed by theming the page.** The line and column chart widgets
+render through Plotly, which writes its own white `<rect class="bg">` and a
+white `background` on `.main-svg` as *inline style*, plus dark grey ticks and
+gridlines. None of it reads a custom property. On a `#0E1116` page every chart
+came out as a bright slab. Plotly's own answer is a layout JSON per chart, which
+would be five copies of the palette in the model; overriding the paint in CSS
+keeps one source of truth, at the cost of the only `!important` in this theme:
+
+```scss
+.js-plotly-plot {
+  .main-svg { background: transparent !important; }
+  .bg { fill: var(--mxt-surface) !important; }
+  .gridlayer path, .zerolinelayer path { stroke: var(--mxt-line) !important; }
+  .xtick text, .ytick text, .legendtext { fill: var(--mxt-ink-muted) !important; }
+}
+```
+
+**An empty column caption falls back to the column's name.** `column
+colOpenWeekend (caption: '')` renders a header reading `COLOPENWEEKEND`. There
+is no blank caption; give the column a real one.
+
+### Two things about capturing them
+
+Charts and the wide session table finish well after the network goes quiet — the
+race weekend page needs the better part of a minute before the last series
+appears. A screenshot taken at `networkidle` shows a spinner and half a legend,
+which reads exactly like a broken page.
+
+And the trial licence caps concurrent sessions. Enough probe runs and the client
+gets a 401 at startup, clears its session and restarts, so pages come up empty
+for reasons that have nothing to do with the code:
+
+```bash
+sudo -u postgres psql -d formula1frontend -c 'delete from system$session;'
+```

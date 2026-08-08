@@ -73,6 +73,7 @@ MOVE JAVA ACTION Formula1Backend.ODataWhereSql      TO FOLDER 'Live/Pushdown';
 MOVE JAVA ACTION Formula1Backend.ODataWantsCount    TO FOLDER 'Live/Pushdown';
 MOVE JAVA ACTION Formula1Backend.ODataFilterId      TO FOLDER 'Live/Pushdown';
 MOVE JAVA ACTION Formula1Backend.ODataFilterYear    TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataEntityKeyId   TO FOLDER 'Live/Pushdown';
 
 MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';

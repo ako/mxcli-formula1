@@ -221,3 +221,37 @@ BEGIN
   DECLARE $Ok Boolean = $Leader != empty;
   RETURN $Ok;
 END;
+
+/*
+ * The regression for FINDINGS §37.
+ *
+ * A client holding a Calendar row re-reads it by key, and Read_Calendar used to
+ * ignore that request and answer with the most recent season instead. The
+ * client then adopted the first row of that answer as the object's identity, so
+ * every calendar row in every season resolved to the same race and the weekend
+ * page opened round 1 of 2026 whatever was clicked.
+ *
+ * This is the read the client makes: by key, nothing else. `1036-c` is Bahrain
+ * 2021, and 2021 is the assertion — before the fix it came back 2026.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CalendarByKey ()
+  RETURNS Long AS $Year
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  DECLARE $Year Long = $Race/year;
+  RETURN $Year;
+END;
+
+/*
+ * And the same lookup arriving the way the page does it: pick a row out of a
+ * season, hand it to the weekend datasource, and check the weekend that comes
+ * back is the round that was asked for rather than the newest race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
+  DECLARE $Name String = $Weekend/circuitName;
+  RETURN $Name;
+END;

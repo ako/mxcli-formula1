@@ -205,6 +205,35 @@ BEGIN
   $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
     Uri = $Request/Uri, Field = 'year', Fallback = 0);
 
+  /*
+   * The other way this resource is asked for one thing, and the one that
+   * matters most.
+   *
+   * A grid asks for a collection: ?$filter=year eq 2021. But a client that is
+   * *holding* one of those rows — because it was selected, or handed to another
+   * page — re-reads it on its own, by key:
+   *
+   *   ?$filter=calendarKey eq '1036-c'
+   *
+   * Answer that with the collection default and the damage is not a wrong row,
+   * it is a wrong row that sticks: the client takes the first record it gets
+   * back, decides that *is* the object, and every later read asks for the key
+   * it was mistakenly given. One ignored filter and round 1 of 2021 has quietly
+   * become round 1 of 2026, for the rest of the session, with the grid still
+   * displaying Bahrain. That is what made this so hard to see — the row on
+   * screen and the row in hand were different objects. FINDINGS §37.
+   *
+   * The key is `<raceId>-c`, and it has been through the identifier whitelist,
+   * so it can be compared as the string it is.
+   */
+  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'calendarKey');
+
+  -- And the same lookup with the key in the path, which is the other form OData
+  -- allows for it: /Calendar('1036-c') or /Calendar(calendarKey='1036-c').
+  $KeyRaceId = CALL JAVA ACTION Formula1Backend.ODataEntityKeyId(
+    Uri = $Request/Uri, Fallback = 0);
+
   DECLARE $Dir String = @Formula1Backend.DataDir;
   DECLARE $Races String = 'read_csv(''' + $Dir + '/f1db-races.csv'')';
   DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
@@ -213,9 +242,19 @@ BEGIN
   DECLARE $Circuits String = 'read_csv(''' + $Dir + '/f1db-circuits.csv'')';
   DECLARE $Gp String = 'read_csv(''' + $Dir + '/f1db-grands-prix.csv'')';
 
-  DECLARE $YearSql String = '(SELECT max(year) FROM ' + $Races + ')';
-  IF $Year != 0 THEN
-    SET $YearSql = toString($Year);
+  -- Which races the query is about: one by key, one by id, one season by year,
+  -- or the most recent season when the caller said nothing.
+  DECLARE $Where String = 'r.year = (SELECT max(year) FROM ' + $Races + ')';
+  IF $Key != '' THEN
+    SET $Where = 'r.id || ''-c'' = ''' + $Key + '''';
+  ELSE
+    IF $KeyRaceId != 0 THEN
+      SET $Where = 'r.id = ' + toString($KeyRaceId);
+    ELSE
+      IF $Year != 0 THEN
+        SET $Where = 'r.year = ' + toString($Year);
+      END IF;
+    END IF;
   END IF;
 
   DECLARE $Sql String = 'SELECT r.id || ''-c'' AS calendarKey, r.id AS raceId,'
@@ -232,7 +271,7 @@ BEGIN
     + ' FROM ' + $Races + ' r'
     + ' LEFT JOIN ' + $Circuits + ' c ON c.id = r.circuitId'
     + ' LEFT JOIN ' + $Gp + ' g ON g.id = r.grandPrixId'
-    + ' WHERE r.year = ' + $YearSql
+    + ' WHERE ' + $Where
     + ' ORDER BY r.round';
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCalendar

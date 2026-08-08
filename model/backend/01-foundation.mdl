@@ -915,9 +915,19 @@ begin
           sector2 as Sector2, sector3 as Sector3, speedTrap as SpeedTrap,
           compound as Compound, tyreAge as TyreAge, pitStops as PitStops );
 
+  /*
+   * `at` is a reserved word in DuckDB (it introduces time travel: FROM t AT
+   * (VERSION => ...)), so an unquoted `at` in the select list is a parse error
+   * — and the map clause cannot reference a quoted identifier either. Quote it
+   * once and alias it to a name that is only a name.
+   *
+   * The key is row_number() rather than rowid, which read_csv does not expose:
+   * a race control message has no natural id, and two identical yellow flags in
+   * one session are a real possibility.
+   */
   query GetLiveMessages
-    sql 'SELECT sessionKey || ''-'' || rowid AS messageKey, sessionKey, at, category,
-                flag, scope, lap, message
+    sql 'SELECT sessionKey || ''-'' || row_number() OVER () AS messageKey,
+                sessionKey, "at" AS atTime, category, flag, scope, lap, message
          FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
                        columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
                                   ''category'': ''VARCHAR'', ''flag'': ''VARCHAR'',
@@ -925,7 +935,7 @@ begin
                                   ''message'': ''VARCHAR''})'
     parameter dataDir: string
     returns Formula1Backend.Stg_LiveMessage
-    map ( messageKey as MessageKey, sessionKey as SessionKey, at as At,
+    map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
           category as Category, flag as Flag, scope as Scope, lap as Lap,
           message as Message );
 

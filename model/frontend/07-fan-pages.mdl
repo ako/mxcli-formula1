@@ -366,9 +366,20 @@ create or replace page Formula1Frontend.Season_Summary
         dynamictext calSub (content: 'every round, and who won it — open one for the full weekend',
                             class: 'panel-sub')
       }
+      /*
+       * Read off the entity with an XPath constraint rather than through a
+       * microflow like the other panels here. The constraint becomes
+       * $filter=year eq N, which Read_Calendar parses, so it is the same query
+       * one hop shorter.
+       *
+       * Reading off the entity also gives each row a key the client can resolve
+       * it by, which is what handing a row to another page comes down to.
+       * FINDINGS §37.
+       */
       container calGrid (class: 'grid-dense') {
         datagrid dgCalendar (
-          datasource: MICROFLOW Formula1Frontend.DS_Calendar(Season: $Season),
+          datasource: database from F1Fan.Calendar where [year = $Season/year]
+                      sort by round asc,
           PageSize: 12,
           PagingPosition: bottom
         ) {
@@ -378,7 +389,7 @@ create or replace page Formula1Frontend.Season_Summary
           column colDate (attribute: raceDate, caption: 'Date')
           column colWinner (attribute: winnerName, caption: 'Winner')
           column colWinTeam (attribute: winnerTeam, caption: 'Team')
-          column colOpenWeekend (caption: '') {
+          column colOpenWeekend (caption: 'Open') {
             linkbutton btnWeekend (Caption: 'Weekend',
               Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
           }

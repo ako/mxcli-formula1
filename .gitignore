@@ -30,6 +30,14 @@
 *.duckdb
 *.duckdb.wal
 
+# The harness module 'mxcli test' injects into an app to run .test.mdl files.
+# It writes itself in and removes itself on the way out, so what is left after
+# an interrupted run is scaffolding, not source.
+/Formula1Backend/javasource/mxtest/
+/Formula1Frontend/javasource/mxtest/
+/Formula1Backend/themesource/mxtest/
+/Formula1Frontend/themesource/mxtest/
+
 # Claude Code local overrides
 .claude/settings.local.json
 
