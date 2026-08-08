@@ -157,3 +157,44 @@ BEGIN
   $N = COUNT($Rows);
   RETURN $N;
 END;
+
+/*
+ * The race weekend, through the microflows the page binds. Bahrain 2024 is
+ * round 1: 20 drivers classified, five sessions in the shape chart, 57 laps of
+ * Jolpica traces.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendSessions ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendSessions (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendShape ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendShape (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LapChart ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LapChart (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendWinner ()
+  RETURNS String AS $Who
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
+  DECLARE $Who String = $Weekend/winnerName;
+  RETURN $Who;
+END;

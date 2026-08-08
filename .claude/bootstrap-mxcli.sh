@@ -31,6 +31,13 @@ if [ ! -f data/facts/f1db-facts.csv ]; then
   sh scripts/fetch-f1-facts.sh || echo "Facts fetch failed; pages will show no summaries."
 fi
 
+# Lap-by-lap traces from Jolpica — the one thing f1db does not carry. Same
+# rules: skipped when present, never fatal, and the race weekend page falls back
+# to an empty chart rather than an error.
+if [ ! -f data/laps/f1db-laps.csv ]; then
+  sh scripts/fetch-f1-laps.sh || echo "Lap fetch failed; the lap chart will be empty."
+fi
+
 # Two apps, two hostnames. Cookies are keyed on host name and ignore the port,
 # so backend and frontend on localhost:8080 / localhost:8180 would share one
 # cookie jar and silently overwrite each other's XASSESSIONID.

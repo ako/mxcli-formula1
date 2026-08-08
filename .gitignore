@@ -18,6 +18,10 @@
 # so the script is committed and the data is not, same as the f1db CSVs.
 /data/facts/
 
+# Lap-by-lap traces fetched by scripts/fetch-f1-laps.sh from Jolpica-F1. Third
+# party, re-fetchable, ~26k rows a season — script committed, data not.
+/data/laps/
+
 # DuckDB scratch files, if any are ever materialised next to the CSVs.
 *.duckdb
 *.duckdb.wal

@@ -45,6 +45,11 @@ grant F1Fan.Reader ON F1Fan.DriverRaces (READ *);
 grant F1Fan.Reader ON F1Fan.SeasonProgress (READ *);
 grant F1Fan.Reader ON F1Fan.Retirements (READ *);
 grant F1Fan.Reader ON F1Fan.Facts (READ *);
+grant F1Fan.Reader ON F1Fan.RaceWeekend (READ *);
+grant F1Fan.Reader ON F1Fan.RaceSessions (READ *);
+grant F1Fan.Reader ON F1Fan.Calendar (READ *);
+grant F1Fan.Reader ON F1Fan.WeekendShape (READ *);
+grant F1Fan.Reader ON F1Fan.LapChart (READ *);
 
 /* Pages */
 GRANT VIEW ON PAGE Formula1Frontend.Home TO Formula1Frontend.Enthusiast;
@@ -57,6 +62,7 @@ GRANT VIEW ON PAGE Formula1Frontend.RaceResults_Overview TO Formula1Frontend.Ent
 GRANT VIEW ON PAGE Formula1Frontend.Driver_Career TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Season_Summary TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Constructor_Detail TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Race_Weekend TO Formula1Frontend.Enthusiast;
 
 /* Datasource microflows. A microflow reached from a page needs its own role. */
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverFact TO Formula1Frontend.Enthusiast;
@@ -68,6 +74,11 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonProgress TO Formula1Fronten
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Retirements TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Weekend TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Calendar TO Formula1Frontend.Enthusiast;
 
 create or modify user role Enthusiast (
   Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader, System.User

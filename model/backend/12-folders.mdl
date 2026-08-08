@@ -85,6 +85,13 @@ MOVE MICROFLOW Formula1Backend.Read_SeasonProgress TO FOLDER 'Fan';
 MOVE MICROFLOW Formula1Backend.Read_Retirements    TO FOLDER 'Fan';
 MOVE MICROFLOW Formula1Backend.Read_Facts          TO FOLDER 'Fan';
 
+-- The race weekend and the lap traces behind it.
+MOVE MICROFLOW Formula1Backend.Read_RaceWeekend    TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_RaceSessions   TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_Calendar       TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_WeekendShape   TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_LapChart       TO FOLDER 'Fan/Weekend';
+
 -- Not part of the running app: these exist so tests can reach the Java actions
 -- and the dynamic-SQL path directly. Kept together so they are easy to ignore.
 MOVE MICROFLOW Formula1Backend.TestSupport_OrderLimit     TO FOLDER 'TestSupport';

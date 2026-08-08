@@ -154,6 +154,32 @@ seasons, 116 race-winning drivers and 31 winning constructors, fetched by
 like everything else. The text is CC BY-SA 4.0; the article link and licence
 travel with every row and are shown on the page.
 
+## The race weekend
+
+A fourth page, opened from any row of a season's calendar: one Grand Prix with
+every session beside the next.
+
+| Panel | From |
+|---|---|
+| Session cards | who led FP1, FP2, FP3, who took pole and with what lap, the fastest lap, the winner |
+| Position across the weekend | FP1 → FP2 → FP3 → Quali → Race for the top ten, as ten lines over five points |
+| Race position by lap | the lap-by-lap traces — the one thing f1db does not carry |
+| Session pace | each driver's gap to that session's own best, in seconds, so a wet FP1 does not skew the chart |
+| The table | code, team, all three practices, qualifying position and lap, grid, Δ, best lap, pit stops, points, retirement |
+
+**Where the lap traces come from.** f1db has every session's *result* — 17085
+fastest laps back to 1950, qualifying with Q1/Q2/Q3 splits, practice from 1986,
+22430 pit stops with lap and duration — but not a row per driver per lap. Ergast
+had that and Ergast is gone (`ergast.com` now redirects). `scripts/fetch-f1-laps.sh`
+pulls it from [Jolpica-F1](https://jolpi.ca), the community successor on the same
+API shape: 26574 timings for 2024, ~12 requests per race inside a 500/hour budget,
+written to `data/laps/f1db-laps.csv` and read by DuckDB like everything else.
+Jolpica's driver ids are not f1db's, so the join tries the slug, then the
+accent-stripped surname restricted to that race's starters.
+
+Set `LAP_SEASONS="2023 2024"` to widen it; the default is one season because two
+would exceed the hourly budget.
+
 ## The data
 
 `data/f1db/` — 47 CSV files, ~25 MB, covering every Formula 1 season from 1950

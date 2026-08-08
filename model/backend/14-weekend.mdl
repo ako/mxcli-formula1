@@ -1,0 +1,737 @@
+/*
+ * The race weekend — the fourth screen of the redesign — and the lap traces
+ * under it.
+ *
+ * Five resources, all answered for one race or one season:
+ *
+ *   RaceWeekend    the header: circuit, date, distance, who led each session
+ *   RaceSessions   one row per driver: FP1/FP2/FP3, qualifying, grid, race,
+ *                  best lap, pit stops — every gap in seconds off that
+ *                  session's own best, which is what makes them comparable
+ *                  across sessions run in different conditions
+ *   Calendar       the season's rounds and who won them, for the round nav
+ *   WeekendShape   position across the weekend: five rows, ten drivers wide
+ *   LapChart       race position by lap from the Jolpica traces, ten wide
+ *
+ * The two wide ones exist for the reason the season progression is wide: a
+ * Mendix chart series binds its Y attribute when the page is authored, so ten
+ * drivers means ten columns and the names travel as data.
+ *
+ * Gaps are seconds rather than milliseconds because that is what the axis
+ * reads in, and they are computed against the best time in that session for
+ * that race — not against the weekend's best — so a wet FP1 does not push every
+ * bar off the chart.
+ */
+
+/* ------------------------------------------------------------------ header */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceWeekend (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_RaceWeekend AS $Rows
+BEGIN
+  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Races String = 'read_csv(''' + $Dir + '/f1db-races.csv'')';
+  DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drivers String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Teams String = 'read_csv(''' + $Dir + '/f1db-constructors.csv'')';
+  DECLARE $Circuits String = 'read_csv(''' + $Dir + '/f1db-circuits.csv'')';
+  DECLARE $Qual String = 'read_csv(''' + $Dir + '/f1db-races-qualifying-results.csv'')';
+  DECLARE $Fast String = 'read_csv(''' + $Dir + '/f1db-races-fastest-laps.csv'')';
+  DECLARE $Fp1 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-1-results.csv'')';
+  DECLARE $Fp2 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-2-results.csv'')';
+  DECLARE $Fp3 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-3-results.csv'')';
+
+  -- No race means the most recent one that has a result, so the page opens on
+  -- something rather than on nothing.
+  DECLARE $Target String = '(SELECT max(raceId) FROM ' + $Results + ')';
+  IF $RaceId != 0 THEN
+    SET $Target = toString($RaceId);
+  END IF;
+
+  DECLARE $Sql String = 'WITH t AS (SELECT ' + $Target + ' AS rid)'
+    + ' SELECT CAST(r.id AS VARCHAR) AS weekendKey, r.id AS raceId,'
+    + '        r.year AS year, r.round AS round,'
+    + '        ''Round '' || r.round AS roundLabel,'
+    + '        COALESCE(r.officialName, ''Round '' || r.round) AS name,'
+    + '        COALESCE(c.fullName, c.name, ''-'') AS circuitName,'
+    + '        r.circuitId AS circuitId, r.date AS raceDate,'
+    + '        r.laps AS laps, r.distance AS distance,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Results + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS winnerName,'
+    + '        (SELECT COALESCE(k.name, ''-'') FROM ' + $Results + ' x'
+    + '           LEFT JOIN ' + $Teams + ' k ON k.id = x.constructorId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS winnerTeam,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Qual + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS poleName,'
+    + '        (SELECT COALESCE(x.q3, x.q2, x.q1, x.time, ''-'') FROM ' + $Qual + ' x'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS poleTime,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Fast + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fastestLapName,'
+    + '        (SELECT COALESCE(x.time, ''-'') FROM ' + $Fast + ' x'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fastestLapTime,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Fp1 + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp1LeaderName,'
+    + '        (SELECT COALESCE(x.time, ''-'') FROM ' + $Fp1 + ' x'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp1LeaderTime,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Fp2 + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp2LeaderName,'
+    + '        (SELECT COALESCE(x.time, ''-'') FROM ' + $Fp2 + ' x'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp2LeaderTime,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Fp3 + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp3LeaderName,'
+    + '        (SELECT COALESCE(x.time, ''-'') FROM ' + $Fp3 + ' x'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS fp3LeaderTime'
+    + ' FROM ' + $Races + ' r'
+    + ' LEFT JOIN ' + $Circuits + ' c ON c.id = r.circuitId'
+    + ' WHERE r.id = (SELECT rid FROM t)';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceWeekend
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* ---------------------------------------------------------------- sessions */
+
+/*
+ * The weekend as one row per driver. Each practice, qualifying and the fastest
+ * lap join in on (raceId, driverId), and each gap is that driver's time minus
+ * the session's best, in seconds.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceSessions (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_RaceSession AS $Rows
+BEGIN
+  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drivers String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Teams String = 'read_csv(''' + $Dir + '/f1db-constructors.csv'')';
+  DECLARE $Qual String = 'read_csv(''' + $Dir + '/f1db-races-qualifying-results.csv'')';
+  DECLARE $Fast String = 'read_csv(''' + $Dir + '/f1db-races-fastest-laps.csv'')';
+  DECLARE $Pits String = 'read_csv(''' + $Dir + '/f1db-races-pit-stops.csv'')';
+  DECLARE $Fp1 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-1-results.csv'')';
+  DECLARE $Fp2 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-2-results.csv'')';
+  DECLARE $Fp3 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-3-results.csv'')';
+
+  DECLARE $Target String = '(SELECT max(raceId) FROM ' + $Results + ')';
+  IF $RaceId != 0 THEN
+    SET $Target = toString($RaceId);
+  END IF;
+
+  DECLARE $Sql String = 'WITH t AS (SELECT ' + $Target + ' AS rid),'
+    + ' best AS ('
+    + '   SELECT (SELECT min(timeMillis) FROM ' + $Fp1
+    + '            WHERE raceId = (SELECT rid FROM t)) AS fp1,'
+    + '          (SELECT min(timeMillis) FROM ' + $Fp2
+    + '            WHERE raceId = (SELECT rid FROM t)) AS fp2,'
+    + '          (SELECT min(timeMillis) FROM ' + $Fp3
+    + '            WHERE raceId = (SELECT rid FROM t)) AS fp3,'
+    + '          (SELECT min(COALESCE(q3Millis, q2Millis, q1Millis, timeMillis))'
+    + '             FROM ' + $Qual + ' WHERE raceId = (SELECT rid FROM t)) AS qual,'
+    + '          (SELECT min(timeMillis) FROM ' + $Fast
+    + '            WHERE raceId = (SELECT rid FROM t)) AS lap)'
+    + ' SELECT rr.raceId || ''-'' || rr.driverId AS sessionKey,'
+    + '        rr.raceId AS raceId, rr.year AS year, rr.round AS round,'
+    + '        rr.driverId AS driverId, COALESCE(d.name, rr.driverId) AS driverName,'
+    + '        COALESCE(d.abbreviation, '''') AS abbreviation,'
+    + '        COALESCE(k.name, ''-'') AS constructorName,'
+    + '        fp1.positionNumber AS fp1Position, fp1.time AS fp1Time,'
+    + '        round((fp1.timeMillis - (SELECT fp1 FROM best)) / 1000.0, 3) AS fp1Gap,'
+    + '        fp2.positionNumber AS fp2Position, fp2.time AS fp2Time,'
+    + '        round((fp2.timeMillis - (SELECT fp2 FROM best)) / 1000.0, 3) AS fp2Gap,'
+    + '        fp3.positionNumber AS fp3Position, fp3.time AS fp3Time,'
+    + '        round((fp3.timeMillis - (SELECT fp3 FROM best)) / 1000.0, 3) AS fp3Gap,'
+    + '        q.positionNumber AS qualPosition,'
+    + '        COALESCE(q.q3, q.q2, q.q1, q.time) AS qualTime,'
+    + '        round((COALESCE(q.q3Millis, q.q2Millis, q.q1Millis, q.timeMillis)'
+    + '               - (SELECT qual FROM best)) / 1000.0, 3) AS qualGap,'
+    + '        q.q1 AS q1, q.q2 AS q2, q.q3 AS q3,'
+    + '        rr.gridPositionNumber AS gridPosition,'
+    + '        rr.positionNumber AS finishPosition, rr.positionText AS positionText,'
+    + '        rr.positionsGained AS positionsGained, rr.points AS points,'
+    + '        rr.reasonRetired AS reasonRetired,'
+    + '        f.time AS bestLapTime,'
+    + '        round((f.timeMillis - (SELECT lap FROM best)) / 1000.0, 3) AS bestLapGap,'
+    + '        f.positionNumber AS bestLapRank,'
+    + '        (SELECT count(*) FROM ' + $Pits + ' p'
+    + '          WHERE p.raceId = rr.raceId AND p.driverId = rr.driverId) AS pitStops'
+    + ' FROM ' + $Results + ' rr'
+    + ' LEFT JOIN ' + $Drivers + ' d ON d.id = rr.driverId'
+    + ' LEFT JOIN ' + $Teams + ' k ON k.id = rr.constructorId'
+    + ' LEFT JOIN ' + $Fp1 + ' fp1 ON fp1.raceId = rr.raceId AND fp1.driverId = rr.driverId'
+    + ' LEFT JOIN ' + $Fp2 + ' fp2 ON fp2.raceId = rr.raceId AND fp2.driverId = rr.driverId'
+    + ' LEFT JOIN ' + $Fp3 + ' fp3 ON fp3.raceId = rr.raceId AND fp3.driverId = rr.driverId'
+    + ' LEFT JOIN ' + $Qual + ' q ON q.raceId = rr.raceId AND q.driverId = rr.driverId'
+    + ' LEFT JOIN ' + $Fast + ' f ON f.raceId = rr.raceId AND f.driverId = rr.driverId'
+    + ' WHERE rr.raceId = (SELECT rid FROM t)'
+    + ' ORDER BY rr.positionDisplayOrder';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceSessions
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* ---------------------------------------------------------------- calendar */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Calendar (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_Calendar AS $Rows
+BEGIN
+  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Races String = 'read_csv(''' + $Dir + '/f1db-races.csv'')';
+  DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drivers String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Teams String = 'read_csv(''' + $Dir + '/f1db-constructors.csv'')';
+  DECLARE $Circuits String = 'read_csv(''' + $Dir + '/f1db-circuits.csv'')';
+  DECLARE $Gp String = 'read_csv(''' + $Dir + '/f1db-grands-prix.csv'')';
+
+  DECLARE $YearSql String = '(SELECT max(year) FROM ' + $Races + ')';
+  IF $Year != 0 THEN
+    SET $YearSql = toString($Year);
+  END IF;
+
+  DECLARE $Sql String = 'SELECT r.id || ''-c'' AS calendarKey, r.id AS raceId,'
+    + '        r.year AS year, r.round AS round,'
+    + '        upper(COALESCE(g.abbreviation, substr(r.grandPrixId, 1, 3))) AS code,'
+    + '        COALESCE(r.officialName, ''Round '' || r.round) AS name,'
+    + '        COALESCE(c.name, ''-'') AS circuitName, r.date AS raceDate,'
+    + '        (SELECT COALESCE(d.name, ''-'') FROM ' + $Results + ' x'
+    + '           LEFT JOIN ' + $Drivers + ' d ON d.id = x.driverId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS winnerName,'
+    + '        (SELECT COALESCE(k.name, ''-'') FROM ' + $Results + ' x'
+    + '           LEFT JOIN ' + $Teams + ' k ON k.id = x.constructorId'
+    + '          WHERE x.raceId = r.id AND x.positionNumber = 1 LIMIT 1) AS winnerTeam'
+    + ' FROM ' + $Races + ' r'
+    + ' LEFT JOIN ' + $Circuits + ' c ON c.id = r.circuitId'
+    + ' LEFT JOIN ' + $Gp + ' g ON g.id = r.grandPrixId'
+    + ' WHERE r.year = ' + $YearSql
+    + ' ORDER BY r.round';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetCalendar
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* ---------------------------------------------------------- weekend shape */
+
+/*
+ * Position across the weekend: FP1, FP2, FP3, qualifying, race as five rows,
+ * the top ten finishers as ten columns. A UNION ALL stacks the five sessions
+ * into one shape, then the pivot turns the ten drivers into columns because a
+ * chart series cannot be created per season.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_WeekendShape (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_WeekendShape AS $Rows
+BEGIN
+  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drivers String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Qual String = 'read_csv(''' + $Dir + '/f1db-races-qualifying-results.csv'')';
+  DECLARE $Fp1 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-1-results.csv'')';
+  DECLARE $Fp2 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-2-results.csv'')';
+  DECLARE $Fp3 String = 'read_csv(''' + $Dir + '/f1db-races-free-practice-3-results.csv'')';
+
+  DECLARE $Target String = '(SELECT max(raceId) FROM ' + $Results + ')';
+  IF $RaceId != 0 THEN
+    SET $Target = toString($RaceId);
+  END IF;
+
+  DECLARE $Sql String = 'WITH t AS (SELECT ' + $Target + ' AS rid),'
+    + ' top10 AS ('
+    + '   SELECT row_number() OVER (ORDER BY rr.positionDisplayOrder) AS rk,'
+    + '          rr.driverId AS driverId,'
+    + '          COALESCE(d.abbreviation, d.name, rr.driverId) AS who'
+    + '   FROM ' + $Results + ' rr'
+    + '   LEFT JOIN ' + $Drivers + ' d ON d.id = rr.driverId'
+    + '   WHERE rr.raceId = (SELECT rid FROM t)'
+    + '   ORDER BY rr.positionDisplayOrder LIMIT 10),'
+    + ' sess AS ('
+    + '   SELECT 1 AS idx, ''FP1'' AS label, driverId, positionNumber AS pos'
+    + '     FROM ' + $Fp1 + ' WHERE raceId = (SELECT rid FROM t)'
+    + '   UNION ALL SELECT 2, ''FP2'', driverId, positionNumber'
+    + '     FROM ' + $Fp2 + ' WHERE raceId = (SELECT rid FROM t)'
+    + '   UNION ALL SELECT 3, ''FP3'', driverId, positionNumber'
+    + '     FROM ' + $Fp3 + ' WHERE raceId = (SELECT rid FROM t)'
+    + '   UNION ALL SELECT 4, ''Quali'', driverId, positionNumber'
+    + '     FROM ' + $Qual + ' WHERE raceId = (SELECT rid FROM t)'
+    + '   UNION ALL SELECT 5, ''Race'', driverId, positionNumber'
+    + '     FROM ' + $Results + ' WHERE raceId = (SELECT rid FROM t)),'
+    + ' g AS (SELECT s.idx, s.label, x.rk, x.who, s.pos AS val'
+    + '       FROM sess s JOIN top10 x ON x.driverId = s.driverId)'
+    + ' SELECT (SELECT rid FROM t) || ''-'' || idx AS shapeKey,'
+    + '        (SELECT rid FROM t) AS raceId, idx AS sessionIndex,'
+    + '        label AS sessionLabel,'
+    + '        max(CASE WHEN rk = 1 THEN who END) AS s1name,'
+    + '        max(CASE WHEN rk = 2 THEN who END) AS s2name,'
+    + '        max(CASE WHEN rk = 3 THEN who END) AS s3name,'
+    + '        max(CASE WHEN rk = 4 THEN who END) AS s4name,'
+    + '        max(CASE WHEN rk = 5 THEN who END) AS s5name,'
+    + '        max(CASE WHEN rk = 6 THEN who END) AS s6name,'
+    + '        max(CASE WHEN rk = 7 THEN who END) AS s7name,'
+    + '        max(CASE WHEN rk = 8 THEN who END) AS s8name,'
+    + '        max(CASE WHEN rk = 9 THEN who END) AS s9name,'
+    + '        max(CASE WHEN rk = 10 THEN who END) AS s10name,'
+    + '        max(CASE WHEN rk = 1 THEN val END) AS s1value,'
+    + '        max(CASE WHEN rk = 2 THEN val END) AS s2value,'
+    + '        max(CASE WHEN rk = 3 THEN val END) AS s3value,'
+    + '        max(CASE WHEN rk = 4 THEN val END) AS s4value,'
+    + '        max(CASE WHEN rk = 5 THEN val END) AS s5value,'
+    + '        max(CASE WHEN rk = 6 THEN val END) AS s6value,'
+    + '        max(CASE WHEN rk = 7 THEN val END) AS s7value,'
+    + '        max(CASE WHEN rk = 8 THEN val END) AS s8value,'
+    + '        max(CASE WHEN rk = 9 THEN val END) AS s9value,'
+    + '        max(CASE WHEN rk = 10 THEN val END) AS s10value'
+    + ' FROM g GROUP BY idx, label ORDER BY idx';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetWeekendShape
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* ------------------------------------------------------------- lap traces */
+
+/*
+ * Race position by lap, the one thing f1db does not carry.
+ *
+ * scripts/fetch-f1-laps.sh writes data/laps/f1db-laps.csv from Jolpica, the
+ * Ergast successor. Its driver ids use underscores where f1db uses hyphens, so
+ * the join swaps one for the other and falls back to the raw ref.
+ *
+ * Columns are declared rather than sniffed for the same reason the facts query
+ * declares them: the file is legitimately header-only when nothing was fetched,
+ * and read_csv infers nothing from an empty file.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LapChart (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LapChart AS $Rows
+BEGIN
+  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+  $Round = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+    Uri = $Request/Uri, Field = 'round', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Drivers String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Results String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $LapsCsv String = 'read_csv(''' + $Dir + '/../laps/f1db-laps.csv'','
+    + ' header = true,'
+    + ' columns = {''year'': ''BIGINT'', ''round'': ''BIGINT'', ''lap'': ''BIGINT'','
+    + '            ''driverRef'': ''VARCHAR'', ''position'': ''BIGINT'','
+    + '            ''time'': ''VARCHAR'', ''timeMillis'': ''BIGINT''})';
+
+  -- Both filters are required: without a race there is nothing to draw, and
+  -- every lap of every fetched season is not a chart.
+  DECLARE $Where String = ' WHERE 1=0';
+  IF $Year != 0 THEN
+    IF $Round != 0 THEN
+      SET $Where = ' WHERE year = ' + toString($Year) + ' AND round = ' + toString($Round);
+    END IF;
+  END IF;
+
+  /*
+   * Jolpica's driver ids are not f1db's. Some are the same slug with
+   * underscores (max_verstappen), but most of the modern grid is a bare surname
+   * (perez, sainz), and f1db stores that surname accented (Pérez). So `dref`
+   * tries the slug, then the accent-stripped surname restricted to the drivers
+   * who actually started this race — which removes the 47 surnames shared by
+   * more than one driver in the archive — then gives up and shouts the ref.
+   *
+   * The comment lives here rather than inside the expression: a comment between
+   * two `+` operands is passed through into the Mendix expression and fails the
+   * build with "Error(s) in expression".
+   */
+  DECLARE $Sql String = 'WITH laps AS (SELECT * FROM ' + $LapsCsv + $Where + '),'
+    + ' final AS (SELECT driverRef, position FROM laps'
+    + '            WHERE lap = (SELECT max(lap) FROM laps)),'
+    + ' dref AS ('
+    + '   SELECT x.driverRef AS driverRef, COALESCE('
+    + '     (SELECT d.abbreviation FROM ' + $Drivers + ' d'
+    + '       WHERE d.id = replace(x.driverRef, ''_'', ''-'') LIMIT 1),'
+    + '     (SELECT d.abbreviation FROM ' + $Drivers + ' d'
+    + '        JOIN ' + $Results + ' rr ON rr.driverId = d.id'
+    + '       WHERE rr.year = ' + toString($Year) + ' AND rr.round = ' + toString($Round)
+    + '         AND lower(strip_accents(d.lastName)) = x.driverRef LIMIT 1),'
+    + '     upper(x.driverRef)) AS who'
+    + '   FROM (SELECT DISTINCT driverRef FROM laps) x),'
+    + ' top10 AS ('
+    + '   SELECT row_number() OVER (ORDER BY f.position) AS rk, f.driverRef AS driverRef,'
+    + '          dref.who AS who'
+    + '   FROM final f JOIN dref ON dref.driverRef = f.driverRef'
+    + '   ORDER BY f.position LIMIT 10),'
+    + ' g AS (SELECT l.lap, x.rk, x.who, l.position AS val'
+    + '       FROM laps l JOIN top10 x ON x.driverRef = l.driverRef)'
+    + ' SELECT ''lap-'' || lap AS lapKey, ' + toString($Year) + ' AS year, '
+    + toString($Round) + ' AS round, lap AS lap,'
+    + '        max(CASE WHEN rk = 1 THEN who END) AS s1name,'
+    + '        max(CASE WHEN rk = 2 THEN who END) AS s2name,'
+    + '        max(CASE WHEN rk = 3 THEN who END) AS s3name,'
+    + '        max(CASE WHEN rk = 4 THEN who END) AS s4name,'
+    + '        max(CASE WHEN rk = 5 THEN who END) AS s5name,'
+    + '        max(CASE WHEN rk = 6 THEN who END) AS s6name,'
+    + '        max(CASE WHEN rk = 7 THEN who END) AS s7name,'
+    + '        max(CASE WHEN rk = 8 THEN who END) AS s8name,'
+    + '        max(CASE WHEN rk = 9 THEN who END) AS s9name,'
+    + '        max(CASE WHEN rk = 10 THEN who END) AS s10name,'
+    + '        max(CASE WHEN rk = 1 THEN val END) AS s1value,'
+    + '        max(CASE WHEN rk = 2 THEN val END) AS s2value,'
+    + '        max(CASE WHEN rk = 3 THEN val END) AS s3value,'
+    + '        max(CASE WHEN rk = 4 THEN val END) AS s4value,'
+    + '        max(CASE WHEN rk = 5 THEN val END) AS s5value,'
+    + '        max(CASE WHEN rk = 6 THEN val END) AS s6value,'
+    + '        max(CASE WHEN rk = 7 THEN val END) AS s7value,'
+    + '        max(CASE WHEN rk = 8 THEN val END) AS s8value,'
+    + '        max(CASE WHEN rk = 9 THEN val END) AS s9value,'
+    + '        max(CASE WHEN rk = 10 THEN val END) AS s10value'
+    + ' FROM g GROUP BY lap ORDER BY lap';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLapChart
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/* -------------------------------------------------------------------- service */
+
+/*
+ * The five weekend resources join the fan service rather than starting a
+ * fourth: they answer the same kind of question, and the frontend already has
+ * a module and a client for it.
+ *
+ * `create or modify odata service` keeps what it is not told about (FINDINGS
+ * §26 is fixed as of c76d4b7), so this re-declares every resource the service
+ * publishes — the five from 13 and the five here — rather than trusting a
+ * partial modify.
+ */
+
+create or modify odata service Formula1Backend.F1FanApi (
+  path: 'odata/f1-fan/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Fan'
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Stg_RaceWeekend as 'RaceWeekend' (
+    ReadMode: microflow Formula1Backend.Read_RaceWeekend,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    WeekendKey as 'weekendKey' (KEY, Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RoundLabel as 'roundLabel' (Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    CircuitId as 'circuitId' (Filterable, Sortable),
+    RaceDate as 'raceDate' (Filterable, Sortable),
+    Laps as 'laps' (Filterable, Sortable),
+    Distance as 'distance' (Filterable, Sortable),
+    WinnerName as 'winnerName' (Filterable, Sortable),
+    WinnerTeam as 'winnerTeam' (Filterable, Sortable),
+    PoleName as 'poleName' (Filterable, Sortable),
+    PoleTime as 'poleTime' (Filterable, Sortable),
+    FastestLapName as 'fastestLapName' (Filterable, Sortable),
+    FastestLapTime as 'fastestLapTime' (Filterable, Sortable),
+    Fp1LeaderName as 'fp1LeaderName' (Filterable, Sortable),
+    Fp1LeaderTime as 'fp1LeaderTime' (Filterable, Sortable),
+    Fp2LeaderName as 'fp2LeaderName' (Filterable, Sortable),
+    Fp2LeaderTime as 'fp2LeaderTime' (Filterable, Sortable),
+    Fp3LeaderName as 'fp3LeaderName' (Filterable, Sortable),
+    Fp3LeaderTime as 'fp3LeaderTime' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_RaceSession as 'RaceSessions' (
+    ReadMode: microflow Formula1Backend.Read_RaceSessions,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    SessionKey as 'sessionKey' (KEY, Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Abbreviation as 'abbreviation' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    Fp1Position as 'fp1Position' (Filterable, Sortable),
+    Fp1Time as 'fp1Time' (Filterable, Sortable),
+    Fp1Gap as 'fp1Gap' (Filterable, Sortable),
+    Fp2Position as 'fp2Position' (Filterable, Sortable),
+    Fp2Time as 'fp2Time' (Filterable, Sortable),
+    Fp2Gap as 'fp2Gap' (Filterable, Sortable),
+    Fp3Position as 'fp3Position' (Filterable, Sortable),
+    Fp3Time as 'fp3Time' (Filterable, Sortable),
+    Fp3Gap as 'fp3Gap' (Filterable, Sortable),
+    QualPosition as 'qualPosition' (Filterable, Sortable),
+    QualTime as 'qualTime' (Filterable, Sortable),
+    QualGap as 'qualGap' (Filterable, Sortable),
+    Q1 as 'q1' (Filterable, Sortable),
+    Q2 as 'q2' (Filterable, Sortable),
+    Q3 as 'q3' (Filterable, Sortable),
+    GridPosition as 'gridPosition' (Filterable, Sortable),
+    FinishPosition as 'finishPosition' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    PositionsGained as 'positionsGained' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
+    BestLapTime as 'bestLapTime' (Filterable, Sortable),
+    BestLapGap as 'bestLapGap' (Filterable, Sortable),
+    BestLapRank as 'bestLapRank' (Filterable, Sortable),
+    PitStops as 'pitStops' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Calendar as 'Calendar' (
+    ReadMode: microflow Formula1Backend.Read_Calendar,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    CalendarKey as 'calendarKey' (KEY, Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    RaceDate as 'raceDate' (Filterable, Sortable),
+    WinnerName as 'winnerName' (Filterable, Sortable),
+    WinnerTeam as 'winnerTeam' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_WeekendShape as 'WeekendShape' (
+    ReadMode: microflow Formula1Backend.Read_WeekendShape,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    ShapeKey as 'shapeKey' (KEY, Filterable, Sortable),
+    RaceId as 'raceId' (Filterable, Sortable),
+    SessionIndex as 'sessionIndex' (Filterable, Sortable),
+    SessionLabel as 'sessionLabel' (Filterable, Sortable),
+    S1Name as 's1name' (Filterable, Sortable),
+    S2Name as 's2name' (Filterable, Sortable),
+    S3Name as 's3name' (Filterable, Sortable),
+    S4Name as 's4name' (Filterable, Sortable),
+    S5Name as 's5name' (Filterable, Sortable),
+    S6Name as 's6name' (Filterable, Sortable),
+    S7Name as 's7name' (Filterable, Sortable),
+    S8Name as 's8name' (Filterable, Sortable),
+    S9Name as 's9name' (Filterable, Sortable),
+    S10Name as 's10name' (Filterable, Sortable),
+    S1Value as 's1value' (Filterable, Sortable),
+    S2Value as 's2value' (Filterable, Sortable),
+    S3Value as 's3value' (Filterable, Sortable),
+    S4Value as 's4value' (Filterable, Sortable),
+    S5Value as 's5value' (Filterable, Sortable),
+    S6Value as 's6value' (Filterable, Sortable),
+    S7Value as 's7value' (Filterable, Sortable),
+    S8Value as 's8value' (Filterable, Sortable),
+    S9Value as 's9value' (Filterable, Sortable),
+    S10Value as 's10value' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_LapChart as 'LapChart' (
+    ReadMode: microflow Formula1Backend.Read_LapChart,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    LapKey as 'lapKey' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    S1Name as 's1name' (Filterable, Sortable),
+    S2Name as 's2name' (Filterable, Sortable),
+    S3Name as 's3name' (Filterable, Sortable),
+    S4Name as 's4name' (Filterable, Sortable),
+    S5Name as 's5name' (Filterable, Sortable),
+    S6Name as 's6name' (Filterable, Sortable),
+    S7Name as 's7name' (Filterable, Sortable),
+    S8Name as 's8name' (Filterable, Sortable),
+    S9Name as 's9name' (Filterable, Sortable),
+    S10Name as 's10name' (Filterable, Sortable),
+    S1Value as 's1value' (Filterable, Sortable),
+    S2Value as 's2value' (Filterable, Sortable),
+    S3Value as 's3value' (Filterable, Sortable),
+    S4Value as 's4value' (Filterable, Sortable),
+    S5Value as 's5value' (Filterable, Sortable),
+    S6Value as 's6value' (Filterable, Sortable),
+    S7Value as 's7value' (Filterable, Sortable),
+    S8Value as 's8value' (Filterable, Sortable),
+    S9Value as 's9value' (Filterable, Sortable),
+    S10Value as 's10value' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_DriverSeason as 'DriverSeasons' (
+    ReadMode: microflow Formula1Backend.Read_DriverSeasons,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    SeasonKey as 'seasonKey' (KEY, Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Constructors as 'constructors' (Filterable, Sortable),
+    StandingPosition as 'standingPosition' (Filterable, Sortable),
+    StandingOrder as 'standingOrder' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    Starts as 'starts' (Filterable, Sortable),
+    Wins as 'wins' (Filterable, Sortable),
+    Podiums as 'podiums' (Filterable, Sortable),
+    Poles as 'poles' (Filterable, Sortable),
+    BestFinish as 'bestFinish' (Filterable, Sortable),
+    AvgQualifying as 'avgQualifying' (Filterable, Sortable),
+    AvgFinish as 'avgFinish' (Filterable, Sortable),
+    Retirements as 'retirements' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_DriverRace as 'DriverRaces' (
+    ReadMode: microflow Formula1Backend.Read_DriverRaces,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    RaceKey as 'raceKey' (KEY, Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceName as 'raceName' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    Fp1Position as 'fp1Position' (Filterable, Sortable),
+    Fp2Position as 'fp2Position' (Filterable, Sortable),
+    Fp3Position as 'fp3Position' (Filterable, Sortable),
+    QualifyingPosition as 'qualifyingPosition' (Filterable, Sortable),
+    GridPosition as 'gridPosition' (Filterable, Sortable),
+    FinishPosition as 'finishPosition' (Filterable, Sortable),
+    PositionText as 'positionText' (Filterable, Sortable),
+    PositionsGained as 'positionsGained' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_SeasonProgress as 'SeasonProgress' (
+    ReadMode: microflow Formula1Backend.Read_SeasonProgress,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    ProgressKey as 'progressKey' (KEY, Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    RaceName as 'raceName' (Filterable, Sortable),
+    D1Name as 'd1Name' (Filterable, Sortable),
+    D2Name as 'd2Name' (Filterable, Sortable),
+    D3Name as 'd3Name' (Filterable, Sortable),
+    D4Name as 'd4Name' (Filterable, Sortable),
+    D5Name as 'd5Name' (Filterable, Sortable),
+    D1Points as 'd1Points' (Filterable, Sortable),
+    D2Points as 'd2Points' (Filterable, Sortable),
+    D3Points as 'd3Points' (Filterable, Sortable),
+    D4Points as 'd4Points' (Filterable, Sortable),
+    D5Points as 'd5Points' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Retirement as 'Retirements' (
+    ReadMode: microflow Formula1Backend.Read_Retirements,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    RetirementKey as 'retirementKey' (KEY, Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
+    Retirements as 'retirements' (Filterable, Sortable),
+    Entries as 'entries' (Filterable, Sortable),
+    SharePercent as 'sharePercent' (Filterable, Sortable),
+    FirstYear as 'firstYear' (Filterable, Sortable),
+    LastYear as 'lastYear' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_Fact as 'Facts' (
+    ReadMode: microflow Formula1Backend.Read_Facts,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    FactKey as 'factKey' (KEY, Filterable, Sortable),
+    Scope as 'scope' (Filterable, Sortable),
+    EntityId as 'entityId' (Filterable, Sortable),
+    Title as 'title' (Filterable, Sortable),
+    Extract as 'extract' (Filterable, Sortable),
+    SourceUrl as 'sourceUrl' (Filterable, Sortable),
+    License as 'license' (Filterable, Sortable)
+  );
+};
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceWeekend TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceWeekend TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceSessions TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceSessions TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Calendar TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Calendar TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_WeekendShape TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_WeekendShape TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.DataAdmin;
+
+/*
+ * The service grants live here too, and they have to: `create or modify odata
+ * service` still drops role access when it rewrites a service (FINDINGS §26 —
+ * the published-member half is fixed in c76d4b7, this half is not). 13 granted
+ * them, 14 recreates the service, and the build then fails with "At least one
+ * allowed role must be selected for the published OData service to be
+ * accessible." Re-granting after the declaration is the whole fix.
+ */
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;

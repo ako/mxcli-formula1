@@ -345,123 +345,14 @@ BEGIN
   RETURN $Rows;
 END;
 
-/* -------------------------------------------------------------------- service */
-
-create or modify odata service Formula1Backend.F1FanApi (
-  path: 'odata/f1-fan/',
-  version: '1.0.0',
-  ODataVersion: OData4,
-  namespace: 'Formula1Backend.Fan'
-)
-authentication basic, session
-{
-  publish entity Formula1Backend.Stg_DriverSeason as 'DriverSeasons' (
-    ReadMode: microflow Formula1Backend.Read_DriverSeasons,
-    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: Yes
-  )
-  expose (
-    SeasonKey as 'seasonKey' (KEY, Filterable, Sortable),
-    DriverId as 'driverId' (Filterable, Sortable),
-    Year as 'year' (Filterable, Sortable),
-    Constructors as 'constructors' (Filterable, Sortable),
-    StandingPosition as 'standingPosition' (Filterable, Sortable),
-    StandingOrder as 'standingOrder' (Filterable, Sortable),
-    Points as 'points' (Filterable, Sortable),
-    Starts as 'starts' (Filterable, Sortable),
-    Wins as 'wins' (Filterable, Sortable),
-    Podiums as 'podiums' (Filterable, Sortable),
-    Poles as 'poles' (Filterable, Sortable),
-    BestFinish as 'bestFinish' (Filterable, Sortable),
-    AvgQualifying as 'avgQualifying' (Filterable, Sortable),
-    AvgFinish as 'avgFinish' (Filterable, Sortable),
-    Retirements as 'retirements' (Filterable, Sortable)
-  );
-
-  publish entity Formula1Backend.Stg_DriverRace as 'DriverRaces' (
-    ReadMode: microflow Formula1Backend.Read_DriverRaces,
-    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: Yes
-  )
-  expose (
-    RaceKey as 'raceKey' (KEY, Filterable, Sortable),
-    DriverId as 'driverId' (Filterable, Sortable),
-    Year as 'year' (Filterable, Sortable),
-    Round as 'round' (Filterable, Sortable),
-    RaceName as 'raceName' (Filterable, Sortable),
-    ConstructorName as 'constructorName' (Filterable, Sortable),
-    Fp1Position as 'fp1Position' (Filterable, Sortable),
-    Fp2Position as 'fp2Position' (Filterable, Sortable),
-    Fp3Position as 'fp3Position' (Filterable, Sortable),
-    QualifyingPosition as 'qualifyingPosition' (Filterable, Sortable),
-    GridPosition as 'gridPosition' (Filterable, Sortable),
-    FinishPosition as 'finishPosition' (Filterable, Sortable),
-    PositionText as 'positionText' (Filterable, Sortable),
-    PositionsGained as 'positionsGained' (Filterable, Sortable),
-    Points as 'points' (Filterable, Sortable),
-    ReasonRetired as 'reasonRetired' (Filterable, Sortable)
-  );
-
-  publish entity Formula1Backend.Stg_SeasonProgress as 'SeasonProgress' (
-    ReadMode: microflow Formula1Backend.Read_SeasonProgress,
-    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: Yes
-  )
-  expose (
-    ProgressKey as 'progressKey' (KEY, Filterable, Sortable),
-    Year as 'year' (Filterable, Sortable),
-    Round as 'round' (Filterable, Sortable),
-    RaceName as 'raceName' (Filterable, Sortable),
-    D1Name as 'd1Name' (Filterable, Sortable),
-    D2Name as 'd2Name' (Filterable, Sortable),
-    D3Name as 'd3Name' (Filterable, Sortable),
-    D4Name as 'd4Name' (Filterable, Sortable),
-    D5Name as 'd5Name' (Filterable, Sortable),
-    D1Points as 'd1Points' (Filterable, Sortable),
-    D2Points as 'd2Points' (Filterable, Sortable),
-    D3Points as 'd3Points' (Filterable, Sortable),
-    D4Points as 'd4Points' (Filterable, Sortable),
-    D5Points as 'd5Points' (Filterable, Sortable)
-  );
-
-  publish entity Formula1Backend.Stg_Retirement as 'Retirements' (
-    ReadMode: microflow Formula1Backend.Read_Retirements,
-    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: Yes
-  )
-  expose (
-    RetirementKey as 'retirementKey' (KEY, Filterable, Sortable),
-    ConstructorId as 'constructorId' (Filterable, Sortable),
-    ConstructorName as 'constructorName' (Filterable, Sortable),
-    ReasonRetired as 'reasonRetired' (Filterable, Sortable),
-    Retirements as 'retirements' (Filterable, Sortable),
-    Entries as 'entries' (Filterable, Sortable),
-    SharePercent as 'sharePercent' (Filterable, Sortable),
-    FirstYear as 'firstYear' (Filterable, Sortable),
-    LastYear as 'lastYear' (Filterable, Sortable)
-  );
-
-  publish entity Formula1Backend.Stg_Fact as 'Facts' (
-    ReadMode: microflow Formula1Backend.Read_Facts,
-    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: Yes
-  )
-  expose (
-    FactKey as 'factKey' (KEY, Filterable, Sortable),
-    Scope as 'scope' (Filterable, Sortable),
-    EntityId as 'entityId' (Filterable, Sortable),
-    Title as 'title' (Filterable, Sortable),
-    Extract as 'extract' (Filterable, Sortable),
-    SourceUrl as 'sourceUrl' (Filterable, Sortable),
-    License as 'license' (Filterable, Sortable)
-  );
-};
-
 /*
- * A read microflow reached from a published service needs an allowed role of
- * its own — the grant on the service is not enough, and the build says so
- * (CE0106, "At least one allowed role must be selected").
+ * The service itself moved to 14-weekend.mdl when the weekend resources were
+ * added. `create or modify odata service` takes the whole surface, so one file
+ * has to declare all ten resources — splitting it across two would be the same
+ * ownership trap 10 documents for microflows. The five microflows above are
+ * still owned here; only the publication moved.
  */
+
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverSeasons TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverRaces TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_SeasonProgress TO Formula1Backend.ApiUser;

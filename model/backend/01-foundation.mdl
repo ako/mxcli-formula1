@@ -262,6 +262,157 @@ create or modify non-persistent entity Formula1Backend.Stg_Fact (
 );
 
 /* ---------------------------------------------------------------------------
+ * The race weekend, and the lap traces behind it.
+ *
+ * f1db carries every session's result — three practices, qualifying, the race,
+ * the fastest lap, every pit stop — with times and gaps. What it does not carry
+ * is a row per driver per lap; that is fetched from Jolpica (the Ergast
+ * successor) into data/laps/ and read the same way.
+ *
+ * The two chart shapes are wide on purpose, for the reason the season
+ * progression is: a Mendix chart series binds its Y attribute when the page is
+ * authored, so ten drivers means ten columns, not ten rows.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_RaceWeekend (
+  WeekendKey: string(40),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  RoundLabel: string(40),
+  Name: string(200),
+  CircuitName: string(120),
+  CircuitId: string(60),
+  RaceDate: datetime,
+  Laps: long,
+  Distance: decimal,
+  WinnerName: string(120),
+  WinnerTeam: string(120),
+  PoleName: string(120),
+  PoleTime: string(30),
+  FastestLapName: string(120),
+  FastestLapTime: string(30),
+  Fp1LeaderName: string(120),
+  Fp1LeaderTime: string(30),
+  Fp2LeaderName: string(120),
+  Fp2LeaderTime: string(30),
+  Fp3LeaderName: string(120),
+  Fp3LeaderTime: string(30)
+);
+
+/*
+ * One row per driver per weekend, every session side by side, with each gap
+ * expressed in seconds off that session's best — which is what makes the pace
+ * chart comparable across sessions run in different conditions.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_RaceSession (
+  SessionKey: string(80),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  DriverId: string(60),
+  DriverName: string(120),
+  Abbreviation: string(10),
+  ConstructorName: string(120),
+  Fp1Position: long,
+  Fp1Time: string(30),
+  Fp1Gap: decimal,
+  Fp2Position: long,
+  Fp2Time: string(30),
+  Fp2Gap: decimal,
+  Fp3Position: long,
+  Fp3Time: string(30),
+  Fp3Gap: decimal,
+  QualPosition: long,
+  QualTime: string(30),
+  QualGap: decimal,
+  Q1: string(30),
+  Q2: string(30),
+  Q3: string(30),
+  GridPosition: long,
+  FinishPosition: long,
+  PositionText: string(20),
+  PositionsGained: long,
+  Points: decimal,
+  ReasonRetired: string(120),
+  BestLapTime: string(30),
+  BestLapGap: decimal,
+  BestLapRank: long,
+  PitStops: long
+);
+
+/* The championship calendar: one row per round, with who won it. */
+create or modify non-persistent entity Formula1Backend.Stg_Calendar (
+  CalendarKey: string(40),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  Code: string(10),
+  Name: string(200),
+  CircuitName: string(120),
+  RaceDate: datetime,
+  WinnerName: string(120),
+  WinnerTeam: string(120)
+);
+
+/* Position across the weekend: five rows (FP1, FP2, FP3, Quali, Race), ten
+ * drivers wide. */
+create or modify non-persistent entity Formula1Backend.Stg_WeekendShape (
+  ShapeKey: string(40),
+  RaceId: long,
+  SessionIndex: long,
+  SessionLabel: string(20),
+  S1Name: string(120),
+  S2Name: string(120),
+  S3Name: string(120),
+  S4Name: string(120),
+  S5Name: string(120),
+  S6Name: string(120),
+  S7Name: string(120),
+  S8Name: string(120),
+  S9Name: string(120),
+  S10Name: string(120),
+  S1Value: long,
+  S2Value: long,
+  S3Value: long,
+  S4Value: long,
+  S5Value: long,
+  S6Value: long,
+  S7Value: long,
+  S8Value: long,
+  S9Value: long,
+  S10Value: long
+);
+
+/* Race position by lap, from the Jolpica traces: one row per lap, ten wide. */
+create or modify non-persistent entity Formula1Backend.Stg_LapChart (
+  LapKey: string(40),
+  Year: long,
+  Round: long,
+  Lap: long,
+  S1Name: string(120),
+  S2Name: string(120),
+  S3Name: string(120),
+  S4Name: string(120),
+  S5Name: string(120),
+  S6Name: string(120),
+  S7Name: string(120),
+  S8Name: string(120),
+  S9Name: string(120),
+  S10Name: string(120),
+  S1Value: long,
+  S2Value: long,
+  S3Value: long,
+  S4Value: long,
+  S5Value: long,
+  S6Value: long,
+  S7Value: long,
+  S8Value: long,
+  S9Value: long,
+  S10Value: long
+);
+
+/* ---------------------------------------------------------------------------
  * The connection. Type 'BYOD' is Studio Pro's "Other" — bring your own driver.
  * It skips the driver-presence check, which is the only reason a JDBC driver
  * Mendix has no picker entry for can be used at all.
@@ -537,5 +688,137 @@ begin
     returns Formula1Backend.Stg_Fact
     map ( factKey as FactKey, scope as Scope, entityId as EntityId, title as Title,
           extract as Extract, sourceUrl as SourceUrl, license as License );
+
+
+  /* -------------------------------------------------------------------------
+   * The weekend queries. Placeholders again: every one is answered for a single
+   * race and built with `dynamic` by the read microflow. What is fixed here is
+   * the column list the connector maps.
+   * ---------------------------------------------------------------------- */
+
+  query GetRaceWeekend
+    sql 'SELECT '''' AS weekendKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS roundLabel, '''' AS name, '''' AS circuitName,
+                '''' AS circuitId, CAST(NULL AS TIMESTAMP) AS raceDate,
+                0 AS laps, 0.0 AS distance,
+                '''' AS winnerName, '''' AS winnerTeam,
+                '''' AS poleName, '''' AS poleTime,
+                '''' AS fastestLapName, '''' AS fastestLapTime,
+                '''' AS fp1LeaderName, '''' AS fp1LeaderTime,
+                '''' AS fp2LeaderName, '''' AS fp2LeaderTime,
+                '''' AS fp3LeaderName, '''' AS fp3LeaderTime
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_RaceWeekend
+    map ( weekendKey as WeekendKey, raceId as RaceId, year as Year, round as Round,
+          roundLabel as RoundLabel, name as Name, circuitName as CircuitName,
+          circuitId as CircuitId, raceDate as RaceDate, laps as Laps,
+          distance as Distance, winnerName as WinnerName, winnerTeam as WinnerTeam,
+          poleName as PoleName, poleTime as PoleTime,
+          fastestLapName as FastestLapName, fastestLapTime as FastestLapTime,
+          fp1LeaderName as Fp1LeaderName, fp1LeaderTime as Fp1LeaderTime,
+          fp2LeaderName as Fp2LeaderName, fp2LeaderTime as Fp2LeaderTime,
+          fp3LeaderName as Fp3LeaderName, fp3LeaderTime as Fp3LeaderTime );
+
+  query GetRaceSessions
+    sql 'SELECT '''' AS sessionKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS driverId, '''' AS driverName, '''' AS abbreviation,
+                '''' AS constructorName,
+                0 AS fp1Position, '''' AS fp1Time, 0.0 AS fp1Gap,
+                0 AS fp2Position, '''' AS fp2Time, 0.0 AS fp2Gap,
+                0 AS fp3Position, '''' AS fp3Time, 0.0 AS fp3Gap,
+                0 AS qualPosition, '''' AS qualTime, 0.0 AS qualGap,
+                '''' AS q1, '''' AS q2, '''' AS q3,
+                0 AS gridPosition, 0 AS finishPosition, '''' AS positionText,
+                0 AS positionsGained, 0.0 AS points, '''' AS reasonRetired,
+                '''' AS bestLapTime, 0.0 AS bestLapGap, 0 AS bestLapRank,
+                0 AS pitStops
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_RaceSession
+    map ( sessionKey as SessionKey, raceId as RaceId, year as Year, round as Round,
+          driverId as DriverId, driverName as DriverName, abbreviation as Abbreviation,
+          constructorName as ConstructorName,
+          fp1Position as Fp1Position, fp1Time as Fp1Time, fp1Gap as Fp1Gap,
+          fp2Position as Fp2Position, fp2Time as Fp2Time, fp2Gap as Fp2Gap,
+          fp3Position as Fp3Position, fp3Time as Fp3Time, fp3Gap as Fp3Gap,
+          qualPosition as QualPosition, qualTime as QualTime, qualGap as QualGap,
+          q1 as Q1, q2 as Q2, q3 as Q3,
+          gridPosition as GridPosition, finishPosition as FinishPosition,
+          positionText as PositionText, positionsGained as PositionsGained,
+          points as Points, reasonRetired as ReasonRetired,
+          bestLapTime as BestLapTime, bestLapGap as BestLapGap,
+          bestLapRank as BestLapRank, pitStops as PitStops );
+
+  query GetCalendar
+    sql 'SELECT '''' AS calendarKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS code, '''' AS name, '''' AS circuitName,
+                CAST(NULL AS TIMESTAMP) AS raceDate,
+                '''' AS winnerName, '''' AS winnerTeam
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Calendar
+    map ( calendarKey as CalendarKey, raceId as RaceId, year as Year, round as Round,
+          code as Code, name as Name, circuitName as CircuitName,
+          raceDate as RaceDate, winnerName as WinnerName, winnerTeam as WinnerTeam );
+
+  query GetWeekendShape
+    sql 'SELECT '''' AS shapeKey, 0 AS raceId, 0 AS sessionIndex, '''' AS sessionLabel,
+                '''' AS s1name,
+                '''' AS s2name,
+                '''' AS s3name,
+                '''' AS s4name,
+                '''' AS s5name,
+                '''' AS s6name,
+                '''' AS s7name,
+                '''' AS s8name,
+                '''' AS s9name,
+                '''' AS s10name,
+                0 AS s1value,
+                0 AS s2value,
+                0 AS s3value,
+                0 AS s4value,
+                0 AS s5value,
+                0 AS s6value,
+                0 AS s7value,
+                0 AS s8value,
+                0 AS s9value,
+                0 AS s10value
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_WeekendShape
+    map ( shapeKey as ShapeKey, raceId as RaceId, sessionIndex as SessionIndex,
+          sessionLabel as SessionLabel,
+          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
+          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+
+  query GetLapChart
+    sql 'SELECT '''' AS lapKey, 0 AS year, 0 AS round, 0 AS lap,
+                '''' AS s1name,
+                '''' AS s2name,
+                '''' AS s3name,
+                '''' AS s4name,
+                '''' AS s5name,
+                '''' AS s6name,
+                '''' AS s7name,
+                '''' AS s8name,
+                '''' AS s9name,
+                '''' AS s10name,
+                0 AS s1value,
+                0 AS s2value,
+                0 AS s3value,
+                0 AS s4value,
+                0 AS s5value,
+                0 AS s6value,
+                0 AS s7value,
+                0 AS s8value,
+                0 AS s9value,
+                0 AS s10value
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LapChart
+    map ( lapKey as LapKey, year as Year, round as Round, lap as Lap,
+          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
+          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
 
 end;

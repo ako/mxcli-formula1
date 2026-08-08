@@ -1,6 +1,145 @@
 <?xml version="1.0" encoding="UTF-8"?><edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
   <edmx:DataServices>
     <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Formula1Backend.Fan">
+      <EntityType Name="Stg_RaceWeekend">
+        <Key>
+          <PropertyRef Name="weekendKey"/>
+        </Key>
+        <Property MaxLength="40" Name="weekendKey" Nullable="false" Type="Edm.String"/>
+        <Property Name="raceId" Type="Edm.Int64"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="round" Type="Edm.Int64"/>
+        <Property MaxLength="40" Name="roundLabel" Type="Edm.String"/>
+        <Property MaxLength="200" Name="name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="circuitName" Type="Edm.String"/>
+        <Property MaxLength="60" Name="circuitId" Type="Edm.String"/>
+        <Property Name="raceDate" Type="Edm.DateTimeOffset"/>
+        <Property Name="laps" Type="Edm.Int64"/>
+        <Property Name="distance" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="120" Name="winnerName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="winnerTeam" Type="Edm.String"/>
+        <Property MaxLength="120" Name="poleName" Type="Edm.String"/>
+        <Property MaxLength="30" Name="poleTime" Type="Edm.String"/>
+        <Property MaxLength="120" Name="fastestLapName" Type="Edm.String"/>
+        <Property MaxLength="30" Name="fastestLapTime" Type="Edm.String"/>
+        <Property MaxLength="120" Name="fp1LeaderName" Type="Edm.String"/>
+        <Property MaxLength="30" Name="fp1LeaderTime" Type="Edm.String"/>
+        <Property MaxLength="120" Name="fp2LeaderName" Type="Edm.String"/>
+        <Property MaxLength="30" Name="fp2LeaderTime" Type="Edm.String"/>
+        <Property MaxLength="120" Name="fp3LeaderName" Type="Edm.String"/>
+        <Property MaxLength="30" Name="fp3LeaderTime" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Stg_RaceSession">
+        <Key>
+          <PropertyRef Name="sessionKey"/>
+        </Key>
+        <Property MaxLength="80" Name="sessionKey" Nullable="false" Type="Edm.String"/>
+        <Property Name="raceId" Type="Edm.Int64"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="round" Type="Edm.Int64"/>
+        <Property MaxLength="60" Name="driverId" Type="Edm.String"/>
+        <Property MaxLength="120" Name="driverName" Type="Edm.String"/>
+        <Property MaxLength="10" Name="abbreviation" Type="Edm.String"/>
+        <Property MaxLength="120" Name="constructorName" Type="Edm.String"/>
+        <Property Name="fp1Position" Type="Edm.Int64"/>
+        <Property MaxLength="30" Name="fp1Time" Type="Edm.String"/>
+        <Property Name="fp1Gap" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="fp2Position" Type="Edm.Int64"/>
+        <Property MaxLength="30" Name="fp2Time" Type="Edm.String"/>
+        <Property Name="fp2Gap" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="fp3Position" Type="Edm.Int64"/>
+        <Property MaxLength="30" Name="fp3Time" Type="Edm.String"/>
+        <Property Name="fp3Gap" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="qualPosition" Type="Edm.Int64"/>
+        <Property MaxLength="30" Name="qualTime" Type="Edm.String"/>
+        <Property Name="qualGap" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="30" Name="q1" Type="Edm.String"/>
+        <Property MaxLength="30" Name="q2" Type="Edm.String"/>
+        <Property MaxLength="30" Name="q3" Type="Edm.String"/>
+        <Property Name="gridPosition" Type="Edm.Int64"/>
+        <Property Name="finishPosition" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="positionText" Type="Edm.String"/>
+        <Property Name="positionsGained" Type="Edm.Int64"/>
+        <Property Name="points" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="120" Name="reasonRetired" Type="Edm.String"/>
+        <Property MaxLength="30" Name="bestLapTime" Type="Edm.String"/>
+        <Property Name="bestLapGap" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="bestLapRank" Type="Edm.Int64"/>
+        <Property Name="pitStops" Type="Edm.Int64"/>
+      </EntityType>
+      <EntityType Name="Stg_Calendar">
+        <Key>
+          <PropertyRef Name="calendarKey"/>
+        </Key>
+        <Property MaxLength="40" Name="calendarKey" Nullable="false" Type="Edm.String"/>
+        <Property Name="raceId" Type="Edm.Int64"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="round" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="code" Type="Edm.String"/>
+        <Property MaxLength="200" Name="name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="circuitName" Type="Edm.String"/>
+        <Property Name="raceDate" Type="Edm.DateTimeOffset"/>
+        <Property MaxLength="120" Name="winnerName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="winnerTeam" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Stg_WeekendShape">
+        <Key>
+          <PropertyRef Name="shapeKey"/>
+        </Key>
+        <Property MaxLength="40" Name="shapeKey" Nullable="false" Type="Edm.String"/>
+        <Property Name="raceId" Type="Edm.Int64"/>
+        <Property Name="sessionIndex" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="sessionLabel" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s1name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s2name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s3name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s4name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s5name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s6name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s7name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s8name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s9name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s10name" Type="Edm.String"/>
+        <Property Name="s1value" Type="Edm.Int64"/>
+        <Property Name="s2value" Type="Edm.Int64"/>
+        <Property Name="s3value" Type="Edm.Int64"/>
+        <Property Name="s4value" Type="Edm.Int64"/>
+        <Property Name="s5value" Type="Edm.Int64"/>
+        <Property Name="s6value" Type="Edm.Int64"/>
+        <Property Name="s7value" Type="Edm.Int64"/>
+        <Property Name="s8value" Type="Edm.Int64"/>
+        <Property Name="s9value" Type="Edm.Int64"/>
+        <Property Name="s10value" Type="Edm.Int64"/>
+      </EntityType>
+      <EntityType Name="Stg_LapChart">
+        <Key>
+          <PropertyRef Name="lapKey"/>
+        </Key>
+        <Property MaxLength="40" Name="lapKey" Nullable="false" Type="Edm.String"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="round" Type="Edm.Int64"/>
+        <Property Name="lap" Type="Edm.Int64"/>
+        <Property MaxLength="120" Name="s1name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s2name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s3name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s4name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s5name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s6name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s7name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s8name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s9name" Type="Edm.String"/>
+        <Property MaxLength="120" Name="s10name" Type="Edm.String"/>
+        <Property Name="s1value" Type="Edm.Int64"/>
+        <Property Name="s2value" Type="Edm.Int64"/>
+        <Property Name="s3value" Type="Edm.Int64"/>
+        <Property Name="s4value" Type="Edm.Int64"/>
+        <Property Name="s5value" Type="Edm.Int64"/>
+        <Property Name="s6value" Type="Edm.Int64"/>
+        <Property Name="s7value" Type="Edm.Int64"/>
+        <Property Name="s8value" Type="Edm.Int64"/>
+        <Property Name="s9value" Type="Edm.Int64"/>
+        <Property Name="s10value" Type="Edm.Int64"/>
+      </EntityType>
       <EntityType Name="Stg_DriverSeason">
         <Key>
           <PropertyRef Name="seasonKey"/>
@@ -88,6 +227,201 @@
         <Property MaxLength="60" Name="license" Type="Edm.String"/>
       </EntityType>
       <EntityContainer Name="Entities">
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_RaceWeekend" Name="RaceWeekend">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_RaceSession" Name="RaceSessions">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_Calendar" Name="Calendar">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_WeekendShape" Name="WeekendShape">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_LapChart" Name="LapChart">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
         <EntitySet EntityType="Formula1Backend.Fan.Stg_DriverSeason" Name="DriverSeasons">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
             <Record>

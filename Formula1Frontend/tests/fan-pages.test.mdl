@@ -54,3 +54,33 @@ $result = CALL MICROFLOW Formula1Frontend.Test_1957Standings();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_1957Rounds();
 /
+
+/**
+ * @test Race weekend: 20 drivers classified in Bahrain 2024
+ * @expect $result = 20
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendSessions();
+/
+
+/**
+ * @test Race weekend: five sessions in the position chart
+ * @expect $result = 5
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendShape();
+/
+
+/**
+ * The one thing f1db does not carry, fetched from Jolpica.
+ *
+ * @test Race weekend: 57 laps of traces
+ * @expect $result = 57
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LapChart();
+/
+
+/**
+ * @test Race weekend: the header resolves the winner
+ * @expect $result = 'Max Verstappen'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendWinner();
+/

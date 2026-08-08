@@ -26,12 +26,13 @@ for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Back
 | `09-query-pushdown.mdl` | Java actions that turn OData query options into SQL. Logic lives in `javasource/formula1backend/ODataQuery.java`. |
 | `10-live-pushdown.mdl` | The read microflows that use them — `Read_Drivers` and `Read_RaceResults`. **Owns those two microflows**; `02` must not redefine them, and must run before this. |
 | `11-pushdown-tests-support.mdl` | Thin wrappers so the Java actions can be unit-tested directly, plus `Probe_DynamicSql`. |
-| `13-fan-resources.mdl` | `F1FanApi` — the derived views the fan pages are built on, and the two Java actions that lift an id out of `$filter`. Owns its service outright. |
+| `13-fan-resources.mdl` | The five derived views the fan pages are built on, and the two Java actions that lift an id out of `$filter`. Owns those microflows; **not** the service. |
+| `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Re-grants service access after it, which the modify still drops. |
 | `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
 
 ## The folder layout
 
-`00`–`11` and `13` create everything at the module root, which is fine at ten documents
+`00`–`11`, `13` and `14` create everything at the module root, which is fine at ten documents
 and unreadable at forty. `12` sorts them:
 
 | Folder | Holds |
@@ -42,6 +43,7 @@ and unreadable at forty. `12` sorts them:
 | `Cached/` | `ACT_RefreshAll`, `ASU_LoadCacheIfEmpty` and the eight refresh jobs. |
 | `Health/` | The eight row counts and `Check_ServicesAgree`. |
 | `Fan/` | The five read microflows behind `F1FanApi`. |
+| `Fan/Weekend/` | The five that answer for one Grand Prix, including the lap traces. |
 | `Services/` | All three published OData services. |
 | `TestSupport/` | Wrappers that exist only so tests can reach the Java actions. |
 

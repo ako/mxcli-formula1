@@ -360,6 +360,32 @@ create or replace page Formula1Frontend.Season_Summary
       }
     }
 
+    container calendarPanel (class: 'panel') {
+      container calHead (class: 'panel-head') {
+        dynamictext calTitle (content: 'Calendar', class: 'panel-title')
+        dynamictext calSub (content: 'every round, and who won it — open one for the full weekend',
+                            class: 'panel-sub')
+      }
+      container calGrid (class: 'grid-dense') {
+        datagrid dgCalendar (
+          datasource: MICROFLOW Formula1Frontend.DS_Calendar(Season: $Season),
+          PageSize: 12,
+          PagingPosition: bottom
+        ) {
+          column colRound (attribute: round, caption: 'Rd', Alignment: right)
+          column colCode (attribute: code, caption: 'Code')
+          column colName (attribute: circuitName, caption: 'Circuit')
+          column colDate (attribute: raceDate, caption: 'Date')
+          column colWinner (attribute: winnerName, caption: 'Winner')
+          column colWinTeam (attribute: winnerTeam, caption: 'Team')
+          column colOpenWeekend (caption: '') {
+            linkbutton btnWeekend (Caption: 'Weekend',
+              Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
+          }
+        }
+      }
+    }
+
     container standings (class: 'split-even') {
       container driversPanel (class: 'panel') {
         container driversHead (class: 'panel-head') {
