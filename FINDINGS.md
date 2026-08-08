@@ -1571,40 +1571,80 @@ the scripts quietly stop being the source of truth.
    request with the collection default and the client adopts the first row as the
    object's identity, silently and permanently. Warn when a read microflow never
    reads its resource's KEY out of the request, or generate the branch.
-3. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+3. **A read-microflow resource fails open: it answers a query option it cannot
+   honour instead of refusing** (§37, §20, §22) — the flaw underneath both
+   wrong-data bugs in this project. `Read_Calendar` could not parse
+   `$filter=calendarKey eq '…'`, so it returned its collection default with a 200
+   and a correct `$count`; the season standings did the same for `year`. Neither
+   is distinguishable from a real answer. A resource that drops a query option
+   should 400, and mxcli knows which attributes it published as filterable, so it
+   could generate that refusal. Both bugs would have been two-minute bugs.
+4. **Nothing shows what a published resource is being asked** (§37) — the
+   diagnosis took ten app restarts of theorising and then two once
+   `LOG INFO 'URI=' + $Request/Uri` went into the microflow. The URI is only
+   otherwise visible at TRACE on the whole runtime. An `mxcli odata trace`, or a
+   log node per published service, turns this class of bug from an afternoon into
+   a minute. (`mxcli debug` may already cover some of this — untried here.)
+5. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
+   never there** (§39) — a grid column's drill-down round-trips as
+   `linkbutton btn (Caption: 'Weekend', Action: show_page Module.Page)` with no
+   `(Race: $currentObject)`. The mapping is in the model and the build is green;
+   only the description loses it. Cost three restart cycles here, replacing a
+   button that was correct. Small bug, outsized cost, because `DESCRIBE` is the
+   thing you reach for when you distrust the model.
+6. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
+   `$filter` and keys, re-implemented per resource, and every one of them a place
+   to forget a case. Declaring what is filterable already happens in `expose (…)`;
+   handing the microflow the parsed values rather than the raw request would
+   remove the class instead of the instance.
+7. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
+   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
+   help). This is why five rendering defects survived — a white chart under every
+   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
+   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
+   loopback exemption, an http-safe cookie under `--hub`), being able to render
+   the real app is the highest-leverage check missing here.
+8. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
+   is already in use"*. The guard is right; the diagnosis is misleading, because
+   the process it names is one you already killed. Reap the child on exit, or
+   print the offending pid so the fix is one command rather than three.
+9. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
    icon rail, and a text-only menu renders "Constru" down the left edge of every
    page. There is no way to fix it in the navigation model.
-4. **`create or modify odata service` still drops role grants** (§34, §26) — the
+10. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
-5. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+11. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
    MDL passes it through and the build fails with "Error(s) in expression". Either
    strip comments from expression text or reject them at check time.
-6. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+12. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
    constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
    reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
    entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
    tool insists on for the URL is the shape whose credentials it will not read.
-7. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+13. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
    document's folder, which closes half the gap; there is still no way to see a
    module's layout in one place, or to diff an intended layout against the real one,
    without reading the `.mpr` as SQLite.
-8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+14. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-9. **The widget layer misses the filter-operator popover** (§33, §34) —
+15. **The widget layer misses the filter-operator popover** (§33, §34) —
    `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
    `.dropdown-list` or `.dropdown-content`, which still carry a baked
    `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
    fixed.
-10. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+16. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
-11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+17. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-12. **Design-property lint does not know the theme** (§29) — `check` green-lights
+18. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
@@ -1943,3 +1983,48 @@ for reasons that have nothing to do with the code:
 ```bash
 sudo -u postgres psql -d formula1frontend -c 'delete from system$session;'
 ```
+
+## 39. `DESCRIBE PAGE` loses a page-parameter mapping, and the loss looks like a cause
+
+Small bug, and it cost three of the fifteen restart cycles §37 took, because it
+answered a question I was asking at exactly the wrong moment.
+
+Mid-diagnosis, suspecting the drill-down was never handed the row, I asked the
+model what it actually contained:
+
+```
+$ mxcli -p Formula1Frontend.mpr -c "DESCRIBE PAGE Formula1Frontend.Season_Summary"
+...
+column "Open" (Caption: 'Open', ShowContentAs: customContent) {
+  linkbutton btnWeekend (Caption: 'Weekend', Action: show_page Formula1Frontend.Race_Weekend)
+}
+```
+
+The source says:
+
+```
+linkbutton btnWeekend (Caption: 'Weekend',
+  Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
+```
+
+The argument is gone from the description. It is **not** gone from the model —
+`mx check` reports 0 errors, and an unmapped required page parameter is a
+consistency error, so a truly missing mapping could not have built. All four
+drill-downs in this app describe the same way, including the three that work.
+
+Read cold, that output is a diagnosis: *the mapping was dropped, that is why the
+page gets an empty object.* It is a plausible-looking, wrong answer arriving in
+the middle of a hunt, and I spent three cycles acting on it — replacing the link
+button with a microflow call, then a clickable container's `OnClick`, then a
+dataview bound to the grid's selection. All three behaved identically, because
+all three were fixing something that was never broken.
+
+The general shape is worth more than the instance: **`DESCRIBE` is what you
+reach for when you have stopped trusting the model, so a lossy `DESCRIBE` is
+costliest exactly when it is most used.** Round-tripping is the contract §32
+already leans on for navigation and settings; page action arguments should hold
+to it too.
+
+Reproduction is a one-liner against this repo: describe `Season_Summary`,
+`Drivers_Live`, `Seasons_Overview` or `Constructors_Overview` and compare the
+column's button against `model/frontend/04-pages.mdl` or `07-fan-pages.mdl`.
