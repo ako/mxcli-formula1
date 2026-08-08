@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§30 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§31 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1230,6 +1230,101 @@ theme renders **light** in these screenshots. It is set to `auto`
 reports `prefers-color-scheme: light`, so Console's light palette is correct
 behaviour. The clipped labels in the collapsed navigation rail are likewise
 known and deliberately not fixed in CSS — mxcli's own theme docs say so.
+
+## 31. Tracing a page turn end to end: BCrypt is 60–80% of it, not the data
+
+*Verified 2026-08-08 with `--trace-otlp` into a local OTLP collector
+(`tools/observability/`), driving the real datagrid pager in Chromium.
+`--metrics` corroborates. Both apps traced with distinct `--trace-service` names.*
+
+Trace context propagates across the app boundary by itself, so one trace covers
+browser → frontend → OData → backend → DuckDB. A single page turn on the live
+Drivers grid:
+
+```
+POST /xas/                                    499 ms   frontend (browser click)
+  Retrieve //F1Live.Drivers                   496 ms
+    GET /odata/f1-live/Drivers?$top=20…       481 ms   frontend → backend
+      GET /* (backend)                        479 ms
+        5× SELECT system$user / roles / …       2 ms   @ 11 ms
+        ── 315 ms with no spans ──                     @ 15–318 ms
+        7× session bookkeeping                  3 ms   @ 318 ms
+        Microflow Read_Drivers                149 ms   @ 330 ms
+          Java ODataWhereSql                    0.3 ms
+          Java ODataOrderLimitSql               0.3 ms
+          ExecuteDatabaseQueryAction           77 ms
+            SELECT read_csv (the page)         35 ms
+          Java ODataWantsCount                  0.3 ms
+          ExecuteDatabaseQueryAction           68 ms
+            SELECT read_csv count(*)           33 ms
+```
+
+### The gap is per-request password hashing
+
+The 315 ms hole sits between the first user lookup and
+`UPDATE system$user SET lastlogin` — the shape of a **full login on every
+request**. The frontend's OData client uses basic auth and holds no session, and
+the model is `Hash: BCrypt`, which is deliberately slow.
+
+Proven rather than inferred, by timing the same endpoint three ways:
+
+| Request | Result | Time |
+|---|---|---|
+| correct password | 200 | ~350 ms |
+| **wrong** password | 401 | ~350 ms |
+| no credentials at all | 401 | **~10 ms** |
+
+A wrong password costs the same as a right one — the hash is computed either
+way — and skipping credentials skips the cost entirely. That is BCrypt, not
+lookup or network.
+
+### Steady-state cost, both services
+
+Cold first load excluded (it is ~1.3–1.4 s, dominated by DuckDB native init):
+
+| Phase | live (DuckDB/CSV) | cached (Postgres) |
+|---|---|---|
+| whole page turn | ~500 ms | ~370 ms |
+| **BCrypt auth** | **303 ms (61%)** | **301 ms (81%)** |
+| read microflow | 149 ms | — |
+| ⤷ DuckDB `read_csv` ×2 | 68 ms (14%) | — |
+| ⤷ connector overhead | 78 ms (16%) | — |
+| Postgres queries | — | 3.5 ms (1%) |
+| transport, session, client | ~48 ms | ~65 ms |
+
+So the live path really does cost more than the cached one — about 130 ms —
+but **both are dominated by authentication**. Optimising the SQL would be
+optimising 14% of the request.
+
+### Three smaller things the trace showed
+
+- **`$count=true` doubles the CSV work.** The count query scans the file again
+  (33 ms) for the same cost as the page query (35 ms). The grid needs the total
+  to draw its pager, but on a live resource it is not free — worth caching per
+  filter, or dropping `Countable` where a grid can live without a total.
+- **The Java actions are free.** Whitelisting, parsing and SQL construction total
+  **0.9 ms** across three calls. The safety layer costs nothing.
+- **The DuckDB connection is pooled and reused**, so the ~78 ms is per-query
+  connector work, not connection setup. `commons_pool2` proves it: `pool2`
+  (the external connector) shows **8 borrows from 1 created object** — exactly
+  4 page turns × 2 queries, on one connection.
+
+### Notes on the tooling itself
+
+- The console exporter is unusable for timing, exactly as `analyze-runtime.md`
+  warns. `--trace-otlp` plus ~90 lines of Python is the whole gap.
+- **Metric names are prefixed `mx_runtime_stats_`** — the skill documents
+  `connectionbus_selects_total`, the runtime serves
+  `mx_runtime_stats_connectionbus_selects_total`. A copy-pasted grep from the
+  skill returns nothing.
+- Default span filters are on, and they are well chosen: microflow, Java action,
+  database-activity and SQL spans all survive, which is enough to attribute every
+  millisecond here without the ~10× unfiltered cost.
+- **An unlicensed runtime caps concurrent sessions.** Repeated Playwright logins
+  that never log out exhaust it, and the failure surfaces as a bare
+  "Sign in failed." in the browser — the real message
+  (`Maximum number of sessions exceeded! (You are currently using a trial license)`)
+  is only in the runtime log. `page_grid.py` logs out at the end.
 
 ## Suggested mxcli issues
 

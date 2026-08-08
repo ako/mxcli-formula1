@@ -168,3 +168,23 @@ and the CSVs are git-ignored; the scripts that fetch them are committed, which
 is what lets a reaped session bootstrap from files instead of from a prompt.
 
 See `FINDINGS.md` for what broke and what was worked around.
+
+## Where the time actually goes
+
+`tools/observability/` traces a page turn end to end — browser → frontend →
+OData → backend → DuckDB — with real durations. Steady-state, per page turn:
+
+| | live (DuckDB/CSV) | cached (Postgres) |
+|---|---|---|
+| whole turn | ~500 ms | ~370 ms |
+| **BCrypt auth** | **303 ms (61%)** | **301 ms (81%)** |
+| DuckDB `read_csv` ×2 | 68 ms | — |
+| connector overhead | 78 ms | — |
+| Postgres queries | — | 3.5 ms |
+
+The frontend's OData client uses basic auth and holds no session, so the backend
+runs a **full BCrypt password verification on every request**. A wrong password
+costs the same ~350 ms as a right one; no credentials at all costs 10 ms. That is
+the single biggest cost in the solution — bigger than reading a 4 MB CSV twice.
+
+FINDINGS §31 has the full trace and the method.
