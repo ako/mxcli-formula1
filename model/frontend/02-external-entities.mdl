@@ -1,0 +1,15 @@
+/*
+ * External entities — the frontend's view of the two backend services.
+ *
+ * Generated from the cached $metadata, so the shapes are whatever the backend
+ * actually publishes rather than a hand-written guess that can drift.
+ *
+ * Each set lands in its own module because the two services expose identically
+ * named resources. F1Live.Drivers and F1Cached.Drivers are the same 917 rows
+ * reached two different ways, and having both in the domain model is what lets
+ * a page switch between them.
+ */
+
+create external entities from F1Live.LiveApi into F1Live;
+
+create external entities from F1Cached.CachedApi into F1Cached;

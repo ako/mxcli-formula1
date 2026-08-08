@@ -11,8 +11,12 @@
  *   - No $filter / $orderby pushdown. The microflow gets the request, not the
  *     query options, so ordering is whatever the SQL says.
  *   - No navigation properties. The rows are flat; DuckDB did the joins.
- *   - Countable: No on every resource. It is what lets a read microflow take
- *     no System.ODataResponse parameter, and a count would mean a second scan.
+ *   - Everything is Countable, so every read microflow takes
+ *     System.ODataResponse. These resources return their whole list anyway, so
+ *     the count is COUNT of what was just fetched — no second scan. It also
+ *     keeps the contract honest: `CREATE EXTERNAL ENTITIES FROM` defaults every
+ *     capability to true, so a resource declaring Countable=false generates an
+ *     external entity Mendix then refuses to build (FINDINGS §24).
  *
  * Two resources escape those limits: Drivers and RaceResults. Their read
  * microflows translate the query options into SQL themselves — see
@@ -20,51 +24,63 @@
  * here. Everything else in this file still returns its whole list.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_Season AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_Circuit AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_Constructor AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_Race AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_DriverStanding AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings ()
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings ($Response: System.ODataResponse)
   RETURNS List of Formula1Backend.Stg_ConstructorStanding AS $Rows
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
     (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
@@ -81,7 +97,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_Season as 'Seasons' (
     ReadMode: microflow Formula1Backend.Read_Seasons,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     Year as 'year' (KEY, Filterable, Sortable),
@@ -93,7 +109,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_Circuit as 'Circuits' (
     ReadMode: microflow Formula1Backend.Read_Circuits,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     CircuitId as 'circuitId' (KEY, Filterable, Sortable),
@@ -101,8 +117,8 @@ authentication basic, session
     FullName as 'fullName' (Filterable, Sortable),
     PlaceName as 'placeName' (Filterable, Sortable),
     Country as 'country' (Filterable, Sortable),
-    Latitude as 'latitude' (Sortable),
-    Longitude as 'longitude' (Sortable),
+    Latitude as 'latitude' (Filterable, Sortable),
+    Longitude as 'longitude' (Filterable, Sortable),
     Length as 'length' (Filterable, Sortable),
     Turns as 'turns' (Filterable, Sortable),
     RacesHeld as 'racesHeld' (Filterable, Sortable)
@@ -111,7 +127,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_Constructor as 'Constructors' (
     ReadMode: microflow Formula1Backend.Read_Constructors,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     ConstructorId as 'constructorId' (KEY, Filterable, Sortable),
@@ -155,7 +171,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_Race as 'Races' (
     ReadMode: microflow Formula1Backend.Read_Races,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     RaceId as 'raceId' (KEY, Filterable, Sortable),
@@ -204,7 +220,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_DriverStanding as 'DriverStandings' (
     ReadMode: microflow Formula1Backend.Read_DriverStandings,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     DriverId as 'driverId' (KEY, Filterable, Sortable),
@@ -220,7 +236,7 @@ authentication basic, session
   publish entity Formula1Backend.Stg_ConstructorStanding as 'ConstructorStandings' (
     ReadMode: microflow Formula1Backend.Read_ConstructorStandings,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
-    Countable: No
+    Countable: Yes
   )
   expose (
     ConstructorId as 'constructorId' (KEY, Filterable, Sortable),

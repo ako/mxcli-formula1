@@ -1,0 +1,73 @@
+/*
+ * Formula1Frontend — the two OData clients.
+ *
+ * The backend publishes the same eight resources twice, so the frontend
+ * consumes both and each gets its own module. They have to: every resource is
+ * named identically in the two services (Drivers, Races, …), so importing both
+ * into one module would collide.
+ *
+ *   F1Live    -> /odata/f1-live/  CSVs read per request, query options pushed
+ *                                 into DuckDB SQL by the read microflows
+ *   F1Cached  -> /odata/f1/       Postgres, paged and filtered by Mendix
+ *
+ * ServiceUrl is a constant, not a literal, so the address is environment
+ * -overridable — it will not stay backend.local.
+ *
+ * MetadataUrl points at a FILE, not at the service. `CREATE ODATA CLIENT`
+ * fetches $metadata over plain HTTP with no credentials, so against these
+ * services it gets 401 and leaves the client unvalidated with no external
+ * entities to import (FINDINGS §23). The contracts under contracts/ were
+ * fetched authenticated with curl and are committed, which also means this
+ * script runs without the backend up.
+ *
+ * Refresh them when the backend's published surface changes:
+ *   curl -u f1api:<pw> 'http://backend.local:8080/odata/f1-live/$metadata' \
+ *     -o contracts/f1-live-metadata.xml
+ */
+
+/* ------------------------------------------------------------------ live -- */
+
+create module F1Live;
+
+create or modify constant F1Live.ServiceUrl type string
+  default 'http://backend.local:8080/odata/f1-live/'
+  comment 'Base URL of the backend live service. Override per environment.';
+
+create or modify constant F1Live.ApiUser type string default 'f1api';
+create or modify constant F1Live.ApiPassword type string
+  default 'F1apiConsumer!2345'
+  comment 'Backend ApiConsumer credentials. Injected per environment in production.' PRIVATE;
+
+create or modify odata client F1Live.LiveApi (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-live-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: @F1Live.ServiceUrl,
+  UseAuthentication: 'true',
+  HttpUsername: '@F1Live.ApiUser',
+  HttpPassword: '@F1Live.ApiPassword'
+);
+
+/* ---------------------------------------------------------------- cached -- */
+
+create module F1Cached;
+
+create or modify constant F1Cached.ServiceUrl type string
+  default 'http://backend.local:8080/odata/f1/'
+  comment 'Base URL of the backend cached service. Override per environment.';
+
+create or modify constant F1Cached.ApiUser type string default 'f1api';
+create or modify constant F1Cached.ApiPassword type string
+  default 'F1apiConsumer!2345' PRIVATE;
+
+create or modify odata client F1Cached.CachedApi (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: @F1Cached.ServiceUrl,
+  UseAuthentication: 'true',
+  HttpUsername: '@F1Cached.ApiUser',
+  HttpPassword: '@F1Cached.ApiPassword'
+);

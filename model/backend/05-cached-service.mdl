@@ -50,8 +50,8 @@ authentication basic, session
     FullName as 'fullName' (Filterable, Sortable),
     PlaceName as 'placeName' (Filterable, Sortable),
     Country as 'country' (Filterable, Sortable),
-    Latitude as 'latitude' (Sortable),
-    Longitude as 'longitude' (Sortable),
+    Latitude as 'latitude' (Filterable, Sortable),
+    Longitude as 'longitude' (Filterable, Sortable),
     Length as 'length' (Filterable, Sortable),
     Turns as 'turns' (Filterable, Sortable),
     RacesHeld as 'racesHeld' (Filterable, Sortable)

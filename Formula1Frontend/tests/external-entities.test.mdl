@@ -1,0 +1,34 @@
+/*
+ * Proves the frontend can actually read through both OData clients — the
+ * backend must be running for these.
+ */
+
+/**
+ * @test Live client retrieves all 917 drivers straight from the CSVs
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW Formula1Frontend.Count_Live_Drivers();
+/
+
+/**
+ * @test Cached client retrieves all 917 drivers from Postgres
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW Formula1Frontend.Count_Cached_Drivers();
+/
+
+/**
+ * The same fact, fetched two entirely different ways.
+ *
+ * @test Live client: Senna has 41 race wins
+ * @expect $result = 41
+ */
+$result = CALL MICROFLOW Formula1Frontend.Live_SennaWins();
+/
+
+/**
+ * @test Cached client: Senna has 41 race wins
+ * @expect $result = 41
+ */
+$result = CALL MICROFLOW Formula1Frontend.Cached_SennaWins();
+/

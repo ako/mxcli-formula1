@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§22 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§31 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -954,30 +954,421 @@ pre-validates field names (§20):
 Both are in `tests/pushdown.test.mdl`, which runs under `--local` in about a
 second.
 
+## 23. Gap: `CREATE ODATA CLIENT` fetches `$metadata` without credentials
+
+*Verified 2026-08-07 on mxcli `45ae6a6`.*
+
+The statement accepts `UseAuthentication` / `HttpUsername` / `HttpPassword` — they
+are parsed at `cmd_odata.go:1205-1218` and stored on the HTTP configuration for
+the runtime. The design-time fetch ignores them:
+
+```go
+// mdl/executor/cmd_odata.go:1820, fetchODataMetadata
+client := &http.Client{Timeout: 30 * time.Second}
+resp, err := client.Get(metadataUrl)
+```
+
+No `SetBasicAuth`, no headers. Against a service with `authentication basic` the
+result is:
+
+```
+Warning: could not fetch $metadata: $metadata fetch returned HTTP 401
+Created OData client: F1Live.LiveApi
+```
+
+The client is created but unvalidated, with **no entity types cached**, so the
+`CREATE EXTERNAL ENTITIES FROM …` that follows has nothing to import. It is a
+warning rather than an error, so a script appears to succeed and produces an
+empty module.
+
+**Fix:** use the credentials already on the statement for the metadata fetch, and
+send the `HEADERS (...)` too. Consider making an unreachable `MetadataUrl` an
+error when the next statement depends on it.
+
+**Workaround, and it turns out to be a better practice anyway:** `MetadataUrl`
+accepts a file path as well as a URL. Fetch the contract once with credentials
+and point the client at the file:
+
+```bash
+curl -u f1api:<pw> 'http://backend.local:8080/odata/f1-live/$metadata' \
+  -o contracts/f1-live-metadata.xml
+```
+```sql
+MetadataUrl: './contracts/f1-live-metadata.xml',
+```
+
+The contracts are committed, so the frontend model rebuilds without the backend
+running, and a contract change shows up as a reviewable diff instead of silently
+altering the generated entities.
+
+## 24. Gap: generated external entities ignore the capabilities in the `$metadata`
+
+*Verified 2026-08-07.*
+
+`CREATE EXTERNAL ENTITIES FROM …` reads names, types and navigation properties
+out of the contract correctly, then defaults **every capability to true**
+regardless of what the contract says. Mendix compares the two at build time and
+refuses:
+
+```
+ERROR at F1Live, Domain model, Entity 'F1Live.Seasons':
+  'Seasons' is marked Countable=False in the OData service, but True in the app.
+ERROR at F1Live, Domain model, Attribute 'F1Live.Circuits.latitude':
+  'latitude' is marked Filterable=False in the OData service, but True in the app.
+```
+
+Eight errors from an eight-resource import. The whole point of generating from
+`$metadata` is fidelity to the contract, and `Countable` / `Filterable` /
+`Sortable` are in the document right there:
+
+```xml
+<Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+  <Record><PropertyValue Bool="false" Property="Countable"/></Record>
+</Annotation>
+```
+
+**Fix:** read the capability annotations during import.
+
+## 25. Gap: `CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention
+
+*Verified 2026-08-07. Found while working around §24, and it is the more serious
+of the two.*
+
+The AST comments say scalar fields are pointers specifically so an omitted
+property is preserved rather than zeroed — "Treating omitted fields as zero on
+modify silently corrupted entities — see issue #594". Attributes are not
+protected the same way. Modifying only the entity-level `Countable`:
+
+```sql
+create or modify external entity F1Live.Circuits
+  from odata client F1Live.LiveApi
+  (EntitySet: 'Circuits', RemoteName: 'Stg_Circuit', Countable: false);
+```
+
+leaves the attribute *count* intact but breaks the attributes themselves:
+
+```
+> describe entity F1Live.Circuits;
+create or modify external entity F1Live.Circuits (
+  circuitId: String(60),
+  Stg_Circuitname: String(120),   <-- was `name`
+  ...
+```
+
+`name` became `Stg_Circuitname` — the remote entity name prefixed onto it — and
+every attribute lost its remote mapping, so the build fails with
+`Attribute 'year' of external entity 'Stg_Season' is not supported.` on all of
+them. The `from odata client` / `EntitySet` / `RemoteName` detail is missing from
+the DESCRIBE output afterwards too.
+
+Same class of bug as #594, one level down. **Fix:** when no attribute list is
+given, leave the existing attributes and their remote mappings alone.
+
+**What to do instead:** do not patch generated external entities. Make the
+published contract say the right thing and regenerate. Here that meant giving
+every live read microflow a `System.ODataResponse` and a count so all eight
+resources are genuinely `Countable`, which removed the mismatch at the source.
+
+## 26. `create or modify odata service` keeps stale published members and drops role grants
+
+*Verified 2026-08-07, three separate times before the pattern was obvious.*
+
+Re-running a `create or modify odata service` after editing a `publish entity`
+block does **not** apply the change. Marking `latitude` as `Filterable` and
+re-executing left the served `$metadata` unchanged; only
+`drop odata service` + create picked it up. The same is true of `Countable`.
+
+It also silently clears `AllowedModuleRoles`, so the next build fails with:
+
+```
+At least one allowed role must be selected for the published OData service to be accessible.
+```
+
+**Working recipe** for changing a published service:
+
+```sql
+drop odata service Module.Service;
+-- re-execute the create script
+grant access on odata service Module.Service to Module.Role;
+```
+
+**Fix:** either apply entity-set and member changes on modify, or refuse the
+modify with a message saying a drop is required. Preserving the role grants
+across a modify seems unambiguously right.
+
+## 27. The frontend consumes both services
+
+*Verified 2026-08-07 end to end: build green, and four retrieval tests passing
+against the running backend.*
+
+```
+PASS  Live client retrieves all 917 drivers straight from the CSVs (1.799s)
+PASS  Cached client retrieves all 917 drivers from Postgres (452ms)
+PASS  Live client: Senna has 41 race wins (637ms)
+PASS  Cached client: Senna has 41 race wins (416ms)
+```
+
+Two clients, two modules — `F1Live` and `F1Cached` — because both services
+publish identically named resources and importing them into one module would
+collide. 16 external entities. The contrast is visible in the domain model
+itself: `F1Cached` carries six navigation associations (`season`, `circuit`,
+`driver`, `constructor`) while `F1Live` has none, because its rows are flat and
+DuckDB did the joins.
+
+`RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna'` reaches
+through the OData client, into the read microflow, into a `read_csv()` scan, and
+back — 637 ms, and it returns the same 41 as the Postgres-backed one.
+
+One thing that cost time and is worth repeating from §13: `RETRIEVE … LIMIT 1`
+yields a **single object**, not a list, so `HEAD()` on it fails with
+`The selected 'Rows' variable must be of type List`. Both spellings are useful;
+the difference is invisible in the syntax.
+
+## 28. Gap: `CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`
+
+*Verified 2026-08-07 on mxcli `45ae6a6`, on a **fresh** generation.*
+
+An attribute literally named `name` comes out of the generator prefixed with the
+remote entity type:
+
+| Service | Remote type | Contract says | Generated as |
+|---|---|---|---|
+| live | `Stg_Driver` | `name` | `Stg_Drivername` |
+| live | `Stg_Circuit` | `name` | `Stg_Circuitname` |
+| live | `Stg_Constructor` | `name` | `Stg_Constructorname` |
+| cached | `Driver` | `name` | `Drivername` |
+| cached | `Circuit` | `name` | `Circuitname` |
+
+Presumably `name` collides with something in the generator's model and it
+disambiguates by prefixing. Three consequences:
+
+- The local attribute name no longer matches the contract, so a page written
+  against the published `$metadata` fails with
+  `The selected attribute 'F1Live.Drivers.name' no longer exists.`
+- The **same field has a different name in each module** — `Stg_Drivername`
+  versus `Drivername` — so two pages over two services cannot share a column
+  definition, purely because the remote type names differ.
+- The backend's internal entity name (`Stg_Driver`) leaks into the frontend's
+  domain model.
+
+**It is only a naming problem — the mapping is intact.** Proven rather than
+assumed: `tests/name-mapping.test.mdl` reads the renamed attribute through both
+clients and gets `Ayrton Senna` back from each.
+
+This also corrects §25: the mangling is the **generator's**, not
+`CREATE OR MODIFY EXTERNAL ENTITY`'s. The modify does its own separate damage
+(stripping remote mappings from every attribute), but the rename was already
+there from the first generation.
+
+**Fix:** disambiguate only on a real collision, and prefer suffixing or quoting
+over prefixing with the remote type. Failing that, say so at generation time
+instead of leaving it to be discovered when a page will not build.
+
+## 29. `mxcli lint` validates widget design properties against the widget, not the theme
+
+*Verified 2026-08-07.*
+
+`mxcli check` accepted this after two rounds of correction, and the values it
+suggested were genuinely the right ones for the widget:
+
+```
+⚠ widget "dgDrivers" (datagrid) sets design property "Striped", which is not defined for this widget type [MDL-WIDGET11]
+  → Valid design properties for this widget: Align self, Hide on, Hover style, Row size, Spacing, Style
+⚠ design property "Row size" has value "Compact", which is not an allowed value [MDL-WIDGET12]
+  → Allowed values (case-sensitive): Small, Large
+```
+
+`'Row size': 'Small'` then passed `check` cleanly — and failed the build:
+
+```
+ERROR: Design property Row size is not supported by your theme.
+ERROR: Design property Hover style is not supported by your theme.
+```
+
+The `console` theme does not implement those Atlas design properties. The lint
+rule knows the widget's catalogue but not which subset the applied theme
+supports, so it can green-light a page that cannot build. Worth teaching the rule
+to read the theme's `design-properties.json` — mxcli generates the theme, so it
+knows.
+
+## 30. The pages, and proof the grid really pushes down
+
+*Verified 2026-08-08 with a real browser session (`run --screenshot` logs in as a
+demo user and captures the rendered page).*
+
+Seven pages on the external entities: Home, Seasons, Drivers ×2 (one per
+service), Constructors, Circuits, Race results. Every grid is paged, sortable and
+text-filterable, so every interaction is an OData request.
+
+The claim worth proving was that a **datagrid** emits the query options, not just
+that curl can. Temporarily logging `System.HttpRequest.Uri` inside
+`Read_Drivers`, then loading `/p/drivers-live` in the browser:
+
+```
+F1Pushdown: Drivers URI: /odata/f1-live/Drivers?$select=driverId%2Cname%2Cnationality%2C…
+                        &$count=true&$top=20&$orderby=driverId%20asc
+F1Pushdown: Drivers SQL tail:  ORDER BY id ASC LIMIT 20
+```
+
+`$top=20` → `LIMIT 20`; `$orderby=driverId` → `ORDER BY id` via the whitelist
+(the exposed name differs from the CSV column); `$count=true` runs the separate
+count query. The pager renders **1 to 20 of 917** on the live page and
+**1 to 25 of 27533** on race results — the full set, from CSVs, 25 rows at a time.
+
+Two things learned from the log that were not obvious:
+
+- The grid's **default sort is the key**, not the first column — `$orderby=driverId asc`
+  even though no column was clicked. Worth having a sensible whitelist entry for
+  the key attribute, which is why `driverId:id` is in the map.
+- **`$select` is sent and currently ignored.** The grid asked for 8 of the 14
+  attributes; the SQL still selects all 14. Harmless but wasteful, and an easy
+  next improvement — the whitelist already has everything needed to honour it.
+
+Also worth recording, since it looked like a bug and was not: the `console`
+theme renders **light** in these screenshots. It is set to `auto`
+(`$mxcli-theme-variant: auto` in `theme/web/main.scss`) and headless Chromium
+reports `prefers-color-scheme: light`, so Console's light palette is correct
+behaviour. The clipped labels in the collapsed navigation rail are likewise
+known and deliberately not fixed in CSS — mxcli's own theme docs say so.
+
+## 31. Tracing a page turn end to end: BCrypt is 60–80% of it, not the data
+
+*Verified 2026-08-08 with `--trace-otlp` into a local OTLP collector
+(`tools/observability/`), driving the real datagrid pager in Chromium.
+`--metrics` corroborates. Both apps traced with distinct `--trace-service` names.*
+
+Trace context propagates across the app boundary by itself, so one trace covers
+browser → frontend → OData → backend → DuckDB. A single page turn on the live
+Drivers grid:
+
+```
+POST /xas/                                    499 ms   frontend (browser click)
+  Retrieve //F1Live.Drivers                   496 ms
+    GET /odata/f1-live/Drivers?$top=20…       481 ms   frontend → backend
+      GET /* (backend)                        479 ms
+        5× SELECT system$user / roles / …       2 ms   @ 11 ms
+        ── 315 ms with no spans ──                     @ 15–318 ms
+        7× session bookkeeping                  3 ms   @ 318 ms
+        Microflow Read_Drivers                149 ms   @ 330 ms
+          Java ODataWhereSql                    0.3 ms
+          Java ODataOrderLimitSql               0.3 ms
+          ExecuteDatabaseQueryAction           77 ms
+            SELECT read_csv (the page)         35 ms
+          Java ODataWantsCount                  0.3 ms
+          ExecuteDatabaseQueryAction           68 ms
+            SELECT read_csv count(*)           33 ms
+```
+
+### The gap is per-request password hashing
+
+The 315 ms hole sits between the first user lookup and
+`UPDATE system$user SET lastlogin` — the shape of a **full login on every
+request**. The frontend's OData client uses basic auth and holds no session, and
+the model is `Hash: BCrypt`, which is deliberately slow.
+
+Proven rather than inferred, by timing the same endpoint three ways:
+
+| Request | Result | Time |
+|---|---|---|
+| correct password | 200 | ~350 ms |
+| **wrong** password | 401 | ~350 ms |
+| no credentials at all | 401 | **~10 ms** |
+
+A wrong password costs the same as a right one — the hash is computed either
+way — and skipping credentials skips the cost entirely. That is BCrypt, not
+lookup or network.
+
+### Steady-state cost, both services
+
+Cold first load excluded (it is ~1.3–1.4 s, dominated by DuckDB native init):
+
+| Phase | live (DuckDB/CSV) | cached (Postgres) |
+|---|---|---|
+| whole page turn | ~500 ms | ~370 ms |
+| **BCrypt auth** | **303 ms (61%)** | **301 ms (81%)** |
+| read microflow | 149 ms | — |
+| ⤷ DuckDB `read_csv` ×2 | 68 ms (14%) | — |
+| ⤷ connector overhead | 78 ms (16%) | — |
+| Postgres queries | — | 3.5 ms (1%) |
+| transport, session, client | ~48 ms | ~65 ms |
+
+So the live path really does cost more than the cached one — about 130 ms —
+but **both are dominated by authentication**. Optimising the SQL would be
+optimising 14% of the request.
+
+### Three smaller things the trace showed
+
+- **`$count=true` doubles the CSV work.** The count query scans the file again
+  (33 ms) for the same cost as the page query (35 ms). The grid needs the total
+  to draw its pager, but on a live resource it is not free — worth caching per
+  filter, or dropping `Countable` where a grid can live without a total.
+- **The Java actions are free.** Whitelisting, parsing and SQL construction total
+  **0.9 ms** across three calls. The safety layer costs nothing.
+- **The DuckDB connection is pooled and reused**, so the ~78 ms is per-query
+  connector work, not connection setup. `commons_pool2` proves it: `pool2`
+  (the external connector) shows **8 borrows from 1 created object** — exactly
+  4 page turns × 2 queries, on one connection.
+
+### Notes on the tooling itself
+
+- The console exporter is unusable for timing, exactly as `analyze-runtime.md`
+  warns. `--trace-otlp` plus ~90 lines of Python is the whole gap.
+- **Metric names are prefixed `mx_runtime_stats_`** — the skill documents
+  `connectionbus_selects_total`, the runtime serves
+  `mx_runtime_stats_connectionbus_selects_total`. A copy-pasted grep from the
+  skill returns nothing.
+- Default span filters are on, and they are well chosen: microflow, Java action,
+  database-activity and SQL spans all survive, which is enough to attribute every
+  millisecond here without the ~10× unfiltered cost.
+- **An unlicensed runtime caps concurrent sessions.** Repeated Playwright logins
+  that never log out exhaust it, and the failure surfaces as a bare
+  "Sign in failed." in the browser — the real message
+  (`Maximum number of sessions exceeded! (You are currently using a trial license)`)
+  is only in the runtime log. `page_grid.py` logs out at the end.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
+1. **`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28) —
+   prefixed with the remote type, so pages written against the contract do not
+   build and the same field is named differently per module. The mapping works;
+   the name is wrong.
+2. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
+   renames one and strips every remote mapping, leaving a project that cannot
+   build. Silent, and the same class as issue #594 one level down.
+3. **`create or modify odata service` ignores published-member changes and drops
+   role grants** (§26) — a modify that quietly does not modify, and breaks the
+   build in a second, unrelated-looking way.
+4. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
+   credentials are on the statement and go unused, so the client is created empty
+   with only a warning.
+5. **Generated external entities ignore the contract's capability annotations** (§24) —
+   `Countable`/`Filterable`/`Sortable` default to true, so importing from a service
+   that restricts any of them produces a project that will not build.
+6. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
    `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
    starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
    query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
-2. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
+7. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
    `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
    published service fails the build until you switch it to `long`. One line, and the
    function's own comment flags Integer as unverified.
-3. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
+8. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
    a suite that needs startup state passes under `--attach` and fails under `--local`
    for reasons unrelated to the code. Say so in the output, or chain the original.
-4. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
+9. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
    sits below the `--list` branch in `cmd_test_run.go:136`.
-5. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
+10. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
    which `fa0cdb6` added and the checker accepts.
-6. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
+11. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
    `mxcli` is rebuilt, with no warning.
-7. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-8. **`create module role` has no `or modify` form**, so a security script cannot be
+13. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+14. **`create module role` has no `or modify` form**, so a security script cannot be
    re-run — the reason this repo has a separate `07-demo-users.mdl`.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14
