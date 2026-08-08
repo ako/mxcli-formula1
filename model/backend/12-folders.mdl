@@ -1,0 +1,72 @@
+/*
+ * Folder layout for Formula1Backend.
+ *
+ * Everything above creates documents at the module root, which is fine while
+ * there are ten of them and unreadable at forty. This file is the one place that
+ * says where things live, so the layout can be read (and changed) without
+ * hunting through eleven scripts.
+ *
+ * It is a separate file rather than `folder '...'` clauses on each definition
+ * because MOVE is doctype-agnostic — constants and the database connection have
+ * no folder clause to hang it on — and because `CREATE OR REPLACE` preserves a
+ * document's existing folder. Re-running 00-11 after this leaves the layout
+ * alone; re-running this file is a no-op on an already-tidy module.
+ *
+ *   Warehouse/     how the CSVs are reached: the DuckDB connection and its config
+ *   Live/          the read microflows behind F1LiveApi
+ *   Cached/        the refresh jobs that fill Postgres behind F1CachedApi
+ *   Health/        row counts and the invariant that the two services agree
+ *   TestSupport/   wrappers that exist only so tests can call Java actions
+ *
+ * Two kinds of document stay at the root whether they belong there or not:
+ * the three pushdown **Java actions** and both **published OData services**.
+ * MOVE has no doctype for either, and neither CREATE form takes a folder clause,
+ * so mxcli cannot place them. FINDINGS §32.
+ */
+
+-- Reaching the data: the connection and the four constants that configure it.
+MOVE DATABASE CONNECTION Formula1Backend.F1Warehouse TO FOLDER 'Warehouse';
+MOVE CONSTANT Formula1Backend.DataDir          TO FOLDER 'Warehouse';
+MOVE CONSTANT Formula1Backend.DuckDbUrl        TO FOLDER 'Warehouse';
+MOVE CONSTANT Formula1Backend.DuckDbUser       TO FOLDER 'Warehouse';
+MOVE CONSTANT Formula1Backend.DuckDbPassword   TO FOLDER 'Warehouse';
+
+-- The live service: one read microflow per resource, straight off the CSVs.
+MOVE MICROFLOW Formula1Backend.Read_Seasons              TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_Circuits             TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_Constructors         TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_Drivers              TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_Races                TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_RaceResults          TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_DriverStandings      TO FOLDER 'Live';
+MOVE MICROFLOW Formula1Backend.Read_ConstructorStandings TO FOLDER 'Live';
+
+-- The cached service: the jobs that materialise the same eight resources.
+MOVE MICROFLOW Formula1Backend.ACT_RefreshAll               TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.ASU_LoadCacheIfEmpty         TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_Seasons              TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_Circuits             TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_Constructors         TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_Drivers              TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_Races                TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_RaceResults          TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_DriverStandings      TO FOLDER 'Cached';
+MOVE MICROFLOW Formula1Backend.Refresh_ConstructorStandings TO FOLDER 'Cached';
+
+-- Counts on both sides, and the check that they agree.
+MOVE MICROFLOW Formula1Backend.Count_Live_Seasons       TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Live_Races         TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Live_Drivers       TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Live_RaceResults   TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Cached_Seasons     TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Cached_Races       TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Cached_Drivers     TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Count_Cached_RaceResults TO FOLDER 'Health';
+MOVE MICROFLOW Formula1Backend.Check_ServicesAgree      TO FOLDER 'Health';
+
+-- Not part of the running app: these exist so tests can reach the Java actions
+-- and the dynamic-SQL path directly. Kept together so they are easy to ignore.
+MOVE MICROFLOW Formula1Backend.TestSupport_OrderLimit     TO FOLDER 'TestSupport';
+MOVE MICROFLOW Formula1Backend.TestSupport_Where          TO FOLDER 'TestSupport';
+MOVE MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO FOLDER 'TestSupport';
+MOVE MICROFLOW Formula1Backend.Probe_DynamicSql           TO FOLDER 'TestSupport';
