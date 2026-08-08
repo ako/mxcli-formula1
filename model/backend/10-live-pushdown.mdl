@@ -45,14 +45,13 @@ BEGIN
   DECLARE $Sql String = $Select + $Where + $OrderLimit;
 
   /*
-   * `dynamic '' + $Sql` rather than `dynamic $Sql`. mxcli quotes any dynamic
-   * query that does not already start with a quote, so a bare variable is
-   * written into the model as the literal string '$Sql' and DuckDB is asked to
-   * run "$Sql". Prefixing '' + makes the expression start with a quote, so it
-   * survives as an expression. See FINDINGS.md §21.
+   * A bare `dynamic $Sql` used to reach the runtime as the literal text '$Sql',
+   * so this had to be written with a leading empty-string concatenation to make
+   * the expression start with a quote. Fixed in mxcli c76d4b7; the workaround is
+   * gone. FINDINGS.md §21, §34.
    */
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
-    dynamic '' + $Sql
+    dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
   /*
@@ -64,7 +63,7 @@ BEGIN
     DECLARE $CountSql String = 'SELECT count(*) AS total FROM read_csv('''
       + @Formula1Backend.DataDir + '/f1db-drivers.csv'')' + $Where;
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetDriverCount
-      dynamic '' + $CountSql
+      dynamic $CountSql
       (dataDir = @Formula1Backend.DataDir);
     $CountRow = HEAD($CountRows);
     IF $CountRow != empty THEN
@@ -121,14 +120,14 @@ BEGIN
   DECLARE $Sql String = $Select + $From + $Where + $OrderLimit;
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaceResults
-    dynamic '' + $Sql
+    dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
   $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
   IF $WantsCount = true THEN
     DECLARE $CountSql String = 'SELECT count(*) AS total' + $From + $Where;
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetRaceResultCount
-      dynamic '' + $CountSql
+      dynamic $CountSql
       (dataDir = @Formula1Backend.DataDir);
     $CountRow = HEAD($CountRows);
     IF $CountRow != empty THEN

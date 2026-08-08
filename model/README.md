@@ -21,29 +21,35 @@ for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Back
 | `04-refresh.mdl` | `ACT_RefreshAll` and the per-resource load jobs, plus the startup hook that fills an empty cache. |
 | `05-cached-service.mdl` | `F1CachedApi` — the same eight resources with paging, `$filter` and navigation properties. |
 | `06-security.mdl` | Module roles, entity and microflow access, user roles. |
-| `07-demo-users.mdl` | `f1api` / `f1admin`. Separate because 06 is not re-runnable. |
+| `07-demo-users.mdl` | `f1api` / `f1admin`. Split out when 06 could not be re-run; kept because demo users are worth changing on their own. |
 | `08-health.mdl` | Row-count helpers and `Check_ServicesAgree`, the invariant the tests assert. |
 | `09-query-pushdown.mdl` | Java actions that turn OData query options into SQL. Logic lives in `javasource/formula1backend/ODataQuery.java`. |
 | `10-live-pushdown.mdl` | The read microflows that use them — `Read_Drivers` and `Read_RaceResults`. **Owns those two microflows**; `02` must not redefine them, and must run before this. |
-| `11-pushdown-tests-support.mdl` | Thin wrappers so the Java actions can be unit-tested directly. |
+| `11-pushdown-tests-support.mdl` | Thin wrappers so the Java actions can be unit-tested directly, plus `Probe_DynamicSql`. |
+| `13-fan-resources.mdl` | The five derived views the fan pages are built on, and the two Java actions that lift an id out of `$filter`. Owns those microflows; **not** the service. |
+| `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Re-grants service access after it, which the modify still drops. |
 | `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
 
 ## The folder layout
 
-`00`–`11` create everything at the module root, which is fine at ten documents
+`00`–`11`, `13` and `14` create everything at the module root, which is fine at ten documents
 and unreadable at forty. `12` sorts them:
 
 | Folder | Holds |
 |---|---|
 | `Warehouse/` | The DuckDB connection and the four constants that configure it. |
 | `Live/` | The eight read microflows behind `F1LiveApi`. |
+| `Live/Pushdown/` | The three Java actions that turn OData query options into SQL. |
 | `Cached/` | `ACT_RefreshAll`, `ASU_LoadCacheIfEmpty` and the eight refresh jobs. |
 | `Health/` | The eight row counts and `Check_ServicesAgree`. |
+| `Fan/` | The five read microflows behind `F1FanApi`. |
+| `Fan/Weekend/` | The five that answer for one Grand Prix, including the lap traces. |
+| `Services/` | All three published OData services. |
 | `TestSupport/` | Wrappers that exist only so tests can reach the Java actions. |
 
-Five documents stay at the root because mxcli cannot move them: the three
-pushdown **Java actions** and both **published OData services**. `MOVE` has no
-doctype for either and neither `CREATE` form takes a folder clause. FINDINGS §32.
+Nothing is left at the module root. Five documents used to be — the Java actions
+and both services — because `MOVE` had no doctype for either; mxcli `c76d4b7`
+added both. FINDINGS §32, §34.
 
 It is a separate script rather than `folder '…'` clauses on each definition
 because `CREATE OR REPLACE` preserves a document's existing folder — so
@@ -53,10 +59,11 @@ no-op on an already-tidy module.
 
 ## Re-runnability
 
-`01`–`05` and `08` use `CREATE OR REPLACE` / `create or modify` and are safe to
-re-run. **`06` is not** — `create module role` has no `or modify` form, so it
-stops at the first role that already exists. To rebuild from scratch, drop the
-module first:
+Every script re-runs. `06` did not until mxcli `c76d4b7` added
+`create or modify module role` (and the user-role form behind it) — before that
+it stopped at the first role that already existed, which is why the demo users
+were split into `07`. The split is still useful, but no longer required. To
+rebuild from scratch, drop the module first:
 
 ```bash
 ./mxcli -p Formula1Backend.mpr -c "drop module Formula1Backend;"
@@ -67,16 +74,15 @@ The user roles (`ApiConsumer`, `Administrator`) live at project level and surviv
 the drop; `06` uses `alter user role … add module roles` for `Administrator`
 because the blank template already ships one.
 
-## Five things that will bite whoever edits this
+## Four things that will bite whoever edits this
 
-- **Whole numbers must be `long`, not `integer`.** mxcli publishes a Mendix
-  `Integer` as `Edm.Int32` while Mendix itself wants `Edm.Int64`, so any
-  `integer` attribute exposed in either service fails the build. FINDINGS §16.
+- **Whole numbers are `long`, not `integer`.** mxcli used to publish a Mendix
+  `Integer` as `Edm.Int32` where Mendix wants `Edm.Int64`, and every exposed
+  `integer` failed the build. Fixed in `c76d4b7`; the types here were never
+  changed back, because `long` is right for these columns anyway. FINDINGS §16.
 - **A `KEY` on a persistent entity needs `unique` on the attribute too.** The
   non-persistable `Stg_*` entities do not — same `expose` clause, different rule.
   FINDINGS §17.
-- **`dynamic '' + $Sql`, never `dynamic $Sql`.** mxcli quotes a bare variable into
-  a literal, so the runtime is asked to execute the text `$Sql`. FINDINGS §21.
 - **`10` owns `Read_Drivers` and `Read_RaceResults`.** Re-running `02` after `10`
   reverts them to their non-pushdown form and the build fails on the missing
   `System.ODataResponse` parameter.

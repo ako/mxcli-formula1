@@ -1,0 +1,122 @@
+/**
+ * The three fan pages, exercised through the datasource microflows they bind.
+ * Needs the backend running: every one of these is an OData round trip that
+ * ends in a DuckDB scan of the CSVs.
+ *
+ * @test Driver career: Senna drove 11 seasons
+ * @expect $result = 11
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaSeasons();
+/
+
+/**
+ * @test Driver career: 162 races, each with its practice and qualifying columns
+ * @expect $result = 162
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaRaces();
+/
+
+/**
+ * @test Season summary: 1988 has 16 rounds of cumulative points
+ * @expect $result = 16
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1988Rounds();
+/
+
+/**
+ * @test Constructor: Ferrari's cars have stopped for 72 distinct reasons
+ * @expect $result = 72
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_FerrariReasons();
+/
+
+/**
+ * @test Facts: the sourced paragraph resolves for a driver
+ * @expect $result = 'Ayrton Senna'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_SennaFactTitle();
+/
+
+/**
+ * The regression: the standings grids were bound to the live service, whose
+ * read microflow ignores $filter, so 1957 showed the 2026 grid. 22 drivers were
+ * classified in 1957; 1680 is what the wrong binding returned.
+ *
+ * @test Season summary: 1957 standings are 1957's, not the newest 1680 rows
+ * @expect $result = 22
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1957Standings();
+/
+
+/**
+ * @test Season summary: 1957 ran eight rounds
+ * @expect $result = 8
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1957Rounds();
+/
+
+/**
+ * @test Race weekend: 20 drivers classified in Bahrain 2024
+ * @expect $result = 20
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendSessions();
+/
+
+/**
+ * @test Race weekend: five sessions in the position chart
+ * @expect $result = 5
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendShape();
+/
+
+/**
+ * The one thing f1db does not carry, fetched from Jolpica.
+ *
+ * @test Race weekend: 57 laps of traces
+ * @expect $result = 57
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LapChart();
+/
+
+/**
+ * @test Race weekend: the header resolves the winner
+ * @expect $result = 'Max Verstappen'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendWinner();
+/
+
+/**
+ * The live overview asserts on shape, not values — the snapshot moves.
+ *
+ * @test Live race: a full grid is in the running order
+ * @expect $result > 15
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveOrder();
+/
+
+/**
+ * @test Live race: somebody is leading
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveHasLeader();
+/
+
+/**
+ * The regression for FINDINGS §37: a resource has to answer a lookup by its own
+ * key. Read_Calendar used to ignore that request and return the newest season,
+ * whose first row the client then adopted as the object it was holding — so
+ * every calendar row resolved to the same race. `1036-c` is Bahrain 2021; the
+ * wrong answer was 2026.
+ *
+ * @test Calendar: a lookup by key returns that race, not the newest season
+ * @expect $result = 2021
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_CalendarByKey();
+/
+
+/**
+ * @test Race weekend: the weekend that opens is the round that was clicked
+ * @expect $result = 'Bahrain International Circuit'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked();
+/

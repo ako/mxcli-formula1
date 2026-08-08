@@ -213,6 +213,117 @@ public final class ODataQuery {
         return v != null && "true".equalsIgnoreCase(v.trim());
     }
 
+    /**
+     * The right-hand side of `<field> eq <value>` in $filter, as an identifier
+     * safe to paste into SQL.
+     *
+     * The resources built on it — a driver's career, a season's points
+     * progression — are not a filtered projection of one table but a query whose
+     * *shape* depends on the value: it appears in three subqueries, inside a
+     * window function, in a CROSS JOIN. {@link #where} cannot express that, so
+     * the value is lifted out and interpolated instead.
+     *
+     * Interpolating anything from a URL is the injection case, so this is a
+     * whitelist, not an escape: the return value is guaranteed to match
+     * [A-Za-z0-9_-]{1,64} or be empty. f1db keys are all slugs, so nothing legal
+     * is lost. Empty means absent — the caller decides whether that is a default
+     * or an empty result, and must never treat it as "no filter, return
+     * everything".
+     */
+    public static String filterIdentifier(String uri, String field) {
+        String filter = parseQuery(uri).get("$filter");
+        if (filter == null || field == null || field.isEmpty()) {
+            return "";
+        }
+        Matcher m = Pattern.compile(
+                "(?:^|\\s|\\()" + Pattern.quote(field) + "\\s+eq\\s+'([^']*)'",
+                Pattern.CASE_INSENSITIVE).matcher(filter);
+        if (!m.find()) {
+            return "";
+        }
+        String value = m.group(1);
+        return value.matches("[A-Za-z0-9_-]{1,64}") ? value : "";
+    }
+
+    /**
+     * The right-hand side of `<field> eq <number>` in $filter, as a long.
+     * Returns {@code fallback} when the term is absent or not a plain integer —
+     * a year, a round, nothing else.
+     */
+    public static long filterLong(String uri, String field, long fallback) {
+        String filter = parseQuery(uri).get("$filter");
+        if (filter == null || field == null || field.isEmpty()) {
+            return fallback;
+        }
+        Matcher m = Pattern.compile(
+                "(?:^|\\s|\\()" + Pattern.quote(field) + "\\s+eq\\s+(-?\\d{1,9})(?:\\s|\\)|$)",
+                Pattern.CASE_INSENSITIVE).matcher(filter);
+        if (!m.find()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(m.group(1));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /**
+     * The key literal of a key-addressed request, or "" for a collection read.
+     *
+     * `/odata/f1-fan/Calendar('1036-c')` yields `1036-c`; `/Calendar(1036)`
+     * yields `1036`; `/Calendar` and `/Calendar?$filter=...` yield "".
+     *
+     * Both key forms have to be read, because clients pick between them and the
+     * one Mendix's own OData client sends is the named one: OData allows the
+     * bare `Calendar('1036-c')` and the named `Calendar(calendarKey='1036-c')`,
+     * and reading only the bare form is indistinguishable from reading neither.
+     *
+     * This matters more than it looks. A published resource whose ReadMode is a
+     * microflow is asked for a single object by key whenever a client needs to
+     * resolve an object it is holding — which is what happens when a grid row is
+     * handed to another page. That request carries the key in the *path*, not in
+     * $filter, so a read microflow that only inspects $filter answers with its
+     * collection default and the client silently takes the first row of it. The
+     * symptom is a drill-down that always opens the same record no matter which
+     * row was clicked, with no error anywhere. FINDINGS §37.
+     *
+     * Whitelisted like the $filter readers, and for the same reason: the value
+     * is interpolated into SQL rather than bound.
+     */
+    public static String entityKey(String uri) {
+        if (uri == null) {
+            return "";
+        }
+        int q = uri.indexOf('?');
+        String path = q < 0 ? uri : uri.substring(0, q);
+        Matcher m = Pattern.compile(
+                "\\(\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*)?'?([^')]*)'?\\s*\\)\\s*/?$")
+                .matcher(path);
+        if (!m.find()) {
+            return "";
+        }
+        String value = m.group(1);
+        return value.matches("[A-Za-z0-9_-]{1,64}") ? value : "";
+    }
+
+    /**
+     * The leading digits of {@link #entityKey}, as a long — for keys that are an
+     * id with a suffix, like Calendar's `1036-c`. {@code fallback} when there
+     * is no key or it does not start with digits.
+     */
+    public static long entityKeyLong(String uri, long fallback) {
+        Matcher m = Pattern.compile("^(\\d{1,9})").matcher(entityKey(uri));
+        if (!m.find()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(m.group(1));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     private static String requireColumn(Map<String, String> cols, String name) {
         String col = cols.get(name.toLowerCase());
         if (col == null) {

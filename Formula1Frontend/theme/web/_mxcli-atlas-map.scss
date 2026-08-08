@@ -36,8 +36,12 @@
   // brand fill — so it tracks the rail, which is the surface it actually
   // sits on. Text on a brand-filled button comes from --btn-*-color below.
   --font-color-contrast: var(--mxt-rail-ink-active);
-  --link-color: var(--mxt-brand);
-  --link-hover-color: var(--mxt-brand-hover);
+  // Link TEXT needs 4.5:1 against the page; a brand used as a button FILL
+  // only needs 3:1 plus contrast against its own ink. A theme whose brand is
+  // too light to read as text sets --mxt-link rather than darkening the
+  // brand everywhere. (mxcli-todo findings #19c)
+  --link-color: var(--mxt-link, var(--mxt-brand));
+  --link-hover-color: var(--mxt-link-hover, var(--mxt-brand-hover));
 
   --border-color-default: var(--mxt-line);
   --border-radius-s: var(--mxt-radius);
@@ -204,4 +208,46 @@
 .navbar-brand .widget-language-selector .language-arrow {
   color: var(--mxt-rail-ink-active, var(--mxt-rail-ink));
 }
-// mxcli:theme:end console 30e400d90502c37a
+
+// ---------------------------------------------------------------------------
+// The login page — the first screen a user sees, and the one Atlas themes least.
+//
+// It is served from theme/web/login.html, which loads the SAME compiled theme
+// CSS ({{themecss}}), so it can be themed here — but Atlas's own rules leave it
+// off-brand in two visible ways (mxcli-todo findings #19):
+//
+//   1. `.loginpage-image` layers a brand-tinted gradient over Atlas's stock
+//      photograph (`url("./resources/work-do-more.jpeg")`), so a dark app opens
+//      on a large, bright, unrelated picture.
+//   2. The submit button is `.btn-success`, so it follows the SUCCESS colour,
+//      not the brand — on console that is a green button two screens away from
+//      a teal one.
+//
+// The project's own logo (theme/web/logo.png) is deliberately left alone: it is
+// the app's asset to replace, and hiding it would remove a real logo from apps
+// that have one.
+// ---------------------------------------------------------------------------
+.loginpage-image {
+  background:
+    left / cover no-repeat
+    linear-gradient(
+      160deg,
+      var(--mxt-brand) 0%,
+      color-mix(in srgb, var(--mxt-brand) 55%, var(--mxt-rail)) 100%
+    );
+}
+
+.loginpage-form .btn-success {
+  background-color: var(--mxt-brand);
+  border-color: var(--mxt-brand);
+  color: var(--mxt-brand-ink);
+}
+
+.loginpage-form .btn-success:hover,
+.loginpage-form .btn-success:focus,
+.loginpage-form .btn-success:active {
+  background-color: var(--mxt-brand-hover);
+  border-color: var(--mxt-brand-hover);
+  color: var(--mxt-brand-ink);
+}
+// mxcli:theme:end console 73f884cb5d4358a6

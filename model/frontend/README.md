@@ -61,12 +61,42 @@ the contract says, so a service restricting `Countable` or `Filterable` yields a
 project that will not build (FINDINGS §24).
 
 The tempting fix — `create or modify external entity … (Countable: false)` —
-**corrupts the entity**: it renames an attribute (`name` became
-`Stg_Circuitname`) and strips every remote mapping (FINDINGS §25). Do not do it.
+**corrupted the entity**: it renamed an attribute (`name` became
+`Stg_Circuitname`) and stripped every remote mapping (FINDINGS §25). `c76d4b7`
+fixes the mapping read-back, but this project has not re-tested it: regenerating
+from a corrected contract is the cheaper habit either way.
 
 Fix the published contract instead and regenerate. That is why all eight live
 resources are `Countable`: each read microflow takes a `System.ODataResponse` and
 reports a count, so the generator's optimistic default happens to be correct.
+
+## The fan pages
+
+`07-fan-pages.mdl` adds three parameterised pages — a driver's career, a
+season's summary, a constructor's reliability record — plus the microflows that
+feed them. Three things about them are worth knowing before editing:
+
+- **Every grid binds a microflow, not a database source.** The constraint has to
+  reach the backend: a retrieve constrained on the page parameter becomes
+  `$filter=driverId eq '...'` on the OData request, which the read microflow
+  turns into SQL. An unconstrained retrieve would pull the whole resource.
+- **A page with a parameter needs it in the URL** — `url: 'driver/{Driver}'`.
+  Without the segment the build fails.
+- **A live resource silently ignores the constraint you put on it.** This one
+  shipped a wrong page: the season standings grids were bound to
+  `F1Live.DriverStandings`, whose read microflow does not parse query options,
+  so `$filter=year eq 1957` was dropped, all 1680 rows came back newest-first,
+  and 1957 showed the 2026 grid. Nothing errored. Only `Drivers`,
+  `RaceResults` and the five `F1Fan` resources parse `$filter`; everything else
+  on the live service returns its whole list. Constrain against the **cached**
+  service, or against a resource you know pushes down.
+- **XPath wants lowercase `and`.** MDL passes the operator through verbatim, so
+  `WHERE scope = 'driver' AND entityId = ...` compiles and then fails the build
+  with CE0161.
+
+The chart's five lines are bound to positions in the final standings, not to
+named drivers: a series binds its Y attribute when the page is authored, and one
+page serves all 77 seasons.
 
 ## Testing
 
@@ -91,10 +121,11 @@ width from the grid.
 
 Two things to know before editing a grid column:
 
-- **An attribute called `name` is not called `name`.** The generator prefixes it
-  with the remote type, and differently per service — `Stg_Drivername` on the
-  live side, `Drivername` on the cached side (FINDINGS §28). The captions hide
-  this from the user; the MDL cannot.
+- **`name` is called `name` again.** The generator used to prefix it with the
+  remote type, and differently per service — `Stg_Drivername` live, `Drivername`
+  cached (FINDINGS §28). Fixed in mxcli `c76d4b7`; both modules were regenerated
+  and the page bindings now read `name`. Anything still referring to the old
+  spellings is stale.
 - **Design properties that `mxcli check` accepts can still fail the build.** The
   lint rule knows the widget's catalogue, not which subset the `console` theme
   implements: `Row size` and `Hover style` pass `check` and are rejected by

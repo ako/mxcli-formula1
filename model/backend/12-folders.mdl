@@ -12,16 +12,18 @@
  * document's existing folder. Re-running 00-11 after this leaves the layout
  * alone; re-running this file is a no-op on an already-tidy module.
  *
- *   Warehouse/     how the CSVs are reached: the DuckDB connection and its config
- *   Live/          the read microflows behind F1LiveApi
- *   Cached/        the refresh jobs that fill Postgres behind F1CachedApi
- *   Health/        row counts and the invariant that the two services agree
- *   TestSupport/   wrappers that exist only so tests can call Java actions
+ *   Warehouse/      how the CSVs are reached: the DuckDB connection and its config
+ *   Live/           the read microflows behind F1LiveApi
+ *   Live/Pushdown/  the Java actions that turn OData query options into SQL
+ *   Cached/         the refresh jobs that fill Postgres behind F1CachedApi
+ *   Health/         row counts and the invariant that the two services agree
+ *   Fan/            the read microflows behind F1FanApi
+ *   Services/       all three published OData services
+ *   TestSupport/    wrappers that exist only so tests can call Java actions
  *
- * Two kinds of document stay at the root whether they belong there or not:
- * the three pushdown **Java actions** and both **published OData services**.
- * MOVE has no doctype for either, and neither CREATE form takes a folder clause,
- * so mxcli cannot place them. FINDINGS §32.
+ * The last two folders were impossible when this file was written: MOVE had no
+ * doctype for a Java action or a published OData service, so five documents were
+ * stuck at the module root. mxcli `c76d4b7` adds both. FINDINGS §32, §34.
  */
 
 -- Reaching the data: the connection and the four constants that configure it.
@@ -63,6 +65,40 @@ MOVE MICROFLOW Formula1Backend.Count_Cached_Races       TO FOLDER 'Health';
 MOVE MICROFLOW Formula1Backend.Count_Cached_Drivers     TO FOLDER 'Health';
 MOVE MICROFLOW Formula1Backend.Count_Cached_RaceResults TO FOLDER 'Health';
 MOVE MICROFLOW Formula1Backend.Check_ServicesAgree      TO FOLDER 'Health';
+
+-- The pushdown helpers the live read microflows call, and the two services the
+-- whole backend exists to publish.
+MOVE JAVA ACTION Formula1Backend.ODataOrderLimitSql TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataWhereSql      TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataWantsCount    TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataFilterId      TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataFilterYear    TO FOLDER 'Live/Pushdown';
+MOVE JAVA ACTION Formula1Backend.ODataEntityKeyId   TO FOLDER 'Live/Pushdown';
+
+MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1LiveNowApi TO FOLDER 'Services';
+
+-- The fan-facing reads: a career, a season's title fight, a team's failures.
+MOVE MICROFLOW Formula1Backend.Read_DriverSeasons  TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_DriverRaces    TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_SeasonProgress TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_Retirements    TO FOLDER 'Fan';
+MOVE MICROFLOW Formula1Backend.Read_Facts          TO FOLDER 'Fan';
+
+-- The race weekend and the lap traces behind it.
+MOVE MICROFLOW Formula1Backend.Read_RaceWeekend    TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_RaceSessions   TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_Calendar       TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_WeekendShape   TO FOLDER 'Fan/Weekend';
+MOVE MICROFLOW Formula1Backend.Read_LapChart       TO FOLDER 'Fan/Weekend';
+
+-- Near-live timing from OpenF1, which is a different source with a different
+-- freshness contract — hence its own folder and its own service.
+MOVE MICROFLOW Formula1Backend.Read_LiveOrder      TO FOLDER 'LiveNow';
+MOVE MICROFLOW Formula1Backend.Read_LiveMessages   TO FOLDER 'LiveNow';
+MOVE MICROFLOW Formula1Backend.Read_LiveSession    TO FOLDER 'LiveNow';
 
 -- Not part of the running app: these exist so tests can reach the Java actions
 -- and the dynamic-SQL path directly. Kept together so they are easy to ignore.

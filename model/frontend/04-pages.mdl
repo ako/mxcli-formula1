@@ -30,17 +30,22 @@ create or replace page Formula1Frontend.Drivers_Live
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Drivers — live from the CSVs', rendermode: H2)
-        container note (class: 'mx-spacing-bottom-medium') {
-          dynamictext noteText (content: 'Served by F1LiveApi. Each page of this grid is one DuckDB scan of f1db-drivers.csv; the sort and the page window are pushed into the SQL.')
-        }
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Drivers', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Drivers', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: '917 drivers, read from the CSVs on every request', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgDriversLive (
           datasource: database F1Live.Drivers,
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Stg_Drivername, caption: 'Driver') {
-            textfilter fName (attribute: Stg_Drivername)
+          column colName (attribute: name, caption: 'Driver') {
+            textfilter fName (attribute: name)
           }
           column colNationality (attribute: nationality, caption: 'Nationality') {
             textfilter fNat (attribute: nationality)
@@ -50,7 +55,12 @@ create or replace page Formula1Frontend.Drivers_Live
           column colPoles (attribute: polePositions, caption: 'Poles', Alignment: right)
           column colStarts (attribute: raceStarts, caption: 'Starts', Alignment: right)
           column colTitles (attribute: championshipWins, caption: 'Titles', Alignment: right)
+          column colOpen (caption: 'Open') {
+            linkbutton btnCareer (Caption: 'Career',
+              Action: SHOW_PAGE Formula1Frontend.Driver_Career(Driver: $currentObject))
+          }
         }
+    }
   }
 }
 
@@ -62,17 +72,22 @@ create or replace page Formula1Frontend.Drivers_Cached
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Drivers — cached', rendermode: H2)
-        container note (class: 'mx-spacing-bottom-medium') {
-          dynamictext noteText (content: 'Served by F1CachedApi out of the backend database. Same 917 rows as the live page; Mendix does the paging and filtering in SQL against Postgres.')
-        }
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Drivers', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Drivers', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: 'the same 917, materialised in Postgres', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgDriversCached (
           datasource: database F1Cached.Drivers,
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Drivername, caption: 'Driver') {
-            textfilter fName (attribute: Drivername)
+          column colName (attribute: name, caption: 'Driver') {
+            textfilter fName (attribute: name)
           }
           column colNationality (attribute: nationality, caption: 'Nationality') {
             textfilter fNat (attribute: nationality)
@@ -83,6 +98,7 @@ create or replace page Formula1Frontend.Drivers_Cached
           column colStarts (attribute: raceStarts, caption: 'Starts', Alignment: right)
           column colTitles (attribute: championshipWins, caption: 'Titles', Alignment: right)
         }
+    }
   }
 }
 
@@ -96,7 +112,15 @@ create or replace page Formula1Frontend.Seasons_Overview
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Seasons', rendermode: H2)
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Browse', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Seasons', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: 'every championship since 1950', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgSeasons (
           datasource: database F1Cached.Seasons,
           PageSize: 20,
@@ -109,7 +133,12 @@ create or replace page Formula1Frontend.Seasons_Overview
           }
           column colConstructor (attribute: championConstructor, caption: 'Constructors champion')
           column colRaces (attribute: raceCount, caption: 'Races', Alignment: right)
+          column colOpenSeason (caption: 'Open') {
+            linkbutton btnSeason (Caption: 'Summary',
+              Action: SHOW_PAGE Formula1Frontend.Season_Summary(Season: $currentObject))
+          }
         }
+    }
   }
 }
 
@@ -123,14 +152,22 @@ create or replace page Formula1Frontend.Constructors_Overview
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Constructors', rendermode: H2)
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Browse', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Constructors', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: 'every team that has entered a race', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgConstructors (
           datasource: database F1Cached.Constructors,
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Constructorname, caption: 'Constructor') {
-            textfilter fName (attribute: Constructorname)
+          column colName (attribute: name, caption: 'Constructor') {
+            textfilter fName (attribute: name)
           }
           column colCountry (attribute: country, caption: 'Country') {
             textfilter fCountry (attribute: country)
@@ -139,7 +176,12 @@ create or replace page Formula1Frontend.Constructors_Overview
           column colPodiums (attribute: podiums, caption: 'Podiums', Alignment: right)
           column colTitles (attribute: championshipWins, caption: 'Titles', Alignment: right)
           column colPoints (attribute: points, caption: 'Points', Alignment: right)
+          column colOpenTeam (caption: 'Open') {
+            linkbutton btnTeam (Caption: 'Reliability',
+              Action: SHOW_PAGE Formula1Frontend.Constructor_Detail(Constructor: $currentObject))
+          }
         }
+    }
   }
 }
 
@@ -153,14 +195,22 @@ create or replace page Formula1Frontend.Circuits_Overview
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Circuits', rendermode: H2)
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Browse', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Circuits', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: 'every venue the championship has visited', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgCircuits (
           datasource: database F1Cached.Circuits,
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Circuitname, caption: 'Circuit') {
-            textfilter fName (attribute: Circuitname)
+          column colName (attribute: name, caption: 'Circuit') {
+            textfilter fName (attribute: name)
           }
           column colPlace (attribute: placeName, caption: 'Place') {
             textfilter fPlace (attribute: placeName)
@@ -172,6 +222,7 @@ create or replace page Formula1Frontend.Circuits_Overview
           column colTurns (attribute: turns, caption: 'Turns', Alignment: right)
           column colHeld (attribute: racesHeld, caption: 'Races held', Alignment: right)
         }
+    }
   }
 }
 
@@ -189,10 +240,15 @@ create or replace page Formula1Frontend.RaceResults_Overview
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Race results', rendermode: H2)
-        container note (class: 'mx-spacing-bottom-medium') {
-          dynamictext noteText (content: '27533 results across every season. Filter by driver or constructor; the filter becomes an OData $filter and, on the live service, a SQL WHERE against the CSVs.')
-        }
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Browse', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Race results', rendermode: H2, class: 'pagehead-title')
+        dynamictext sub (content: '27533 classifications, one page at a time', class: 'pagehead-sub')
+      }
+    }
+
+    container panel (class: 'panel grid-dense') {
         datagrid dgResults (
           datasource: database F1Cached.RaceResults,
           PageSize: 25,
@@ -211,11 +267,12 @@ create or replace page Formula1Frontend.RaceResults_Overview
           column colPoints (attribute: points, caption: 'Points', Alignment: right)
           column colRetired (attribute: reasonRetired, caption: 'Retired')
         }
+    }
   }
 }
 
 /*
- * Home last of the pages, because its two cards link to the Drivers pages and a
+ * Home last of the pages, because its cards link to the Drivers pages and a
  * page reference has to already exist when the referring page is built.
  */
 
@@ -227,32 +284,83 @@ create or replace page Formula1Frontend.Home
 )
 {
   container pageBody {
-        dynamictext heading (content: 'Formula 1 — every season since 1950', rendermode: H1)
-        container intro (class: 'mx-spacing-bottom-large') {
-          dynamictext introText (content: 'Drivers, constructors, circuits, races and 27533 race results, read from CSV files by DuckDB and served over OData. Nothing here is typed in by hand.')
-        }
+    container head (class: 'pagehead') {
+      container headMain (class: 'pagehead-main') {
+        dynamictext eyebrow (content: 'Formula 1', class: 'pagehead-eyebrow')
+        dynamictext title (content: 'Every season since 1950', rendermode: H1,
+                           class: 'pagehead-title')
+        dynamictext sub (
+          content: 'Drivers, constructors, circuits, races and race results, read from CSV files by DuckDB and served over OData. Nothing here is typed in by hand.',
+          class: 'pagehead-sub')
+      }
+      container headBadge (class: 'pagehead-badge') {
+        dynamictext seasons (content: '77')
+      }
+    }
 
-        layoutgrid cards {
-          row cardRow {
-            column colLive (desktopwidth: 6) {
-              container liveCard (class: 'card') {
-                dynamictext liveHead (content: 'Live — read from the CSVs', rendermode: H3)
-                container liveBody {
-                  dynamictext liveText (content: 'Every request runs a DuckDB query against the CSV files. Nothing is stored, so it can never be stale. Sorting and paging are translated into SQL by the read microflow.')
-                }
-                actionbutton btnLive (caption: 'Browse drivers (live)', action: show_page Formula1Frontend.Drivers_Live, buttonstyle: primary)
-              }
-            }
-            column colCached (desktopwidth: 6) {
-              container cachedCard (class: 'card') {
-                dynamictext cachedHead (content: 'Cached — materialised in Postgres', rendermode: H3)
-                container cachedBody {
-                  dynamictext cachedText (content: 'The same data loaded into the backend database by a refresh job. Mendix pages and filters it natively, and it carries navigation properties the live service cannot.')
-                }
-                actionbutton btnCached (caption: 'Browse drivers (cached)', action: show_page Formula1Frontend.Drivers_Cached, buttonstyle: primary)
-              }
-            }
-          }
+    container kpis (class: 'kpis') {
+      container kRaces (class: 'kpi') {
+        dynamictext kRacesL (content: 'Races', class: 'kpi-label')
+        dynamictext kRacesV (content: '1171', class: 'kpi-value')
+      }
+      container kDrivers (class: 'kpi') {
+        dynamictext kDriversL (content: 'Drivers', class: 'kpi-label')
+        dynamictext kDriversV (content: '917', class: 'kpi-value')
+      }
+      container kTeams (class: 'kpi') {
+        dynamictext kTeamsL (content: 'Constructors', class: 'kpi-label')
+        dynamictext kTeamsV (content: '187', class: 'kpi-value')
+      }
+      container kCircuits (class: 'kpi') {
+        dynamictext kCircuitsL (content: 'Circuits', class: 'kpi-label')
+        dynamictext kCircuitsV (content: '78', class: 'kpi-value')
+      }
+      container kResults (class: 'kpi kpi-accent') {
+        dynamictext kResultsL (content: 'Classifications', class: 'kpi-label')
+        dynamictext kResultsV (content: '27533', class: 'kpi-value')
+      }
+    }
+
+    container ways (class: 'split-even') {
+      container liveCard (class: 'panel') {
+        container liveHead (class: 'panel-head') {
+          dynamictext liveTitle (content: 'Live', class: 'panel-title')
+          dynamictext liveSub (content: 'read from the CSVs', class: 'panel-sub')
         }
+        container liveBody {
+          dynamictext liveText (content: 'Every request runs a DuckDB query against the CSV files. Nothing is stored, so it can never be stale. Sorting and paging are translated into SQL by the read microflow.')
+        }
+        container liveActions (class: 'section-gap') {
+          actionbutton btnLive (caption: 'Browse drivers (live)',
+            action: show_page Formula1Frontend.Drivers_Live, buttonstyle: primary)
+        }
+      }
+      container cachedCard (class: 'panel') {
+        container cachedHead (class: 'panel-head') {
+          dynamictext cachedTitle (content: 'Cached', class: 'panel-title')
+          dynamictext cachedSub (content: 'materialised in Postgres', class: 'panel-sub')
+        }
+        container cachedBody {
+          dynamictext cachedText (content: 'The same data loaded into the backend database by a refresh job. Mendix pages and filters it natively, and it carries navigation properties the live service cannot.')
+        }
+        container cachedActions (class: 'section-gap') {
+          actionbutton btnCached (caption: 'Browse drivers (cached)',
+            action: show_page Formula1Frontend.Drivers_Cached, buttonstyle: primary)
+        }
+      }
+    }
+
+    container startPanel (class: 'panel') {
+      container startHead (class: 'panel-head') {
+        dynamictext startTitle (content: 'Where to start', class: 'panel-title')
+        dynamictext startSub (content: 'every overview opens a detail page',
+                              class: 'panel-sub')
+      }
+      container startLegend (class: 'legend') {
+        dynamictext c1 (content: 'Seasons → the title fight, round by round', class: 'chip')
+        dynamictext c2 (content: 'Drivers → a career, session by session', class: 'chip')
+        dynamictext c3 (content: 'Constructors → what stopped the cars', class: 'chip')
+      }
+    }
   }
 }

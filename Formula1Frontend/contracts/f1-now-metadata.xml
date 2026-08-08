@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+  <edmx:DataServices>
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Formula1Backend.Now">
+      <EntityType Name="Stg_LiveEntry">
+        <Key>
+          <PropertyRef Name="entryKey"/>
+        </Key>
+        <Property MaxLength="40" Name="entryKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="driverNumber" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="code" Type="Edm.String"/>
+        <Property MaxLength="120" Name="driverName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="team" Type="Edm.String"/>
+        <Property MaxLength="10" Name="teamColour" Type="Edm.String"/>
+        <Property Name="position" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="gapToLeader" Type="Edm.String"/>
+        <Property MaxLength="20" Name="interval" Type="Edm.String"/>
+        <Property Name="lapNumber" Type="Edm.Int64"/>
+        <Property Name="lastLapSeconds" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="sector1" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="sector2" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="sector3" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="speedTrap" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="compound" Type="Edm.String"/>
+        <Property Name="tyreAge" Type="Edm.Int64"/>
+        <Property Name="pitStops" Type="Edm.Int64"/>
+      </EntityType>
+      <EntityType Name="Stg_LiveMessage">
+        <Key>
+          <PropertyRef Name="messageKey"/>
+        </Key>
+        <Property MaxLength="60" Name="messageKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property MaxLength="20" Name="at" Type="Edm.String"/>
+        <Property MaxLength="40" Name="category" Type="Edm.String"/>
+        <Property MaxLength="30" Name="flag" Type="Edm.String"/>
+        <Property MaxLength="30" Name="scope" Type="Edm.String"/>
+        <Property Name="lap" Type="Edm.Int64"/>
+        <Property MaxLength="500" Name="message" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Stg_LiveSession">
+        <Key>
+          <PropertyRef Name="sessionKey"/>
+        </Key>
+        <Property MaxLength="20" Name="sessionKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="sessionName" Type="Edm.String"/>
+        <Property MaxLength="40" Name="sessionType" Type="Edm.String"/>
+        <Property MaxLength="120" Name="location" Type="Edm.String"/>
+        <Property MaxLength="120" Name="countryName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="circuitName" Type="Edm.String"/>
+        <Property MaxLength="40" Name="dateStart" Type="Edm.String"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="driverCount" Type="Edm.Int64"/>
+        <Property Name="leadLap" Type="Edm.Int64"/>
+        <Property MaxLength="40" Name="fetchedAt" Type="Edm.String"/>
+        <Property Name="airTemperature" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="trackTemperature" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="humidity" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="rainfall" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="windSpeed" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
+      <EntityContainer Name="Entities">
+        <EntitySet EntityType="Formula1Backend.Now.Stg_LiveEntry" Name="Order">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.Stg_LiveMessage" Name="Messages">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.Stg_LiveSession" Name="Session">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <Annotation Bool="false" Term="Org.OData.Capabilities.V1.BatchSupported"/>
+        <Annotation Bool="false" Term="Org.OData.Capabilities.V1.CrossJoinSupported"/>
+        <Annotation Bool="false" Term="Org.OData.Capabilities.V1.QuerySegmentSupported"/>
+        <Annotation Term="Org.OData.Capabilities.V1.SupportedFormats">
+          <Collection>
+            <String>application/json</String>
+          </Collection>
+        </Annotation>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

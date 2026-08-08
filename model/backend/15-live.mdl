@@ -1,0 +1,140 @@
+/*
+ * Service 4 of 4 — F1LiveNowApi: near-live timing from OpenF1.
+ *
+ * Its own service rather than more resources on F1FanApi, and not only to keep
+ * the modify small: this data has a different source (openf1.org, unofficial),
+ * a different licence, and a different freshness contract. Everything else in
+ * this app is a file that changes when someone publishes a release. This is a
+ * snapshot of a session that was moving when it was taken, and the page says
+ * when it was taken.
+ *
+ * scripts/fetch-f1-live.sh writes data/live/. Re-run it to refresh; on a race
+ * Sunday, run it on a timer with SESSION=latest.
+ *
+ * No `$filter` plumbing here: a snapshot is one session, so each resource
+ * returns the file. The session key travels as data so the page can show which
+ * session it is looking at.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveEntry AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
+    (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveMessage AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
+    (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveSession AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
+    (dataDir = @Formula1Backend.DataDir);
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+create or modify odata service Formula1Backend.F1LiveNowApi (
+  path: 'odata/f1-now/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Now'
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Stg_LiveEntry as 'Order' (
+    ReadMode: microflow Formula1Backend.Read_LiveOrder,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    EntryKey as 'entryKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Team as 'team' (Filterable, Sortable),
+    TeamColour as 'teamColour' (Filterable, Sortable),
+    Position as 'position' (Filterable, Sortable),
+    GapToLeader as 'gapToLeader' (Filterable, Sortable),
+    Interval as 'interval' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    LastLapSeconds as 'lastLapSeconds' (Filterable, Sortable),
+    Sector1 as 'sector1' (Filterable, Sortable),
+    Sector2 as 'sector2' (Filterable, Sortable),
+    Sector3 as 'sector3' (Filterable, Sortable),
+    SpeedTrap as 'speedTrap' (Filterable, Sortable),
+    Compound as 'compound' (Filterable, Sortable),
+    TyreAge as 'tyreAge' (Filterable, Sortable),
+    PitStops as 'pitStops' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_LiveMessage as 'Messages' (
+    ReadMode: microflow Formula1Backend.Read_LiveMessages,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    MessageKey as 'messageKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    Category as 'category' (Filterable, Sortable),
+    Flag as 'flag' (Filterable, Sortable),
+    Scope as 'scope' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    Message as 'message' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_LiveSession as 'Session' (
+    ReadMode: microflow Formula1Backend.Read_LiveSession,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    SessionKey as 'sessionKey' (KEY, Filterable, Sortable),
+    SessionName as 'sessionName' (Filterable, Sortable),
+    SessionType as 'sessionType' (Filterable, Sortable),
+    Location as 'location' (Filterable, Sortable),
+    CountryName as 'countryName' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    DateStart as 'dateStart' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    DriverCount as 'driverCount' (Filterable, Sortable),
+    LeadLap as 'leadLap' (Filterable, Sortable),
+    FetchedAt as 'fetchedAt' (Filterable, Sortable),
+    AirTemperature as 'airTemperature' (Filterable, Sortable),
+    TrackTemperature as 'trackTemperature' (Filterable, Sortable),
+    Humidity as 'humidity' (Filterable, Sortable),
+    Rainfall as 'rainfall' (Filterable, Sortable),
+    WindSpeed as 'windSpeed' (Filterable, Sortable)
+  );
+};
+
+/* A read microflow a published service calls needs its own role, and the
+ * service grants have to follow the declaration — a modify drops them. §26. */
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveOrder TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveMessages TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveSession TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveOrder TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveMessages TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveSession TO Formula1Backend.DataAdmin;
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.DataAdmin;

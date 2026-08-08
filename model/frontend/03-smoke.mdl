@@ -45,3 +45,213 @@ BEGIN
   END IF;
   RETURN $Wins;
 END;
+
+/*
+ * The `name` attribute, on both clients.
+ *
+ * These existed only in the .mpr until now — written by hand while §28 was
+ * being diagnosed, when the generator prefixed the attribute with its remote
+ * type (`Stg_Drivername` live, `Drivername` cached) and the question was
+ * whether the mangled attribute still mapped to the remote `name`. mxcli
+ * c76d4b7 stopped renaming it, so they now read `name` on both sides and are
+ * recorded here, where a rebuild will recreate them. FINDINGS §28, §34.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Live_SennaName ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Name String = '';
+  IF $Row != empty THEN
+    SET $Name = $Row/name;
+  END IF;
+  RETURN $Name;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Cached_SennaName ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Name String = '';
+  IF $Row != empty THEN
+    SET $Name = $Row/name;
+  END IF;
+  RETURN $Name;
+END;
+
+/*
+ * The fan pages, reached the way the pages reach them.
+ *
+ * Each of these retrieves the page's parameter object and calls the same
+ * datasource microflow the page binds, so a test failing here means a page is
+ * broken — not merely that the backend answered.
+ *
+ * No empty-guard around the call: `SET` inside an IF is treated as a second
+ * declaration of the return variable and the build fails with "Duplicate
+ * variable name". These ids exist; if one did not, the datasource would return
+ * nothing and the count would be 0, which the assertion catches anyway.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaSeasons ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverSeasons (Driver = $Driver);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaRaces ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverRaces (Driver = $Driver);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988Rounds ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_FerrariReasons ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Team FROM F1Cached.Constructors WHERE constructorId = 'ferrari' LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_Retirements (Constructor = $Team);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaFactTitle ()
+  RETURNS String AS $Title
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  $Fact = CALL MICROFLOW Formula1Frontend.DS_DriverFact (Driver = $Driver);
+  DECLARE $Title String = $Fact/title;
+  RETURN $Title;
+END;
+
+/*
+ * 1957, which is the season that caught the bug: the standings grids were bound
+ * to the live service, whose read microflow ignores $filter, so every season
+ * showed the newest rows. 22 is the number of drivers classified in 1957.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Standings ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Rounds ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+/*
+ * The race weekend, through the microflows the page binds. Bahrain 2024 is
+ * round 1: 20 drivers classified, five sessions in the shape chart, 57 laps of
+ * Jolpica traces.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendSessions ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendSessions (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendShape ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendShape (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LapChart ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LapChart (Race = $Race);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendWinner ()
+  RETURNS String AS $Who
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
+  DECLARE $Who String = $Weekend/winnerName;
+  RETURN $Who;
+END;
+
+/*
+ * The live overview. Asserts on the shape, not on values: the snapshot changes
+ * every time scripts/fetch-f1-live.sh runs, so pinning Norris on 70 laps would
+ * be a test that fails on the next race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveOrder ()
+  RETURNS Long AS $N
+BEGIN
+  -- Parens are required in a microflow CALL even with no arguments; a page
+  -- datasource is the opposite and rejects them.
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveOrder();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveHasLeader ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  RETRIEVE $Leader FROM F1Now.Order WHERE position = 1 LIMIT 1;
+  DECLARE $Ok Boolean = $Leader != empty;
+  RETURN $Ok;
+END;
+
+/*
+ * The regression for FINDINGS §37.
+ *
+ * A client holding a Calendar row re-reads it by key, and Read_Calendar used to
+ * ignore that request and answer with the most recent season instead. The
+ * client then adopted the first row of that answer as the object's identity, so
+ * every calendar row in every season resolved to the same race and the weekend
+ * page opened round 1 of 2026 whatever was clicked.
+ *
+ * This is the read the client makes: by key, nothing else. `1036-c` is Bahrain
+ * 2021, and 2021 is the assertion — before the fix it came back 2026.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CalendarByKey ()
+  RETURNS Long AS $Year
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  DECLARE $Year Long = $Race/year;
+  RETURN $Year;
+END;
+
+/*
+ * And the same lookup arriving the way the page does it: pick a row out of a
+ * season, hand it to the weekend datasource, and check the weekend that comes
+ * back is the round that was asked for rather than the newest race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
+  DECLARE $Name String = $Weekend/circuitName;
+  RETURN $Name;
+END;

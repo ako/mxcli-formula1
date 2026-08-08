@@ -1,0 +1,168 @@
+/*
+ * The live race overview.
+ *
+ * Everything else in this app reads a file that changes when someone publishes
+ * a release. This page reads a snapshot of a session that was moving when it
+ * was taken, so it says when it was taken and where it came from — both are on
+ * the page, not in a comment.
+ *
+ * "Live" is bounded honestly: the backend serves whatever
+ * scripts/fetch-f1-live.sh last wrote. Re-run that and reload for the next
+ * snapshot; on a race Sunday run it on a timer with SESSION=latest and OpenF1's
+ * ~3s delay is the floor.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveSession ()
+  RETURNS F1Now.Session AS $Session
+BEGIN
+  RETRIEVE $Session FROM F1Now.Session LIMIT 1;
+  RETURN $Session;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveOrder ()
+  RETURNS List of F1Now.Order AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Order;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveMessages ()
+  RETURNS List of F1Now.Messages AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Messages;
+  RETURN $Rows;
+END;
+
+create or replace page Formula1Frontend.Live_Race
+(
+  title: 'Live race',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'live'
+)
+{
+  container pageBody {
+    dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSession) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: '{1} · {2}',
+            contentparams: [{1} = sessionType, {2} = countryName],
+            class: 'pagehead-eyebrow')
+          dynamictext title (content: '{1}', contentparams: [{1} = circuitName],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1} · snapshot taken {2}',
+            contentparams: [{1} = dateStart, {2} = fetchedAt], class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext lap (content: 'LAP {1}', contentparams: [{1} = leadLap])
+        }
+      }
+
+      container kpis (class: 'kpis') {
+        container kCars (class: 'kpi') {
+          dynamictext kCarsL (content: 'Cars', class: 'kpi-label')
+          dynamictext kCarsV (content: '{1}', contentparams: [{1} = driverCount],
+                              class: 'kpi-value')
+        }
+        container kLap (class: 'kpi kpi-accent') {
+          dynamictext kLapL (content: 'Lead lap', class: 'kpi-label')
+          dynamictext kLapV (content: '{1}', contentparams: [{1} = leadLap],
+                             class: 'kpi-value')
+        }
+        container kAir (class: 'kpi') {
+          dynamictext kAirL (content: 'Air', class: 'kpi-label')
+          dynamictext kAirV (content: '{1}°C', contentparams: [{1} = airTemperature],
+                             class: 'kpi-value')
+        }
+        container kTrack (class: 'kpi') {
+          dynamictext kTrackL (content: 'Track', class: 'kpi-label')
+          dynamictext kTrackV (content: '{1}°C', contentparams: [{1} = trackTemperature],
+                               class: 'kpi-value')
+        }
+        container kRain (class: 'kpi') {
+          dynamictext kRainL (content: 'Rain', class: 'kpi-label')
+          dynamictext kRainV (content: '{1}', contentparams: [{1} = rainfall],
+                              class: 'kpi-value')
+          dynamictext kRainS (content: '0 = dry', class: 'kpi-sub')
+        }
+        container kWind (class: 'kpi') {
+          dynamictext kWindL (content: 'Wind', class: 'kpi-label')
+          dynamictext kWindV (content: '{1}', contentparams: [{1} = windSpeed],
+                              class: 'kpi-value')
+          dynamictext kWindS (content: 'm/s', class: 'kpi-sub')
+        }
+      }
+    }
+
+    /*
+     * The running order gets the full width and race control sits under it.
+     * Sixteen columns in the 1.6fr half of a split is about 60px a column, and
+     * every driver name renders as "M…" — the grid was technically correct and
+     * completely unreadable.
+     */
+    container liveStack {
+      container orderPanel (class: 'panel') {
+        container orderHead (class: 'panel-head') {
+          dynamictext orderTitle (content: 'Running order', class: 'panel-title')
+          dynamictext orderSub (
+            content: 'gap to leader and to the car ahead · last lap and its three sectors · tyre and stops',
+            class: 'panel-sub')
+        }
+        container orderGrid (class: 'grid-dense') {
+          datagrid dgOrder (
+            datasource: MICROFLOW Formula1Frontend.DS_LiveOrder,
+            PageSize: 22,
+            PagingPosition: bottom
+          ) {
+            column colPos (attribute: position, caption: 'Pos', Alignment: right)
+            column colNum (attribute: driverNumber, caption: '#', Alignment: right)
+            column colCode (attribute: code, caption: 'Code')
+            column colDriver (attribute: driverName, caption: 'Driver')
+            column colTeam (attribute: team, caption: 'Team')
+            column colGap (attribute: gapToLeader, caption: 'Leader', Alignment: right)
+            column colInt (attribute: interval, caption: 'Ahead', Alignment: right)
+            column colLap (attribute: lapNumber, caption: 'Lap', Alignment: right)
+            column colLast (attribute: lastLapSeconds, caption: 'Last lap', Alignment: right)
+            column colS1 (attribute: sector1, caption: 'S1', Alignment: right)
+            column colS2 (attribute: sector2, caption: 'S2', Alignment: right)
+            column colS3 (attribute: sector3, caption: 'S3', Alignment: right)
+            column colTrap (attribute: speedTrap, caption: 'Trap', Alignment: right)
+            column colTyre (attribute: compound, caption: 'Tyre')
+            column colAge (attribute: tyreAge, caption: 'Age', Alignment: right)
+            column colPits (attribute: pitStops, caption: 'Pits', Alignment: right)
+          }
+        }
+      }
+
+      container msgPanel (class: 'panel section-gap') {
+        container msgHead (class: 'panel-head') {
+          dynamictext msgTitle (content: 'Race control', class: 'panel-title')
+          dynamictext msgSub (content: 'newest first', class: 'panel-sub')
+        }
+        container msgGrid (class: 'grid-dense') {
+          datagrid dgMessages (
+            datasource: MICROFLOW Formula1Frontend.DS_LiveMessages,
+            PageSize: 18,
+            PagingPosition: bottom
+          ) {
+            column colAt (attribute: at, caption: 'Time', Alignment: right)
+            column colLapNo (attribute: lap, caption: 'Lap', Alignment: right)
+            column colFlag (attribute: flag, caption: 'Flag')
+            column colMsg (attribute: message, caption: 'Message') {
+              textfilter fMsg (attribute: message)
+            }
+          }
+        }
+      }
+    }
+
+    container sourcePanel (class: 'panel panel-note') {
+      container sourceBody {
+        dynamictext sourceText (content: 'Timing from OpenF1 (openf1.org) — an unofficial, community-run API carrying live timing that neither f1db nor Jolpica publish: positions, gaps, sector times, speed traps, tyre stints, pit stops, race control and weather. It documents a ~3 second delay during a session.')
+      }
+      container sourceCredit {
+        dynamictext sourceCreditText (content: 'This page shows the last snapshot, not a stream: re-run scripts/fetch-f1-live.sh and reload. On a race Sunday, run it on a timer with SESSION=latest.',
+          class: 'credit')
+      }
+    }
+  }
+}

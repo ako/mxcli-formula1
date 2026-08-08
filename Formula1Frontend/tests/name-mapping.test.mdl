@@ -1,15 +1,16 @@
 /**
- * The generator renamed the `name` attribute (FINDINGS §28). This proves the
- * renamed attribute still maps to the remote `name` and carries real data.
+ * The generator used to rename the `name` attribute after its remote type
+ * (FINDINGS §28); mxcli c76d4b7 stopped. This proves the attribute is now
+ * called `name` on both clients and still carries the remote value.
  *
- * @test Live client: the renamed name attribute still resolves
+ * @test Live client: name maps to the remote name
  * @expect $result = 'Ayrton Senna'
  */
 $result = CALL MICROFLOW Formula1Frontend.Live_SennaName();
 /
 
 /**
- * @test Cached client: the renamed name attribute still resolves
+ * @test Cached client: name maps to the remote name
  * @expect $result = 'Ayrton Senna'
  */
 $result = CALL MICROFLOW Formula1Frontend.Cached_SennaName();

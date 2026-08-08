@@ -42,6 +42,28 @@ BEGIN
   RETURN $Rejected;
 END;
 
+/*
+ * Runtime-built SQL, on its own, with nothing else in the way — the microflow
+ * behind tests/dyn.test.mdl. It existed only in the .mpr until now, created by
+ * hand while §21 was being diagnosed, which meant a rebuild from these scripts
+ * produced a project whose test suite could not run. Written here with a bare
+ * `dynamic $Sql`, the form mxcli c76d4b7 fixed: this asserting 7 is the proof
+ * the expression reaches DuckDB instead of the four characters "$Sql".
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Probe_DynamicSql ($Limit: Integer)
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $Sql String = 'SELECT id, name, totalRaceWins FROM read_csv('''
+    + @Formula1Backend.DataDir + '/f1db-drivers.csv'') ORDER BY totalRaceWins DESC LIMIT '
+    + toString($Limit);
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Probe_DynamicSql TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_OrderLimit TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Where TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO Formula1Backend.DataAdmin;

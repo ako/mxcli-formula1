@@ -12,4 +12,14 @@
 $mxcli-theme-variant: auto;
 @import "mxcli-atlas-map";
 @import "mxcli-console";
-// mxcli:theme:end console 4a19fec5048c7bd9
+@import "mxcli-widgets";
+// mxcli:theme:end console 15f0d160323b8c0b
+
+// Outside the fence, so `mxcli theme apply` leaves it alone. Corrects the
+// widget modules' own theme source, which bakes light-mode literals the theme's
+// Atlas map cannot reach. See the file header and FINDINGS §33.
+@import "f1-widget-dark";
+
+// The presentation layer from the redesign — panels, tiles, dense grids. Same
+// Console palette, different arrangement; every value resolves through --mxt-*.
+@import "f1-layout";

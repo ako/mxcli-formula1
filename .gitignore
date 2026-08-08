@@ -13,9 +13,30 @@
 # The F1 CSV dataset (~25 MB, 47 files). Re-fetched by scripts/fetch-f1-data.sh.
 /data/f1db/
 
+# Wikipedia summaries fetched by scripts/fetch-f1-facts.sh. Derived third-party
+# content (CC BY-SA 4.0), re-fetchable, and re-fetched by the bootstrap hook —
+# so the script is committed and the data is not, same as the f1db CSVs.
+/data/facts/
+
+# Lap-by-lap traces fetched by scripts/fetch-f1-laps.sh from Jolpica-F1. Third
+# party, re-fetchable, ~26k rows a season — script committed, data not.
+/data/laps/
+
+# Near-live snapshots from OpenF1 (scripts/fetch-f1-live.sh). Stale the moment
+# they are written — the script is the artefact, not the data.
+/data/live/
+
 # DuckDB scratch files, if any are ever materialised next to the CSVs.
 *.duckdb
 *.duckdb.wal
+
+# The harness module 'mxcli test' injects into an app to run .test.mdl files.
+# It writes itself in and removes itself on the way out, so what is left after
+# an interrupted run is scaffolding, not source.
+/Formula1Backend/javasource/mxtest/
+/Formula1Frontend/javasource/mxtest/
+/Formula1Backend/themesource/mxtest/
+/Formula1Frontend/themesource/mxtest/
 
 # Claude Code local overrides
 .claude/settings.local.json

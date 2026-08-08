@@ -152,6 +152,329 @@ create or modify non-persistent entity Formula1Backend.Stg_Count (
 );
 
 /* ---------------------------------------------------------------------------
+ * The fan-facing shapes. Everything above is a table; these five are questions.
+ *
+ * They exist because a browsing UI does not want rows, it wants an answer:
+ * what did this driver's career look like, how did a season unfold, where does
+ * this team keep breaking. Each one is a query DuckDB can answer in a single
+ * pass over the CSVs, so none of it is materialised either.
+ *
+ * Each carries a synthesised key, because a grouped result has no natural id
+ * and OData needs one per row.
+ * ------------------------------------------------------------------------- */
+
+/* One row per season a driver started, which is the spine of a career page. */
+create or modify non-persistent entity Formula1Backend.Stg_DriverSeason (
+  SeasonKey: string(80),
+  DriverId: string(60),
+  Year: long,
+  Constructors: string(300),
+  StandingPosition: string(20),
+  StandingOrder: long,
+  Points: decimal,
+  Starts: long,
+  Wins: long,
+  Podiums: long,
+  Poles: long,
+  BestFinish: long,
+  AvgQualifying: decimal,
+  AvgFinish: decimal,
+  Retirements: long
+);
+
+/*
+ * One row per race a driver entered, carrying every session: three practices,
+ * qualifying, the grid slot and the finish. Practice results only exist from
+ * the era each session was timed, so the early columns are empty for most of
+ * the sport's history — which is itself the answer to "how did they practise".
+ */
+create or modify non-persistent entity Formula1Backend.Stg_DriverRace (
+  RaceKey: string(80),
+  DriverId: string(60),
+  Year: long,
+  Round: long,
+  RaceName: string(200),
+  ConstructorName: string(120),
+  Fp1Position: long,
+  Fp2Position: long,
+  Fp3Position: long,
+  QualifyingPosition: long,
+  GridPosition: long,
+  FinishPosition: long,
+  PositionText: string(20),
+  PositionsGained: long,
+  Points: decimal,
+  ReasonRetired: string(120)
+);
+
+/*
+ * A season's title fight as a chart: one row per round, carrying the running
+ * points total of the five drivers who finished the championship on top.
+ *
+ * Wide rather than long — five name columns and five points columns — because
+ * a Mendix chart series binds one Y attribute at author time. Long data would
+ * need a series per driver created per season, which a static page cannot do.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_SeasonProgress (
+  ProgressKey: string(40),
+  Year: long,
+  Round: long,
+  RaceName: string(200),
+  D1Name: string(120),
+  D2Name: string(120),
+  D3Name: string(120),
+  D4Name: string(120),
+  D5Name: string(120),
+  D1Points: decimal,
+  D2Points: decimal,
+  D3Points: decimal,
+  D4Points: decimal,
+  D5Points: decimal
+);
+
+/* Why a team's cars stopped, and how often. One row per constructor-reason. */
+create or modify non-persistent entity Formula1Backend.Stg_Retirement (
+  RetirementKey: string(200),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  ReasonRetired: string(120),
+  Retirements: long,
+  Entries: long,
+  SharePercent: decimal,
+  FirstYear: long,
+  LastYear: long
+);
+
+/*
+ * Prose, which no CSV in f1db has. Fetched from Wikipedia by
+ * scripts/fetch-f1-facts.sh into data/facts/f1db-facts.csv and read the same
+ * way as everything else. The licence and source URL travel with every row
+ * because CC BY-SA requires attribution wherever the text is shown.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_Fact (
+  FactKey: string(80),
+  Scope: string(20),
+  EntityId: string(60),
+  Title: string(200),
+  Extract: string(4000),
+  SourceUrl: string(300),
+  License: string(60)
+);
+
+/* ---------------------------------------------------------------------------
+ * The race weekend, and the lap traces behind it.
+ *
+ * f1db carries every session's result — three practices, qualifying, the race,
+ * the fastest lap, every pit stop — with times and gaps. What it does not carry
+ * is a row per driver per lap; that is fetched from Jolpica (the Ergast
+ * successor) into data/laps/ and read the same way.
+ *
+ * The two chart shapes are wide on purpose, for the reason the season
+ * progression is: a Mendix chart series binds its Y attribute when the page is
+ * authored, so ten drivers means ten columns, not ten rows.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_RaceWeekend (
+  WeekendKey: string(40),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  RoundLabel: string(40),
+  Name: string(200),
+  CircuitName: string(120),
+  CircuitId: string(60),
+  RaceDate: datetime,
+  Laps: long,
+  Distance: decimal,
+  WinnerName: string(120),
+  WinnerTeam: string(120),
+  PoleName: string(120),
+  PoleTime: string(30),
+  FastestLapName: string(120),
+  FastestLapTime: string(30),
+  Fp1LeaderName: string(120),
+  Fp1LeaderTime: string(30),
+  Fp2LeaderName: string(120),
+  Fp2LeaderTime: string(30),
+  Fp3LeaderName: string(120),
+  Fp3LeaderTime: string(30)
+);
+
+/*
+ * One row per driver per weekend, every session side by side, with each gap
+ * expressed in seconds off that session's best — which is what makes the pace
+ * chart comparable across sessions run in different conditions.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_RaceSession (
+  SessionKey: string(80),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  DriverId: string(60),
+  DriverName: string(120),
+  Abbreviation: string(10),
+  ConstructorName: string(120),
+  Fp1Position: long,
+  Fp1Time: string(30),
+  Fp1Gap: decimal,
+  Fp2Position: long,
+  Fp2Time: string(30),
+  Fp2Gap: decimal,
+  Fp3Position: long,
+  Fp3Time: string(30),
+  Fp3Gap: decimal,
+  QualPosition: long,
+  QualTime: string(30),
+  QualGap: decimal,
+  Q1: string(30),
+  Q2: string(30),
+  Q3: string(30),
+  GridPosition: long,
+  FinishPosition: long,
+  PositionText: string(20),
+  PositionsGained: long,
+  Points: decimal,
+  ReasonRetired: string(120),
+  BestLapTime: string(30),
+  BestLapGap: decimal,
+  BestLapRank: long,
+  PitStops: long
+);
+
+/* The championship calendar: one row per round, with who won it. */
+create or modify non-persistent entity Formula1Backend.Stg_Calendar (
+  CalendarKey: string(40),
+  RaceId: long,
+  Year: long,
+  Round: long,
+  Code: string(10),
+  Name: string(200),
+  CircuitName: string(120),
+  RaceDate: datetime,
+  WinnerName: string(120),
+  WinnerTeam: string(120)
+);
+
+/* Position across the weekend: five rows (FP1, FP2, FP3, Quali, Race), ten
+ * drivers wide. */
+create or modify non-persistent entity Formula1Backend.Stg_WeekendShape (
+  ShapeKey: string(40),
+  RaceId: long,
+  SessionIndex: long,
+  SessionLabel: string(20),
+  S1Name: string(120),
+  S2Name: string(120),
+  S3Name: string(120),
+  S4Name: string(120),
+  S5Name: string(120),
+  S6Name: string(120),
+  S7Name: string(120),
+  S8Name: string(120),
+  S9Name: string(120),
+  S10Name: string(120),
+  S1Value: long,
+  S2Value: long,
+  S3Value: long,
+  S4Value: long,
+  S5Value: long,
+  S6Value: long,
+  S7Value: long,
+  S8Value: long,
+  S9Value: long,
+  S10Value: long
+);
+
+/* Race position by lap, from the Jolpica traces: one row per lap, ten wide. */
+create or modify non-persistent entity Formula1Backend.Stg_LapChart (
+  LapKey: string(40),
+  Year: long,
+  Round: long,
+  Lap: long,
+  S1Name: string(120),
+  S2Name: string(120),
+  S3Name: string(120),
+  S4Name: string(120),
+  S5Name: string(120),
+  S6Name: string(120),
+  S7Name: string(120),
+  S8Name: string(120),
+  S9Name: string(120),
+  S10Name: string(120),
+  S1Value: long,
+  S2Value: long,
+  S3Value: long,
+  S4Value: long,
+  S5Value: long,
+  S6Value: long,
+  S7Value: long,
+  S8Value: long,
+  S9Value: long,
+  S10Value: long
+);
+
+/* ---------------------------------------------------------------------------
+ * Near-live timing, from OpenF1.
+ *
+ * A different source with a different contract: f1db is a file that changes
+ * when someone publishes a release, OpenF1 is a service that changes during a
+ * race. scripts/fetch-f1-live.sh snapshots one session into data/live/ and the
+ * page reads whatever the last snapshot holds — so "live" here means "as fresh
+ * as the last fetch", which on a race Sunday means running it on a timer.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveEntry (
+  EntryKey: string(40),
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  DriverName: string(120),
+  Team: string(120),
+  TeamColour: string(10),
+  Position: long,
+  GapToLeader: string(20),
+  Interval: string(20),
+  LapNumber: long,
+  LastLapSeconds: decimal,
+  Sector1: decimal,
+  Sector2: decimal,
+  Sector3: decimal,
+  SpeedTrap: long,
+  Compound: string(20),
+  TyreAge: long,
+  PitStops: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveMessage (
+  MessageKey: string(60),
+  SessionKey: string(20),
+  At: string(20),
+  Category: string(40),
+  Flag: string(30),
+  Scope: string(30),
+  Lap: long,
+  Message: string(500)
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveSession (
+  SessionKey: string(20),
+  SessionName: string(60),
+  SessionType: string(40),
+  Location: string(120),
+  CountryName: string(120),
+  CircuitName: string(120),
+  DateStart: string(40),
+  Year: long,
+  DriverCount: long,
+  LeadLap: long,
+  FetchedAt: string(40),
+  AirTemperature: decimal,
+  TrackTemperature: decimal,
+  Humidity: decimal,
+  Rainfall: decimal,
+  WindSpeed: decimal
+);
+
+/* ---------------------------------------------------------------------------
  * The connection. Type 'BYOD' is Studio Pro's "Other" — bring your own driver.
  * It skips the driver-presence check, which is the only reason a JDBC driver
  * Mendix has no picker entry for can be used at all.
@@ -297,4 +620,349 @@ begin
           constructorId as ConstructorId, constructorName as ConstructorName,
           engineManufacturerId as EngineManufacturer,
           points as Points, championshipWon as ChampionshipWon );
+
+  /* -------------------------------------------------------------------------
+   * The fan-page queries.
+   *
+   * The SQL below is the shape, not the query that runs: every one of these is
+   * answered for a single driver, season or team, and the read microflow builds
+   * the real statement with `dynamic`. What is written here fixes the column
+   * list the connector maps, so it stays in step with the map clause; `LIMIT 1`
+   * keeps the placeholder from scanning 27533 rows at build time.
+   * ---------------------------------------------------------------------- */
+
+  query GetDriverSeasons
+    sql 'SELECT rr.year || ''-'' || rr.driverId AS seasonKey, rr.driverId AS driverId,
+                rr.year AS year,
+                COALESCE(string_agg(DISTINCT c.name, '', ''), ''-'') AS constructors,
+                COALESCE(max(ds.positionText), ''-'') AS standingPosition,
+                COALESCE(max(ds.positionDisplayOrder), 999) AS standingOrder,
+                COALESCE(max(ds.points), sum(COALESCE(rr.points, 0))) AS points,
+                count(*) AS starts,
+                sum(CASE WHEN rr.positionNumber = 1 THEN 1 ELSE 0 END) AS wins,
+                sum(CASE WHEN rr.positionNumber <= 3 THEN 1 ELSE 0 END) AS podiums,
+                sum(CASE WHEN rr.polePosition THEN 1 ELSE 0 END) AS poles,
+                min(rr.positionNumber) AS bestFinish,
+                round(avg(rr.qualificationPositionNumber), 1) AS avgQualifying,
+                round(avg(rr.positionNumber), 1) AS avgFinish,
+                sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements
+         FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
+                ON ds.year = rr.year AND ds.driverId = rr.driverId
+         GROUP BY rr.year, rr.driverId
+         ORDER BY rr.year DESC
+         LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_DriverSeason
+    map ( seasonKey as SeasonKey, driverId as DriverId, year as Year,
+          constructors as Constructors, standingPosition as StandingPosition,
+          standingOrder as StandingOrder, points as Points, starts as Starts,
+          wins as Wins, podiums as Podiums, poles as Poles, bestFinish as BestFinish,
+          avgQualifying as AvgQualifying, avgFinish as AvgFinish,
+          retirements as Retirements );
+
+  query GetDriverRaces
+    sql 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey, rr.driverId AS driverId,
+                rr.year AS year, rr.round AS round,
+                COALESCE(r.officialName, ''Round '' || rr.round) AS raceName,
+                COALESCE(c.name, ''-'') AS constructorName,
+                fp1.positionNumber AS fp1Position,
+                fp2.positionNumber AS fp2Position,
+                fp3.positionNumber AS fp3Position,
+                rr.qualificationPositionNumber AS qualifyingPosition,
+                rr.gridPositionNumber AS gridPosition,
+                rr.positionNumber AS finishPosition,
+                rr.positionText AS positionText,
+                rr.positionsGained AS positionsGained,
+                rr.points AS points,
+                rr.reasonRetired AS reasonRetired
+         FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
+         LEFT JOIN read_csv({dataDir} || ''/f1db-races.csv'') r ON r.id = rr.raceId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-races-free-practice-1-results.csv'') fp1
+                ON fp1.raceId = rr.raceId AND fp1.driverId = rr.driverId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-races-free-practice-2-results.csv'') fp2
+                ON fp2.raceId = rr.raceId AND fp2.driverId = rr.driverId
+         LEFT JOIN read_csv({dataDir} || ''/f1db-races-free-practice-3-results.csv'') fp3
+                ON fp3.raceId = rr.raceId AND fp3.driverId = rr.driverId
+         ORDER BY rr.year DESC, rr.round
+         LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_DriverRace
+    map ( raceKey as RaceKey, driverId as DriverId, year as Year, round as Round,
+          raceName as RaceName, constructorName as ConstructorName,
+          fp1Position as Fp1Position, fp2Position as Fp2Position, fp3Position as Fp3Position,
+          qualifyingPosition as QualifyingPosition, gridPosition as GridPosition,
+          finishPosition as FinishPosition, positionText as PositionText,
+          positionsGained as PositionsGained, points as Points,
+          reasonRetired as ReasonRetired );
+
+  query GetSeasonProgress
+    sql 'SELECT ''0-0'' AS progressKey, 0 AS year, 0 AS round, '''' AS raceName,
+                '''' AS d1Name, '''' AS d2Name, '''' AS d3Name, '''' AS d4Name, '''' AS d5Name,
+                0.0 AS d1Points, 0.0 AS d2Points, 0.0 AS d3Points,
+                0.0 AS d4Points, 0.0 AS d5Points
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_SeasonProgress
+    map ( progressKey as ProgressKey, year as Year, round as Round, raceName as RaceName,
+          d1Name as D1Name, d2Name as D2Name, d3Name as D3Name, d4Name as D4Name,
+          d5Name as D5Name, d1Points as D1Points, d2Points as D2Points,
+          d3Points as D3Points, d4Points as D4Points, d5Points as D5Points );
+
+  query GetRetirements
+    sql 'SELECT rr.constructorId || ''|'' || COALESCE(rr.reasonRetired, ''Unknown'') AS retirementKey,
+                rr.constructorId AS constructorId,
+                COALESCE(c.name, rr.constructorId) AS constructorName,
+                COALESCE(rr.reasonRetired, ''Unknown'') AS reasonRetired,
+                count(*) AS retirements, 0 AS entries, 0.0 AS sharePercent,
+                min(rr.year) AS firstYear, max(rr.year) AS lastYear
+         FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
+         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
+         WHERE rr.positionNumber IS NULL
+         GROUP BY rr.constructorId, c.name, rr.reasonRetired
+         ORDER BY count(*) DESC
+         LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Retirement
+    map ( retirementKey as RetirementKey, constructorId as ConstructorId,
+          constructorName as ConstructorName, reasonRetired as ReasonRetired,
+          retirements as Retirements, entries as Entries, sharePercent as SharePercent,
+          firstYear as FirstYear, lastYear as LastYear );
+
+  /*
+   * Facts. The file is written by scripts/fetch-f1-facts.sh and can legitimately
+   * be header-only when the fetch could not reach Wikipedia, so the column types
+   * are declared rather than sniffed: read_csv infers nothing from an empty file
+   * and would fail on the column names instead of returning no rows.
+   */
+  query GetFacts
+    sql 'SELECT scope || ''-'' || entityId AS factKey, scope AS scope,
+                entityId AS entityId, title AS title, extract AS extract,
+                sourceUrl AS sourceUrl, license AS license
+         FROM read_csv({dataDir} || ''/../facts/f1db-facts.csv'', header = true,
+                       columns = {''scope'': ''VARCHAR'', ''entityId'': ''VARCHAR'',
+                                  ''title'': ''VARCHAR'', ''extract'': ''VARCHAR'',
+                                  ''sourceUrl'': ''VARCHAR'', ''license'': ''VARCHAR''})
+         LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Fact
+    map ( factKey as FactKey, scope as Scope, entityId as EntityId, title as Title,
+          extract as Extract, sourceUrl as SourceUrl, license as License );
+
+
+  /* -------------------------------------------------------------------------
+   * The weekend queries. Placeholders again: every one is answered for a single
+   * race and built with `dynamic` by the read microflow. What is fixed here is
+   * the column list the connector maps.
+   * ---------------------------------------------------------------------- */
+
+  query GetRaceWeekend
+    sql 'SELECT '''' AS weekendKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS roundLabel, '''' AS name, '''' AS circuitName,
+                '''' AS circuitId, CAST(NULL AS TIMESTAMP) AS raceDate,
+                0 AS laps, 0.0 AS distance,
+                '''' AS winnerName, '''' AS winnerTeam,
+                '''' AS poleName, '''' AS poleTime,
+                '''' AS fastestLapName, '''' AS fastestLapTime,
+                '''' AS fp1LeaderName, '''' AS fp1LeaderTime,
+                '''' AS fp2LeaderName, '''' AS fp2LeaderTime,
+                '''' AS fp3LeaderName, '''' AS fp3LeaderTime
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_RaceWeekend
+    map ( weekendKey as WeekendKey, raceId as RaceId, year as Year, round as Round,
+          roundLabel as RoundLabel, name as Name, circuitName as CircuitName,
+          circuitId as CircuitId, raceDate as RaceDate, laps as Laps,
+          distance as Distance, winnerName as WinnerName, winnerTeam as WinnerTeam,
+          poleName as PoleName, poleTime as PoleTime,
+          fastestLapName as FastestLapName, fastestLapTime as FastestLapTime,
+          fp1LeaderName as Fp1LeaderName, fp1LeaderTime as Fp1LeaderTime,
+          fp2LeaderName as Fp2LeaderName, fp2LeaderTime as Fp2LeaderTime,
+          fp3LeaderName as Fp3LeaderName, fp3LeaderTime as Fp3LeaderTime );
+
+  query GetRaceSessions
+    sql 'SELECT '''' AS sessionKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS driverId, '''' AS driverName, '''' AS abbreviation,
+                '''' AS constructorName,
+                0 AS fp1Position, '''' AS fp1Time, 0.0 AS fp1Gap,
+                0 AS fp2Position, '''' AS fp2Time, 0.0 AS fp2Gap,
+                0 AS fp3Position, '''' AS fp3Time, 0.0 AS fp3Gap,
+                0 AS qualPosition, '''' AS qualTime, 0.0 AS qualGap,
+                '''' AS q1, '''' AS q2, '''' AS q3,
+                0 AS gridPosition, 0 AS finishPosition, '''' AS positionText,
+                0 AS positionsGained, 0.0 AS points, '''' AS reasonRetired,
+                '''' AS bestLapTime, 0.0 AS bestLapGap, 0 AS bestLapRank,
+                0 AS pitStops
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_RaceSession
+    map ( sessionKey as SessionKey, raceId as RaceId, year as Year, round as Round,
+          driverId as DriverId, driverName as DriverName, abbreviation as Abbreviation,
+          constructorName as ConstructorName,
+          fp1Position as Fp1Position, fp1Time as Fp1Time, fp1Gap as Fp1Gap,
+          fp2Position as Fp2Position, fp2Time as Fp2Time, fp2Gap as Fp2Gap,
+          fp3Position as Fp3Position, fp3Time as Fp3Time, fp3Gap as Fp3Gap,
+          qualPosition as QualPosition, qualTime as QualTime, qualGap as QualGap,
+          q1 as Q1, q2 as Q2, q3 as Q3,
+          gridPosition as GridPosition, finishPosition as FinishPosition,
+          positionText as PositionText, positionsGained as PositionsGained,
+          points as Points, reasonRetired as ReasonRetired,
+          bestLapTime as BestLapTime, bestLapGap as BestLapGap,
+          bestLapRank as BestLapRank, pitStops as PitStops );
+
+  query GetCalendar
+    sql 'SELECT '''' AS calendarKey, 0 AS raceId, 0 AS year, 0 AS round,
+                '''' AS code, '''' AS name, '''' AS circuitName,
+                CAST(NULL AS TIMESTAMP) AS raceDate,
+                '''' AS winnerName, '''' AS winnerTeam
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_Calendar
+    map ( calendarKey as CalendarKey, raceId as RaceId, year as Year, round as Round,
+          code as Code, name as Name, circuitName as CircuitName,
+          raceDate as RaceDate, winnerName as WinnerName, winnerTeam as WinnerTeam );
+
+  query GetWeekendShape
+    sql 'SELECT '''' AS shapeKey, 0 AS raceId, 0 AS sessionIndex, '''' AS sessionLabel,
+                '''' AS s1name,
+                '''' AS s2name,
+                '''' AS s3name,
+                '''' AS s4name,
+                '''' AS s5name,
+                '''' AS s6name,
+                '''' AS s7name,
+                '''' AS s8name,
+                '''' AS s9name,
+                '''' AS s10name,
+                0 AS s1value,
+                0 AS s2value,
+                0 AS s3value,
+                0 AS s4value,
+                0 AS s5value,
+                0 AS s6value,
+                0 AS s7value,
+                0 AS s8value,
+                0 AS s9value,
+                0 AS s10value
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_WeekendShape
+    map ( shapeKey as ShapeKey, raceId as RaceId, sessionIndex as SessionIndex,
+          sessionLabel as SessionLabel,
+          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
+          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+
+  query GetLapChart
+    sql 'SELECT '''' AS lapKey, 0 AS year, 0 AS round, 0 AS lap,
+                '''' AS s1name,
+                '''' AS s2name,
+                '''' AS s3name,
+                '''' AS s4name,
+                '''' AS s5name,
+                '''' AS s6name,
+                '''' AS s7name,
+                '''' AS s8name,
+                '''' AS s9name,
+                '''' AS s10name,
+                0 AS s1value,
+                0 AS s2value,
+                0 AS s3value,
+                0 AS s4value,
+                0 AS s5value,
+                0 AS s6value,
+                0 AS s7value,
+                0 AS s8value,
+                0 AS s9value,
+                0 AS s10value
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LapChart
+    map ( lapKey as LapKey, year as Year, round as Round, lap as Lap,
+          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
+          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+
+
+  /* -------------------------------------------------------------------------
+   * The live snapshot. Columns are declared rather than sniffed: these files
+   * are legitimately header-only before the first fetch, and read_csv infers
+   * nothing from an empty file.
+   * ---------------------------------------------------------------------- */
+
+  query GetLiveOrder
+    sql 'SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
+                code, driverName, team, teamColour, position, gapToLeader, interval,
+                lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
+                compound, tyreAge, pitStops
+         FROM read_csv({dataDir} || ''/../live/live-order.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
+                                  ''code'': ''VARCHAR'', ''driverName'': ''VARCHAR'',
+                                  ''team'': ''VARCHAR'', ''teamColour'': ''VARCHAR'',
+                                  ''position'': ''BIGINT'', ''gapToLeader'': ''VARCHAR'',
+                                  ''interval'': ''VARCHAR'', ''lapNumber'': ''BIGINT'',
+                                  ''lastLapSeconds'': ''DOUBLE'', ''sector1'': ''DOUBLE'',
+                                  ''sector2'': ''DOUBLE'', ''sector3'': ''DOUBLE'',
+                                  ''speedTrap'': ''BIGINT'', ''compound'': ''VARCHAR'',
+                                  ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT''})
+         ORDER BY position'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveEntry
+    map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
+          code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
+          position as Position, gapToLeader as GapToLeader, interval as Interval,
+          lapNumber as LapNumber, lastLapSeconds as LastLapSeconds, sector1 as Sector1,
+          sector2 as Sector2, sector3 as Sector3, speedTrap as SpeedTrap,
+          compound as Compound, tyreAge as TyreAge, pitStops as PitStops );
+
+  /*
+   * `at` is a reserved word in DuckDB (it introduces time travel: FROM t AT
+   * (VERSION => ...)), so an unquoted `at` in the select list is a parse error
+   * — and the map clause cannot reference a quoted identifier either. Quote it
+   * once and alias it to a name that is only a name.
+   *
+   * The key is row_number() rather than rowid, which read_csv does not expose:
+   * a race control message has no natural id, and two identical yellow flags in
+   * one session are a real possibility.
+   */
+  query GetLiveMessages
+    sql 'SELECT sessionKey || ''-'' || row_number() OVER () AS messageKey,
+                sessionKey, "at" AS atTime, category, flag, scope, lap, message
+         FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                  ''category'': ''VARCHAR'', ''flag'': ''VARCHAR'',
+                                  ''scope'': ''VARCHAR'', ''lap'': ''BIGINT'',
+                                  ''message'': ''VARCHAR''})'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveMessage
+    map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
+          category as Category, flag as Flag, scope as Scope, lap as Lap,
+          message as Message );
+
+  query GetLiveSession
+    sql 'SELECT s.sessionKey, s.sessionName, s.sessionType, s.location, s.countryName,
+                s.circuitName, s.dateStart, s.year, s.driverCount, s.leadLap, s.fetchedAt,
+                w.airTemperature, w.trackTemperature, w.humidity, w.rainfall, w.windSpeed
+         FROM read_csv({dataDir} || ''/../live/live-session.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''sessionName'': ''VARCHAR'',
+                                  ''sessionType'': ''VARCHAR'', ''location'': ''VARCHAR'',
+                                  ''countryName'': ''VARCHAR'', ''circuitName'': ''VARCHAR'',
+                                  ''dateStart'': ''VARCHAR'', ''year'': ''BIGINT'',
+                                  ''driverCount'': ''BIGINT'', ''leadLap'': ''BIGINT'',
+                                  ''fetchedAt'': ''VARCHAR''}) s
+         LEFT JOIN read_csv({dataDir} || ''/../live/live-weather.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                  ''airTemperature'': ''DOUBLE'', ''trackTemperature'': ''DOUBLE'',
+                                  ''humidity'': ''DOUBLE'', ''rainfall'': ''DOUBLE'',
+                                  ''windSpeed'': ''DOUBLE''}) w
+                ON w.sessionKey = s.sessionKey'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveSession
+    map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
+          location as Location, countryName as CountryName, circuitName as CircuitName,
+          dateStart as DateStart, year as Year, driverCount as DriverCount,
+          leadLap as LeadLap, fetchedAt as FetchedAt, airTemperature as AirTemperature,
+          trackTemperature as TrackTemperature, humidity as Humidity,
+          rainfall as Rainfall, windSpeed as WindSpeed );
+
 end;

@@ -8,10 +8,10 @@
 
 alter project security level PROTOTYPE;
 
-create module role Formula1Backend.ApiUser
+create or modify module role Formula1Backend.ApiUser
   description 'Read the published OData services. Nothing else. This is who Formula1Frontend logs in as.';
 
-create module role Formula1Backend.DataAdmin
+create or modify module role Formula1Backend.DataAdmin
   description 'Read everything, and run ACT_RefreshAll to reload the cached service from the CSVs.';
 
 /* Cached-service entities: both roles read, only the admin can do anything else
@@ -71,5 +71,5 @@ grant access on odata service Formula1Backend.F1LiveApi to Formula1Backend.ApiUs
 grant access on odata service Formula1Backend.F1CachedApi to Formula1Backend.ApiUser;
 
 -- Every user role needs a System module role; System.User is the base one.
-create user role ApiConsumer (Formula1Backend.ApiUser, System.User);
+create or modify user role ApiConsumer (Formula1Backend.ApiUser, System.User);
 alter user role Administrator add module roles (Formula1Backend.DataAdmin);

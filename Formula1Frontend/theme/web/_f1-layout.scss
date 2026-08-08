@@ -1,0 +1,302 @@
+// ---------------------------------------------------------------------------
+// The presentation layer from the redesign.
+//
+// The redesign keeps the Console palette exactly — #0E1116 ground, #2DD4BF
+// primary, #A78BFA accent, 6px radius, 28px rows, Space Grotesk over JetBrains
+// Mono on every number — and changes how the information is arranged. So none
+// of this introduces a colour: every value below resolves through a --mxt-*
+// token, which is also what makes it follow a light/dark flip and a re-brand.
+//
+// What it adds, in the order a page uses it:
+//
+//   .pagehead / .pagehead-* a title block with an eyebrow, a subtitle and a
+//                           right-hand badge
+//   .kpis / .kpi            the tile row: label above a large mono number
+//   .panel                  a surface with a header line — title, then a muted
+//                           subtitle on the same baseline
+//   .split, .split-even     the two-column arrangements (1.6fr/1fr and 1fr/1fr)
+//   .grid-dense             28px rows, uppercase 11px header, mono numerals
+//   .abbr, .legend, .chip   the small marks
+//
+// Imported from main.scss outside the mxcli:theme fence, so `mxcli theme apply`
+// leaves it alone.
+// ---------------------------------------------------------------------------
+
+// A shared surface. Everything on these pages is one of these.
+@mixin f1-surface {
+  background: var(--mxt-surface);
+  border: 1px solid var(--mxt-line);
+  border-radius: var(--mxt-radius);
+}
+
+// The 11px uppercase label the design uses for every field name — tile labels,
+// table headers, the eyebrow.
+@mixin f1-label($tracking: 0.06em) {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: $tracking;
+  text-transform: uppercase;
+  color: var(--mxt-ink-muted);
+}
+
+/* ----------------------------------------------------------------- header -- */
+
+.pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--mxt-line);
+}
+
+.pagehead-main {
+  min-width: 0;
+}
+
+.pagehead-eyebrow {
+  @include f1-label;
+  display: block;
+  margin-bottom: 2px;
+}
+
+// The title carries the page; hierarchy here is size and space, not weight.
+.pagehead-title,
+.pagehead-title h1,
+.pagehead-title h2 {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.15;
+  margin: 0;
+  color: var(--mxt-ink);
+}
+
+.pagehead-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--mxt-ink-muted);
+  font-size: 13px;
+}
+
+// A number that belongs to the title rather than to a tile — a season, a car
+// number, a championship position.
+.pagehead-badge {
+  @include f1-surface;
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--mxt-brand);
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ tiles -- */
+
+// Auto-fit rather than the mockup's fixed repeat(5): the same row carries four
+// tiles on a constructor and six on a driver, and it has to survive a phone.
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  @include f1-surface;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 13px;
+  min-width: 0;
+}
+
+// display:block because Mendix renders a dynamictext as a <span>, and two spans
+// in a row run together. The flex parent already blockifies them; this keeps the
+// tile correct if the parent ever stops being flex.
+.kpi-label {
+  @include f1-label;
+  display: block;
+}
+
+.kpi-value {
+  display: block;
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--mxt-ink);
+}
+
+// The tile that carries a name rather than a number — champion, team — where
+// tabular figures and 22px would just truncate.
+.kpi-text .kpi-value {
+  font-family: var(--mxt-font);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.kpi-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
+}
+
+// One tile carrying the accent, for the value the page is actually about.
+.kpi-accent .kpi-value {
+  color: var(--mxt-brand);
+}
+
+/* ----------------------------------------------------------------- panels -- */
+
+.panel {
+  @include f1-surface;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+// Title and subtitle share a baseline, which is what keeps the header one line
+// instead of two stacked blocks.
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.panel-title,
+.panel-head h3,
+.panel-head h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--mxt-ink);
+}
+
+.panel-sub {
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+// The sourced paragraph. Marked out by an accent edge rather than a fill —
+// the accent is a line here, never a flood.
+.panel-note {
+  border-left: 2px solid var(--mxt-brand);
+  padding-left: 12px;
+}
+
+.panel-note .credit {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
+}
+
+/* ---------------------------------------------------------------- columns -- */
+
+.split,
+.split-even {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+.split {
+  grid-template-columns: 1.6fr 1fr;
+}
+
+.split-even {
+  grid-template-columns: 1fr 1fr;
+}
+
+// One column below the tablet breakpoint — a 1.6fr/1fr split at 400px wide is
+// two unreadable columns instead of one readable one.
+@media (max-width: 991px) {
+  .split,
+  .split-even {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------ grids -- */
+
+// 28px rows and an uppercase header, applied to whatever Data Grid 2 renders
+// inside a container carrying this class.
+.grid-dense {
+  --padding-table-cell-top: 4px;
+  --padding-table-cell-bottom: 4px;
+  --form-input-height: 26px;
+
+  .th,
+  .mx-datagrid th,
+  .widget-datagrid-header,
+  .column-header {
+    @include f1-label(0.04em);
+    height: 28px;
+    background: var(--mxt-ground);
+  }
+
+  .td,
+  .mx-datagrid td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  // Every number in the design is mono with tabular figures, so a column of
+  // them lines up on the decimal. Right-aligned cells are the numeric ones.
+  .td[style*="right"],
+  .td.align-column-right,
+  .align-column-right .td {
+    font-family: var(--mxt-font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ------------------------------------------------------------------ marks -- */
+
+// A driver code, a constructor's initials: mono, accent, small.
+.abbr {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mxt-brand);
+  letter-spacing: 0.02em;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.chip {
+  @include f1-surface;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+}
+
+.chip-accent {
+  border-color: color-mix(in srgb, var(--mxt-brand) 45%, var(--mxt-line));
+  color: var(--mxt-brand);
+}
+
+// Vertical rhythm between sections, so a page reads as bands rather than as one
+// continuous scroll.
+.section-gap {
+  margin-top: 24px;
+}

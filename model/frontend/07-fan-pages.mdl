@@ -1,0 +1,547 @@
+/*
+ * The pages a fan actually wants: a driver's career, a season's title fight, a
+ * team's reliability record.
+ *
+ * All three follow the same shape — a page parameter (the driver, season or
+ * constructor picked from an overview), a sourced paragraph about it, and
+ * grids fed by F1FanApi. Each grid's datasource is a microflow rather than a
+ * plain database retrieve, because the constraint has to reach the backend: a
+ * retrieve constrained on the parameter becomes `$filter=driverId eq '...'` on
+ * the OData request, which is what the read microflow lifts out and turns into
+ * SQL. Retrieving unconstrained and filtering in Mendix would drag every row
+ * across the wire for nothing.
+ */
+
+/* ---------------------------------------------------------- datasources -- */
+
+/*
+ * The prose. Wikipedia summaries, fetched by scripts/fetch-f1-facts.sh; a
+ * missing one is normal (the title guess did not resolve) and the page simply
+ * shows no card.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverFact ($Driver: F1Live.Drivers)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'driver' and entityId = $Driver/driverId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonFact ($Season: F1Cached.Seasons)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  DECLARE $Year String = toString($Season/year);
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'season' and entityId = $Year LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ConstructorFact (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'constructor' and entityId = $Constructor/constructorId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverSeasons ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverSeasons AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverRaces ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverRaces AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverRaces WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
+  RETURNS List of F1Fan.SeasonProgress AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.SeasonProgress WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+/*
+ * Standings come from the CACHED service, not the live one, and that is not a
+ * preference — it is the difference between right and wrong answers.
+ *
+ * A live resource backed by a read microflow receives the request but not the
+ * query options: Mendix applies none of them and returns whatever the microflow
+ * hands back (FINDINGS §22). Only Drivers, RaceResults and the five fan
+ * resources parse `$filter` themselves. `DriverStandings` does not — so
+ * constraining it on the year sent `$filter=year eq 1957`, got all 1680 rows
+ * back ordered by year descending, and the 1957 page showed the 2026 grid. The
+ * filter was silently dropped; nothing errored.
+ *
+ * The cached service publishes persistent entities, so Mendix pushes the
+ * constraint into SQL and 1957 returns its 22 rows.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Cached.DriverStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.DriverStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Cached.ConstructorStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_Retirements (
+  $Constructor: F1Cached.Constructors)
+  RETURNS List of F1Fan.Retirements AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Retirements
+    WHERE constructorId = $Constructor/constructorId;
+  RETURN $Rows;
+END;
+
+/* --------------------------------------------------------- driver career -- */
+
+/*
+ * The redesign's page shape, on all three: a header band (eyebrow, title,
+ * subtitle, one badge number), a row of tiles carrying the numbers that used to
+ * be a sentence, then panels — each with a title and a muted subtitle on the
+ * same baseline — holding one thing each.
+ *
+ * The classes come from theme/web/_f1-layout.scss and resolve through --mxt-*,
+ * so nothing here fixes a colour or a size.
+ */
+create or replace page Formula1Frontend.Driver_Career
+(
+  title: 'Driver career',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'driver/{Driver}',
+  Params: { $Driver: F1Live.Drivers }
+)
+{
+  container pageBody {
+    dataview dvDriver (datasource: $Driver) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: 'Driver', class: 'pagehead-eyebrow')
+          dynamictext title (content: '{1}', contentparams: [{1} = fullName],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1} · born {2}',
+            contentparams: [{1} = nationality, {2} = placeOfBirth],
+            class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext abbr (content: '{1}', contentparams: [{1} = abbreviation])
+        }
+      }
+
+      container kpis (class: 'kpis') {
+        container kStarts (class: 'kpi') {
+          dynamictext kStartsL (content: 'Starts', class: 'kpi-label')
+          dynamictext kStartsV (content: '{1}', contentparams: [{1} = raceStarts],
+                                class: 'kpi-value')
+        }
+        container kWins (class: 'kpi kpi-accent') {
+          dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
+          dynamictext kWinsV (content: '{1}', contentparams: [{1} = raceWins],
+                              class: 'kpi-value')
+        }
+        container kPodiums (class: 'kpi') {
+          dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
+          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                 class: 'kpi-value')
+        }
+        container kPoles (class: 'kpi') {
+          dynamictext kPolesL (content: 'Poles', class: 'kpi-label')
+          dynamictext kPolesV (content: '{1}', contentparams: [{1} = polePositions],
+                               class: 'kpi-value')
+        }
+        container kTitles (class: 'kpi') {
+          dynamictext kTitlesL (content: 'Titles', class: 'kpi-label')
+          dynamictext kTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
+                                class: 'kpi-value')
+        }
+        container kPoints (class: 'kpi') {
+          dynamictext kPointsL (content: 'Career points', class: 'kpi-label')
+          dynamictext kPointsV (content: '{1}', contentparams: [{1} = points],
+                                class: 'kpi-value')
+        }
+      }
+    }
+
+    dataview dvFact (datasource: MICROFLOW Formula1Frontend.DS_DriverFact(Driver: $Driver),
+                     class: 'panel panel-note') {
+      dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      dynamictext factSource (content: 'Wikipedia · {1} · {2}',
+        contentparams: [{1} = title, {2} = license], class: 'credit')
+    }
+
+    container seasonsPanel (class: 'panel') {
+      container seasonsHead (class: 'panel-head') {
+        dynamictext seasonsTitle (content: 'Season by season', class: 'panel-title')
+        dynamictext seasonsSub (
+          content: 'championship finish, and the averages behind it',
+          class: 'panel-sub')
+      }
+      container seasonsGrid (class: 'grid-dense') {
+        datagrid dgSeasons (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+          PageSize: 30,
+          PagingPosition: bottom
+        ) {
+          column colYear (attribute: year, caption: 'Season', Alignment: right)
+          column colTeams (attribute: constructors, caption: 'Team')
+          column colPos (attribute: standingPosition, caption: 'Pos', Alignment: right)
+          column colPts (attribute: points, caption: 'Points', Alignment: right)
+          column colStarts (attribute: starts, caption: 'Starts', Alignment: right)
+          column colWins (attribute: wins, caption: 'Wins', Alignment: right)
+          column colPodiums (attribute: podiums, caption: 'Podium', Alignment: right)
+          column colPoles (attribute: poles, caption: 'Pole', Alignment: right)
+          column colDnf (attribute: retirements, caption: 'DNF', Alignment: right)
+          column colAvgQ (attribute: avgQualifying, caption: 'Avg qual', Alignment: right)
+          column colAvgF (attribute: avgFinish, caption: 'Avg finish', Alignment: right)
+        }
+      }
+    }
+
+    container racesPanel (class: 'panel') {
+      container racesHead (class: 'panel-head') {
+        dynamictext racesTitle (content: 'Practice vs qualifying vs race',
+                                class: 'panel-title')
+        dynamictext racesSub (
+          content: 'every round · Δ is grid position gained or lost in the race',
+          class: 'panel-sub')
+      }
+      container racesLegend (class: 'legend') {
+        dynamictext lgPractice (content: 'FP1–FP3 empty before timed practice was recorded',
+                                class: 'chip')
+        dynamictext lgGrid (content: 'Grid ≠ Quali means a penalty or a pit-lane start',
+                            class: 'chip')
+      }
+      container racesGrid (class: 'grid-dense') {
+        datagrid dgRaces (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverRaces(Driver: $Driver),
+          PageSize: 25,
+          PagingPosition: both
+        ) {
+          column colRYear (attribute: year, caption: 'Season', Alignment: right)
+          column colRound (attribute: round, caption: 'Rd', Alignment: right)
+          column colRace (attribute: raceName, caption: 'Grand Prix') {
+            textfilter fRace (attribute: raceName)
+          }
+          column colTeam (attribute: constructorName, caption: 'Team')
+          column colFp1 (attribute: fp1Position, caption: 'FP1', Alignment: right)
+          column colFp2 (attribute: fp2Position, caption: 'FP2', Alignment: right)
+          column colFp3 (attribute: fp3Position, caption: 'FP3', Alignment: right)
+          column colQual (attribute: qualifyingPosition, caption: 'Quali', Alignment: right)
+          column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
+          column colFinish (attribute: positionText, caption: 'Race', Alignment: right)
+          column colGained (attribute: positionsGained, caption: 'Δ', Alignment: right)
+          column colRPts (attribute: points, caption: 'Pts', Alignment: right)
+          column colReason (attribute: reasonRetired, caption: 'Retired') {
+            textfilter fReason (attribute: reasonRetired)
+          }
+        }
+      }
+    }
+  }
+}
+
+/* -------------------------------------------------------- season summary -- */
+
+create or replace page Formula1Frontend.Season_Summary
+(
+  title: 'Season summary',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'season/{Season}',
+  Params: { $Season: F1Cached.Seasons }
+)
+{
+  container pageBody {
+    dataview dvSeason (datasource: $Season) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: 'Season', class: 'pagehead-eyebrow')
+          dynamictext title (content: 'Formula One {1}', contentparams: [{1} = year],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1} rounds', contentparams: [{1} = raceCount],
+                           class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext yr (content: '{1}', contentparams: [{1} = year])
+        }
+      }
+
+      container kpis (class: 'kpis') {
+        container kChampion (class: 'kpi kpi-text kpi-accent') {
+          dynamictext kChampionL (content: 'Drivers'' champion', class: 'kpi-label')
+          dynamictext kChampionV (content: '{1}', contentparams: [{1} = championDriver],
+                                  class: 'kpi-value')
+        }
+        container kTeam (class: 'kpi kpi-text') {
+          dynamictext kTeamL (content: 'Constructors'' champion', class: 'kpi-label')
+          dynamictext kTeamV (content: '{1}', contentparams: [{1} = championConstructor],
+                              class: 'kpi-value')
+        }
+        container kRaces (class: 'kpi') {
+          dynamictext kRacesL (content: 'Rounds', class: 'kpi-label')
+          dynamictext kRacesV (content: '{1}', contentparams: [{1} = raceCount],
+                               class: 'kpi-value')
+        }
+      }
+    }
+
+    dataview dvFact (datasource: MICROFLOW Formula1Frontend.DS_SeasonFact(Season: $Season),
+                     class: 'panel panel-note') {
+      dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      dynamictext factSource (content: 'Wikipedia · {1} · {2}',
+        contentparams: [{1} = title, {2} = license], class: 'credit')
+    }
+
+    container chartPanel (class: 'panel') {
+      container chartHead (class: 'panel-head') {
+        dynamictext chartTitle (content: 'Championship points progression',
+                                class: 'panel-title')
+        dynamictext chartSub (content: 'cumulative, top five of the final standings',
+                              class: 'panel-sub')
+      }
+      pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress {
+        line lineP1 (
+          DataSet: 'static',
+          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+          StaticXAttribute: round,
+          StaticYAttribute: d1Points,
+          StaticName: '1st',
+          Interpolation: 'linear'
+        )
+        line lineP2 (
+          DataSet: 'static',
+          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+          StaticXAttribute: round,
+          StaticYAttribute: d2Points,
+          StaticName: '2nd',
+          Interpolation: 'linear'
+        )
+        line lineP3 (
+          DataSet: 'static',
+          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+          StaticXAttribute: round,
+          StaticYAttribute: d3Points,
+          StaticName: '3rd',
+          Interpolation: 'linear'
+        )
+        line lineP4 (
+          DataSet: 'static',
+          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+          StaticXAttribute: round,
+          StaticYAttribute: d4Points,
+          StaticName: '4th',
+          Interpolation: 'linear'
+        )
+        line lineP5 (
+          DataSet: 'static',
+          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
+          StaticXAttribute: round,
+          StaticYAttribute: d5Points,
+          StaticName: '5th',
+          Interpolation: 'linear'
+        )
+      }
+      container chartLegend (class: 'legend') {
+        dynamictext lgPos (
+          content: 'Lines are final championship positions, not named drivers — one page serves every season. The standings below name them, in the same order.',
+          class: 'chip')
+      }
+    }
+
+    container calendarPanel (class: 'panel') {
+      container calHead (class: 'panel-head') {
+        dynamictext calTitle (content: 'Calendar', class: 'panel-title')
+        dynamictext calSub (content: 'every round, and who won it — open one for the full weekend',
+                            class: 'panel-sub')
+      }
+      /*
+       * Read off the entity with an XPath constraint rather than through a
+       * microflow like the other panels here. The constraint becomes
+       * $filter=year eq N, which Read_Calendar parses, so it is the same query
+       * one hop shorter.
+       *
+       * Reading off the entity also gives each row a key the client can resolve
+       * it by, which is what handing a row to another page comes down to.
+       * FINDINGS §37.
+       */
+      container calGrid (class: 'grid-dense') {
+        datagrid dgCalendar (
+          datasource: database from F1Fan.Calendar where [year = $Season/year]
+                      sort by round asc,
+          PageSize: 12,
+          PagingPosition: bottom
+        ) {
+          column colRound (attribute: round, caption: 'Rd', Alignment: right)
+          column colCode (attribute: code, caption: 'Code')
+          column colName (attribute: circuitName, caption: 'Circuit')
+          column colDate (attribute: raceDate, caption: 'Date')
+          column colWinner (attribute: winnerName, caption: 'Winner')
+          column colWinTeam (attribute: winnerTeam, caption: 'Team')
+          column colOpenWeekend (caption: 'Open') {
+            linkbutton btnWeekend (Caption: 'Weekend',
+              Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
+          }
+        }
+      }
+    }
+
+    container standings (class: 'split-even') {
+      container driversPanel (class: 'panel') {
+        container driversHead (class: 'panel-head') {
+          dynamictext driversTitle (content: 'Drivers'' championship', class: 'panel-title')
+          dynamictext driversSub (content: 'final standings', class: 'panel-sub')
+        }
+        container driversGrid (class: 'grid-dense') {
+          datagrid dgDriverStandings (
+            datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverStandings(Season: $Season),
+            PageSize: 12,
+            PagingPosition: bottom
+          ) {
+            column colPos (attribute: positionText, caption: 'Pos', Alignment: right)
+            column colDriver (attribute: driverName, caption: 'Driver')
+            column colPts (attribute: points, caption: 'Points', Alignment: right)
+          }
+        }
+      }
+
+      container consPanel (class: 'panel') {
+        container consHead (class: 'panel-head') {
+          dynamictext consTitle (content: 'Constructors'' championship',
+                                 class: 'panel-title')
+          dynamictext consSub (content: 'from 1958 — it did not exist before',
+                               class: 'panel-sub')
+        }
+        container consGrid (class: 'grid-dense') {
+          datagrid dgConstructorStandings (
+            datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
+            PageSize: 12,
+            PagingPosition: bottom
+          ) {
+            column colCPos (attribute: positionText, caption: 'Pos', Alignment: right)
+            column colTeam (attribute: constructorName, caption: 'Constructor')
+            column colEngine (attribute: engineManufacturer, caption: 'Engine')
+            column colCPts (attribute: points, caption: 'Points', Alignment: right)
+          }
+        }
+      }
+    }
+  }
+}
+
+/* ---------------------------------------------------- constructor detail -- */
+
+create or replace page Formula1Frontend.Constructor_Detail
+(
+  title: 'Constructor',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'constructor/{Constructor}',
+  Params: { $Constructor: F1Cached.Constructors }
+)
+{
+  container pageBody {
+    dataview dvConstructor (datasource: $Constructor) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: 'Constructor', class: 'pagehead-eyebrow')
+          dynamictext title (content: '{1}', contentparams: [{1} = fullName],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1}', contentparams: [{1} = country],
+                           class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext titles (content: '{1}', contentparams: [{1} = championshipWins])
+        }
+      }
+
+      container kpis (class: 'kpis') {
+        container kStarts (class: 'kpi') {
+          dynamictext kStartsL (content: 'Entries', class: 'kpi-label')
+          dynamictext kStartsV (content: '{1}', contentparams: [{1} = raceStarts],
+                                class: 'kpi-value')
+        }
+        container kWins (class: 'kpi kpi-accent') {
+          dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
+          dynamictext kWinsV (content: '{1}', contentparams: [{1} = raceWins],
+                              class: 'kpi-value')
+        }
+        container kPodiums (class: 'kpi') {
+          dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
+          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                 class: 'kpi-value')
+        }
+        container kPoles (class: 'kpi') {
+          dynamictext kPolesL (content: 'Poles', class: 'kpi-label')
+          dynamictext kPolesV (content: '{1}', contentparams: [{1} = polePositions],
+                               class: 'kpi-value')
+        }
+        container kTitles (class: 'kpi') {
+          dynamictext kTitlesL (content: 'Titles', class: 'kpi-label')
+          dynamictext kTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
+                                class: 'kpi-value')
+        }
+      }
+    }
+
+    dataview dvFact (
+      datasource: MICROFLOW Formula1Frontend.DS_ConstructorFact(Constructor: $Constructor),
+      class: 'panel panel-note') {
+      dynamictext factText (content: '{1}', contentparams: [{1} = extract])
+      dynamictext factSource (content: 'Wikipedia · {1} · {2}',
+        contentparams: [{1} = title, {2} = license], class: 'credit')
+    }
+
+    container dnf (class: 'split') {
+      container dnfChartPanel (class: 'panel') {
+        container dnfChartHead (class: 'panel-head') {
+          dynamictext dnfChartTitle (content: 'What stopped the cars', class: 'panel-title')
+          dynamictext dnfChartSub (content: 'retirements by recorded cause',
+                                   class: 'panel-sub')
+        }
+        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartDnf {
+          series dnfSeries (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_Retirements(Constructor: $Constructor),
+            StaticXAttribute: reasonRetired,
+            StaticYAttribute: retirements,
+            StaticName: 'Retirements'
+          )
+        }
+      }
+
+      container dnfTablePanel (class: 'panel') {
+        container dnfTableHead (class: 'panel-head') {
+          dynamictext dnfTableTitle (content: 'By cause', class: 'panel-title')
+          dynamictext dnfTableSub (content: 'share is of all entries ever made',
+                                   class: 'panel-sub')
+        }
+        container dnfGrid (class: 'grid-dense') {
+          datagrid dgRetirements (
+            datasource: MICROFLOW Formula1Frontend.DS_Retirements(Constructor: $Constructor),
+            PageSize: 20,
+            PagingPosition: bottom
+          ) {
+            column colReason (attribute: reasonRetired, caption: 'Reason') {
+              textfilter fReason (attribute: reasonRetired)
+            }
+            column colCount (attribute: retirements, caption: 'Times', Alignment: right)
+            column colShare (attribute: sharePercent, caption: '%', Alignment: right)
+            column colFirst (attribute: firstYear, caption: 'First', Alignment: right)
+            column colLast (attribute: lastYear, caption: 'Last', Alignment: right)
+          }
+        }
+      }
+    }
+  }
+}

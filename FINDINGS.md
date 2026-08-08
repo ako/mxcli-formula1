@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§31 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on **`c76d4b7`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1399,56 +1399,245 @@ materialised rows fail with 0. The dev database still has its 917 drivers. Run
 the suite with `--attach` against a running app (which is faster anyway, §14) or
 refresh the test database first.
 
+## 33. Gap: the theme maps Atlas Core, and stops at the widget modules
+
+*Verified 2026-08-08 against mxcli `45ae6a6`, theme `console v1`, variant `auto`,
+by reading `deployment/web/theme.compiled.css` — what the browser actually
+applies — rather than the source.*
+
+The app is dark and on-palette, and then a few things are not: the pager caption
+is missing, row-select checkboxes are Mendix blue, popovers cast light-mode
+shadows. All of it has one cause.
+
+### The mechanism
+
+`mxcli theme --help` states the design: a theme is "a palette of `--mxt-*`
+tokens … and a shared map wiring those onto **~60 Atlas variables**", and
+"**Atlas Core is left untouched**". That is exactly what works — ground,
+surfaces, ink, brand, type, cards, buttons and form controls all follow the
+palette, in both variants, before first paint.
+
+What the map cannot reach is the theme source shipped *by the widget modules*
+under `themesource/`. Those files style things with **Sass** variables and
+literals, which are resolved at compile time — before any custom property
+exists. No `--mxt-*` value can move them; only a later CSS rule can.
+
+| module | colour declarations with a literal no token can reach |
+|---|---|
+| `datawidgets` (Data Grid 2) | **23** |
+| `atlas_web_content` | 6 |
+| `administration` | 0 |
+| `atlas_core`'s own SCSS | 492 — but nearly all legacy Bootstrap and `@media print` |
+
+The console theme contains no rule for any of them: `grep -E
+"pagination|paging|filter|datagrid"` over `_mxcli-atlas-map.scss` and
+`_mxcli-console.scss` returns nothing.
+
+### The one that is a real defect, not a nuance
+
+```css
+/* theme.compiled.css */
+.pagination-bar { … color: #0a1325; }
+```
+
+From `themesource/datawidgets/web/variables.scss:18` —
+`$pagination-caption-color: #0a1325 !default`. Against the ground (`#0e1116`)
+that measures **1.02:1**; WCAG AA wants 4.5:1. The caption — "1–15 of 77", the
+only thing telling you where you are in 27533 rows — is invisible. The pager
+*buttons* either side render correctly, because they use
+`color: var(--gray-darker, …)` and resolve through Atlas. Same widget, same bar,
+two different mechanisms, one of them reachable.
+
+### The full list, from `datawidgets`
+
+| file | what it bakes | shows as |
+|---|---|---|
+| `variables.scss:18` | `$pagination-caption-color: #0a1325` | invisible pager caption |
+| `_datagrid.scss:442` | `background-color: rgba(255,255,255,1)` | white flash on every page turn |
+| `_three-state-checkbox.scss` (9 decls) | `#e7e7e9` borders, `#264ae5` checked/indeterminate | stock Mendix blue in a teal app |
+| `_datagrid.scss:214,372` | `box-shadow: … rgba(32,43,54,.08)` | light-mode shadow under the column selector |
+| `_datagrid-filters.scss:71,143,153,206` | `box-shadow: … rgba(5,15,129,.05)` | same under the filter-operator list |
+| `_datagrid-dropdown-filter.scss:267` | `color: #000` | selected tag text lost on a dark chip |
+| `_export-alert.scss`, `_export-progress.scss` (6) | white panel, `#264ae5`, `#e33f4e` | not rendered here |
+| `_gallery-design-properties.scss:66`, `_tree-node.scss` (3) | `#fff` stripe, `#b6b8be` borders | not rendered here |
+
+### Fixed in this project
+
+`Formula1Frontend/theme/web/_f1-widget-dark.scss`, imported from `main.scss`
+**outside** the `mxcli:theme` fence — mxcli guarantees it will not touch lines
+outside its own block, so `mxcli theme apply` can still run. It re-points the
+first six rows at `--mxt-*` and leaves the last two alone, since this app
+renders neither. Every selector was read out of the compiled CSS, not guessed.
+
+Verified in both variants by loading the app's real `theme.compiled.css` into a
+probe page: caption `rgb(154,166,180)` dark / `rgb(85,96,110)` light, checked
+box `--mxt-brand`, loader `--mxt-surface`, popovers hairline-bordered and
+shadowless.
+
+### The header logo, and a way to make a raster follow a palette
+
+`Atlas_Default` renders `Atlas_Core.Layout.logo`, whose first element is
+`<rect fill="white">` — a bright tile on a dark ground, and out of CSS's reach
+because it is an `<img>`. The replacement is drawn as a **mask** rather than a
+coloured image:
+
+```scss
+img[src*="Atlas_Core$Layout$logo"] {
+  width: 0; height: 0; padding: 16px;      /* collapse the content box */
+  background-color: var(--mxt-brand);      /* paint follows the palette */
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}
+```
+
+Zero-size content box plus padding swaps the image without `content:` on a
+replaced element, which is not portable. And because the colour comes from the
+background rather than the file, the mark re-brands and flips light/dark with
+the rest of the theme — one asset, no variants.
+
+**Trap worth writing down:** the first version of that SVG carried an XML
+comment explaining `var(--mxt-brand)`. `--` is illegal inside an XML comment, so
+the file never parsed — and the browser reports it as `complete: true` with
+`naturalWidth: 0`, i.e. loaded and blank. `curl` returns 200 and the right
+content type. Nothing anywhere says "malformed".
+
+## 34. `c76d4b7`: fourteen of the eighteen open issues, re-verified here
+
+*Verified 2026-08-08 on mxcli `c76d4b7` (was `45ae6a6`), built from source.
+Every row below was executed against this project, not read from a commit
+message. Both suites pass afterwards: **21 backend + 6 frontend**.*
+
+### Fixed, and the workaround deleted
+
+| # | Was | Verified how |
+|---|---|---|
+| 6 | `dynamic $Variable` written as a literal (§21) | All four `dynamic '' + $Sql` clauses rewritten bare. Live service still answers `@odata.count` 27533 with `$skip=80&$orderby=driverName` → Adrian Sutil. `a32fde9` |
+| 15 | `MOVE` had no doctype for a Java action or an OData service (§32) | The last five documents moved: `Live/Pushdown` (3 Java actions) and `Services` (both services). **0 documents at the module root**, from 41. `30327d7` |
+| 1 | `CREATE EXTERNAL ENTITIES FROM` renamed `name` (§28) | Both consumer modules dropped and regenerated: `name: String(120)`, not `Stg_Drivername`/`Drivername`. Page bindings and the smoke microflows now say `name`. `4291f1d` |
+| 8 | `test --local` displaced the app's After-startup microflow (§19) | The three cached-service tests failed under `--local` on a fresh container and passed under `--attach`. Now **21/21 under `--local`** — `ASU_LoadCacheIfEmpty` runs and fills the test database. `00a6f51`, `9377fbb` |
+| 14 | `create module role` had no `or modify` form | `06-security.mdl` and `05-navigation-security.mdl` now re-run end to end. `create or modify user role` exists too, which was the next thing to fail. `98ddb29` |
+| 17 | Themes stopped at Atlas Core (§33) | `theme apply console` now writes `_mxcli-widgets.scss`, imported inside the fence. It covers everything this project's layer did *and more* — placeholder colour, export-alert focus ring, feedback and take-picture buttons. `f64115e` |
+| 9 | `test --list` ignored a project-relative path (§15) | `mxcli test tests/ --list` lists all 21. `b2c4f20` |
+
+### Fixed, partially
+
+| # | What changed | What is still there |
+|---|---|---|
+| 4 | `CREATE ODATA CLIENT` now authenticates the `$metadata` fetch (§23) — with literal credentials it caches **8 entity types** where it used to 401 | Give the same credentials as **constant references** (`HttpUsername: '@Module.ApiUser'`) and it is still 401. The constants exist and resolve at runtime; the fetch does not read them. Sharpened by the same release making `ServiceUrl` a constant *mandatory* — so the documented-good shape of a client is exactly the shape whose metadata fetch cannot authenticate |
+| 16 | `DESCRIBE MICROFLOW` now emits `folder 'Health'`, so a move can be confirmed (§32) | `SHOW STRUCTURE` is still flat at every depth — no folder grouping, so there is still no way to see a module's layout, only to interrogate one document at a time |
+
+### Landed upstream, not re-verified here
+
+`29481bc` (external-entity mapping read-back, §25), `b9827f1` (contract capability
+annotations, §24), `7da49c0` (published-member changes on modify, §26), `bab4d42`
+(publish `Integer` as `Int64`, §16) and `63f72e0` (MDL-ODATA01's hint, §15). This
+project routed around all five — it regenerates rather than modifies, and every
+whole number is already `long` — so re-verifying them would mean re-introducing
+the shapes that were broken. Left for a project that hits them naturally.
+
+### Still open, re-confirmed on `c76d4b7`
+
+- **`.ai-context/skills/` does not follow a binary upgrade** (§15, issue 11) — the
+  binary is `12:05`, the skills directory is still stamped `Aug 7 14:53`. A rebuild
+  leaves stale guidance in place with no warning.
+- **`theme apply` cannot help with the header logo** (§33, issue 18) — still a white
+  tile from `Atlas_Core.Layout.logo`; the mask rule stays in this project's layer.
+- **The filter-operator popover** — the generated widget layer handles
+  `.column-selectors` but not `.filter-selectors` / `.dropdown-list` /
+  `.dropdown-content`, which still carry `rgba(5,15,129,.05)`. Everything else this
+  project patched is now redundant and has been deleted.
+
+### Two things this round changed about the repo itself
+
+Regenerating the consumer modules turned up two microflows that existed **only in
+the `.mpr`** — `Probe_DynamicSql` and `Live_SennaName`/`Cached_SennaName`, written
+by hand while §21 and §28 were being diagnosed. Both are asserted on by the test
+suites, so a rebuild from `model/` produced a project whose tests could not run.
+They are now in `11-pushdown-tests-support.mdl` and `03-smoke.mdl`. The repeated
+lesson: a fix verified interactively has to be written back into the scripts, or
+the scripts quietly stop being the source of truth.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28) —
-   prefixed with the remote type, so pages written against the contract do not
-   build and the same field is named differently per module. The mapping works;
-   the name is wrong.
-2. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
-   renames one and strips every remote mapping, leaving a project that cannot
-   build. Silent, and the same class as issue #594 one level down.
-3. **`create or modify odata service` ignores published-member changes and drops
-   role grants** (§26) — a modify that quietly does not modify, and breaks the
-   build in a second, unrelated-looking way.
-4. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
-   credentials are on the statement and go unused, so the client is created empty
-   with only a warning.
-5. **Generated external entities ignore the contract's capability annotations** (§24) —
-   `Countable`/`Filterable`/`Sortable` default to true, so importing from a service
-   that restricts any of them produces a project that will not build.
-6. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
-   `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
-   starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
-   query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
-7. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
-   `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
-   published service fails the build until you switch it to `long`. One line, and the
-   function's own comment flags Integer as unverified.
-8. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
-   a suite that needs startup state passes under `--attach` and fails under `--local`
-   for reasons unrelated to the code. Say so in the output, or chain the original.
-9. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
-   sits below the `--list` branch in `cmd_test_run.go:136`.
-10. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
-   which `fa0cdb6` added and the checker accepts.
-11. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
-   `mxcli` is rebuilt, with no warning.
-12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+1. **`mxcli run --local` deletes the web client bundle it just built** (§35) — the
+   Gradle `package` pass during boot repopulates `deployment/web` without `dist/`,
+   so the app serves a 200 HTML shell and a black screen. Highest impact of anything
+   on this list: it makes the app unusable, and nothing in check, build, log or curl
+   reports it. Bundle after the boot's packaging, or exclude `dist/` from it.
+2. **A published resource declares a `KEY` its read microflow is never told about**
+   (§37) — `publish entity … (ReadMode: microflow …)` promises the service can be
+   asked for one row by key, but the microflow only sees a URI. Answer the key
+   request with the collection default and the client adopts the first row as the
+   object's identity, silently and permanently. Warn when a read microflow never
+   reads its resource's KEY out of the request, or generate the branch.
+3. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+   icon rail, and a text-only menu renders "Constru" down the left edge of every
+   page. There is no way to fix it in the navigation model.
+4. **`create or modify odata service` still drops role grants** (§34, §26) — the
+   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
+   service silently revokes its access and the build fails with "At least one
+   allowed role must be selected".
+5. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+   MDL passes it through and the build fails with "Error(s) in expression". Either
+   strip comments from expression text or reject them at check time.
+6. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
+   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
+   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
+   tool insists on for the URL is the shape whose credentials it will not read.
+7. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+   document's folder, which closes half the gap; there is still no way to see a
+   module's layout in one place, or to diff an intended layout against the real one,
+   without reading the `.mpr` as SQLite.
+8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
+   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
+   default mark at least takes the brand colour.
+9. **The widget layer misses the filter-operator popover** (§33, §34) —
+   `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
+   `.dropdown-list` or `.dropdown-content`, which still carry a baked
+   `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
+   fixed.
+10. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
+   Stale guidance, no warning.
+11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-13. **Design-property lint does not know the theme** (§29) — `check` green-lights
+12. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
-14. **`create module role` has no `or modify` form**, so a security script cannot be
-   re-run — the reason this repo has a separate `07-demo-users.mdl`.
-15. **`MOVE … TO FOLDER` has no doctype for Java actions or published OData services** (§32),
-   and neither `CREATE` form takes a folder clause — so those documents can never leave
-   the module root from MDL. Five of this backend's documents are stuck there.
-16. **Nothing reads a document's folder back** (§32) — `SHOW STRUCTURE` is flat at every
-   depth and `DESCRIBE` omits the folder, so a move cannot be verified, and an intended
-   layout cannot be diffed against the real one, without opening the `.mpr` as SQLite.
+
+### Fixed upstream in `c76d4b7`, re-verified in §34
+
+Kept because the reasoning is the record of why each mattered.
+
+1. ~~**`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28)~~ —
+   prefixed with the remote type, so pages written against the contract did not build
+   and the same field was named differently per module. Now `name` on both clients;
+   this repo's page bindings were rewritten to match.
+2. ~~**`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible**
+   (§21)~~ — blocked query pushdown outright, and the `dynamic '' + $Sql` workaround was
+   not discoverable. All four clauses here are now bare, and the service still pages.
+3. ~~**`MOVE … TO FOLDER` has no doctype for Java actions or published OData services**
+   (§32)~~ — five documents were stuck at the module root; the backend now has none.
+4. ~~**`mxcli test --local` silently displaces the app's After-startup microflow**
+   (§19)~~ — a suite needing startup state passed under `--attach` and failed under
+   `--local`. 21/21 under both now.
+5. ~~**`create module role` has no `or modify` form**~~ — a security script could not be
+   re-run. Both this repo's security scripts now do, `create or modify user role`
+   included.
+6. ~~**A theme needs a third layer for the widget modules** (§33)~~ — generated as
+   `_mxcli-widgets.scss`, covering more than the hand-written version it replaced.
+7. ~~**`mxcli test --list` ignores a project-relative path** (§15)~~.
+8. ~~**`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23)~~ — fixed for
+   literal credentials; see still-open #1 for the constant-reference case.
+9. Landed but not re-verified here, because this project routes around all of them:
+   ~~`CREATE OR MODIFY EXTERNAL ENTITY` corrupting unmentioned attributes~~ (§25),
+   ~~generated entities ignoring capability annotations~~ (§24),
+   ~~`create or modify odata service` ignoring published-member changes~~ (§26),
+   ~~a published `Integer` written as `Edm.Int32`~~ (§16), and
+   ~~`MDL-ODATA01`'s incomplete hint~~ (§15).
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14
 
@@ -1495,3 +1684,262 @@ The list below is kept because the reasoning is still the record of why each mat
 run reported four independent failures with timings instead of one dead log. The
 ownership contract held exactly as documented across attach, edit, re-attach and host
 shutdown. `mxcli lint`'s MDL044 message (§13) is the best error text in the tool.
+
+## 35. The boot deletes the browser client it just built
+
+*Verified 2026-08-08 on mxcli `c76d4b7`. Symptom: every page is a black screen.*
+
+Both apps served a dark, empty page. Not the theme — `/dist/index.js` 404s, so
+the shell paints `--mxt-ground` and the client never starts.
+
+`mxcli run --local` bundles the web client on purpose, and the code says why:
+
+```go
+// 5b. Bundle the browser client (web/dist). The serve Deploy target writes the
+// client source but not the rollup bundle, so without this the app 404s on
+// /dist/index.js and renders blank.
+```
+
+It runs, and it succeeds — `Bundling web client... Web client bundled in 33.1s`,
+and `deployment/log/web-client-build.log` records `Bundling finished` at
+15:15:31. Then the runtime boot runs Gradle `clean-custom-classes compile
+package`, and at **15:16:22** that repopulates `deployment/web` — `index.html`
+and `index.js` rewritten, `dist/` gone. The bundle is deleted 51 seconds after
+it was written, by a later step of the same command, and nothing reports it.
+
+Ordering: build → **bundle** → hub register → **boot (Gradle package)**. The
+bundle needs to happen after the packaging, or the packaging needs to leave
+`dist/` alone.
+
+### Why it only started now
+
+Gradle has to have work to do. Adding the two `$filter` Java actions in §34
+forced a full recompile (`Full recompilation is required because no incremental
+change information is available`), and the package pass that follows is what
+clears `web/`. That is why the app booted fine for most of this project and then
+stopped: the same command, the same version, different Gradle state.
+
+A restart with nothing for Gradle to do leaves the bundle intact — which is the
+other half of the proof.
+
+### Working around it
+
+`scripts/run-app.sh` boots the app, waits for it to answer, and re-runs mxcli's
+own bundler if `dist/index.js` is missing — mxbuild's bundled node plus
+`tools/node/rollup-runner.mjs`, the exact command from
+`cmd/mxcli/docker/webclient.go`. ~30s, and it prints which branch it took.
+
+By hand:
+
+```bash
+M=~/.mxcli/mxbuild/11.13.0/modeler
+cd <App>/deployment/web && NODE_ENV=production \
+  $M/tools/node/linux-x64/node $M/tools/node/rollup-runner.mjs
+```
+
+### The trap inside the trap
+
+A blank page with a 404 on one asset is invisible to every check this project
+has. `mxcli check` passes, the build reports success, the runtime logs nothing,
+`curl /` returns **200** with a valid HTML shell, and the OData services all
+answer correctly. Only a browser sees it — which is exactly the gap that let it
+survive several restarts and a commit. Rendering the real app, not a probe page,
+is the only thing that catches this class.
+
+### A second way in
+
+`mxcli test --local` clears the bundle too. Its "project restored" step
+repopulates `deployment/` the same way the boot's packaging does, so a test run
+between a boot and a browser leaves the app serving a black screen even though
+nothing was rebuilt. `scripts/run-app.sh` does not cover that path — it only
+runs at boot. Re-run the bundler by hand after a local test, or re-run
+`run-app.sh`.
+
+## 36. Gap: `MENU ITEM` cannot carry an icon, and Atlas's collapsed rail assumes one
+
+Atlas collapses its sidebar to `--navsidebar-width-closed`, which is **48px** —
+one icon wide. That is a deliberate design: the closed state is meant to be a
+rail of icons you can still navigate by.
+
+MDL has no icon clause. `CREATE OR REPLACE NAVIGATION` accepts
+`MENU ITEM 'Label' PAGE Module.Page` and nothing else, so every item is text
+only, and the closed rail renders the first 48px of each label down the left
+edge of every page:
+
+```
+Home
+Live rac
+Season
+Drivers
+Constru
+Circuits
+Race re
+```
+
+Not a rendering bug — Atlas is doing what it says, on a menu that cannot hold up
+its end. There is no way to fix it in the navigation model, so the theme has to
+opt out of the rail entirely:
+
+```scss
+.layout-atlas-responsive,
+.layout-atlas-responsive-default,
+.layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
+```
+
+which trades a permanent nav affordance for not showing half a word. An icon
+clause — `MENU ITEM 'Home' PAGE Module.Home ICON 'home'` — would make the rail
+work as designed.
+
+## 37. A published resource has two ways to be asked for one row, and answering
+only one of them corrupts the client's object
+
+The bug, as it looked: on the 2021 season page, the calendar lists the 22 rounds
+of 2021 correctly — Bahrain, Imola, Portimão. Click *Weekend* on Bahrain and the
+race weekend page opens **round 1 of 2026**. Click round 5 instead: still round 1
+of 2026. The grid was right, the page was wrong, and the wrong answer was the
+same for every row.
+
+### What it was not
+
+Four plausible causes, each disproved by measurement, because each one is the
+kind of thing that looks obviously responsible:
+
+| Suspected | Test | Result |
+|---|---|---|
+| The read microflow ignores `$filter` | `curl '…/Calendar?$filter=year eq 2021'` | 22 rows, all 2021. Correct. |
+| The page's `url: 'weekend/{Race}'` re-resolves and discards the argument | removed the URL | unchanged |
+| A grid column's button maps from the page context, not the row | replaced the link button with a microflow call, then with a container `OnClick`, then with a dataview on the grid's selection | unchanged, all three |
+| A microflow datasource yields rows with no addressable identity | switched to `database from … where [year = $Season/year]` | unchanged |
+
+The last one is worth keeping in mind for its own sake: the XPath form *does*
+push down. It becomes `$filter=year eq 2021` and the backend parses it. That was
+briefly blamed here and it was innocent.
+
+What finally located it was logging `$Request/Uri` in the read microflow and
+reading the sequence:
+
+```
+/odata/f1-fan/Calendar?$top=12&$orderby=round asc&$filter=year eq 2021     ← the grid
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1036-c'                     ← Bahrain 2021
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1150-c'                     ← ...and from here on
+/odata/f1-fan/Calendar?$filter=calendarKey eq '1150-c'
+```
+
+### What it was
+
+A client that is **holding** a row re-reads it by key, on its own, without being
+asked to. `Read_Calendar` parsed `year` out of `$filter` and nothing else, so the
+key request fell through to the collection default — "the most recent season" —
+and returned 22 rows. The client took the first one and concluded *that* is the
+object it was holding.
+
+From that moment the corruption is self-sustaining: every later read asks for
+`1150-c`, the key it was mistakenly handed, and gets a consistent answer. Two
+different objects are now on screen at once — the row the grid painted, and the
+row the client believes the row is — and nothing distinguishes them until one of
+them travels to another page.
+
+There is no error. The request is well-formed, the response is a valid
+collection, the count is right, and the status is 200.
+
+### The fix
+
+Answer the key lookup. Both spellings, because clients choose between them and
+Mendix's own OData client sends the one that is easiest to miss:
+
+```
+?$filter=calendarKey eq '1036-c'     ← what the runtime actually sends
+/Calendar('1036-c')                  ← the bare path key
+/Calendar(calendarKey='1036-c')      ← the named path key
+```
+
+`ODataQuery.entityKey` reads either path form; `filterIdentifier` already read
+the `$filter` form. `Read_Calendar` now branches key → id → year → default.
+
+### The rule this leaves
+
+**Every microflow-backed OData resource whose rows a client can hold must answer
+a lookup by its own key.** Not as a nicety — a resource that answers the key
+request with its collection default actively teaches the client the wrong
+identity for an object it is already displaying.
+
+The resource is at risk exactly when its rows leave the widget that fetched
+them: selected, passed as a page parameter, or written into a URL. In this app
+that is `Calendar` and nothing else, which is why it took a while to find: the
+three drill-downs that work — driver, season, constructor — happen to sit on
+resources that already parse the id their pages filter by.
+
+### For mxcli
+
+Worth generating rather than remembering. `publish entity … as 'X' (ReadMode:
+microflow …)` already knows which exposed attribute is `KEY`; it could either
+warn when the read microflow never reads that attribute out of the request, or
+emit the key branch. As it stands the KEY declaration is a promise the service
+makes on the microflow's behalf, which the microflow has no idea it made.
+
+## 38. What rendering the app found that nothing else did
+
+Adding screenshots to the README meant driving the real pages in a browser for
+the first time — the hub's `Secure` cookies had blocked headless login all
+along, and running the frontend without `--hub` for the capture lifted that.
+Five defects fell out of one pass, none of which any check, build, log or `curl`
+had reported:
+
+| | Symptom | Cause |
+|---|---|---|
+| §37 | Every calendar row opened the same race | key lookups unanswered |
+| | Race control panel: *"An error occurred"* | `at` is reserved in DuckDB |
+| | Running order unreadable: `N…`, `L…`, `M…` | 16 columns in a 1.6fr panel |
+| | Every chart a white slab on a black page | Plotly paints its own paper |
+| §36 | `Constru`, `Race re` down the left edge | Atlas's rail wants icons |
+
+Three are worth keeping as rules.
+
+**`at` is a reserved word in DuckDB.** It introduces time travel
+(`FROM t AT (VERSION => …)`), so an unquoted `at` in a select list is a parse
+error — and the `map` clause cannot reference a quoted identifier, so it has to
+be aliased on the way out:
+
+```sql
+SELECT "at" AS atTime, …          -- map ( atTime as At, … )
+```
+
+The whole resource 500s until it is. The error surfaces as
+`Exception occurred while processing REST request` on the wire, with the actual
+`syntax error at or near ","` only in the runtime log.
+
+**A chart is not themed by theming the page.** The line and column chart widgets
+render through Plotly, which writes its own white `<rect class="bg">` and a
+white `background` on `.main-svg` as *inline style*, plus dark grey ticks and
+gridlines. None of it reads a custom property. On a `#0E1116` page every chart
+came out as a bright slab. Plotly's own answer is a layout JSON per chart, which
+would be five copies of the palette in the model; overriding the paint in CSS
+keeps one source of truth, at the cost of the only `!important` in this theme:
+
+```scss
+.js-plotly-plot {
+  .main-svg { background: transparent !important; }
+  .bg { fill: var(--mxt-surface) !important; }
+  .gridlayer path, .zerolinelayer path { stroke: var(--mxt-line) !important; }
+  .xtick text, .ytick text, .legendtext { fill: var(--mxt-ink-muted) !important; }
+}
+```
+
+**An empty column caption falls back to the column's name.** `column
+colOpenWeekend (caption: '')` renders a header reading `COLOPENWEEKEND`. There
+is no blank caption; give the column a real one.
+
+### Two things about capturing them
+
+Charts and the wide session table finish well after the network goes quiet — the
+race weekend page needs the better part of a minute before the last series
+appears. A screenshot taken at `networkidle` shows a spinner and half a legend,
+which reads exactly like a broken page.
+
+And the trial licence caps concurrent sessions. Enough probe runs and the client
+gets a 401 at startup, clears its session and restarts, so pages come up empty
+for reasons that have nothing to do with the code:
+
+```bash
+sudo -u postgres psql -d formula1frontend -c 'delete from system$session;'
+```

@@ -1,0 +1,143 @@
+// ---------------------------------------------------------------------------
+// What the theme's own widget layer still leaves.
+//
+// This file used to carry the whole widget-module correction. mxcli `c76d4b7`
+// added `_mxcli-widgets.scss` — generated, shared by every theme, imported
+// inside the fence — which now covers the pager caption, the loader overlay,
+// the row-select checkboxes, the column-selector popover and the dropdown
+// filter, and reaches further than this file ever did (placeholder colour,
+// export-alert focus ring, feedback and take-picture buttons). FINDINGS §33
+// filed it; §34 records the fix. Everything it covers has been deleted here.
+//
+// Two things are left, both verified against the regenerated
+// deployment/web/theme.compiled.css:
+//
+//   1. the filter-operator popover still casts a light-mode shadow — the
+//      generated layer handles `.column-selectors` but not `.filter-selectors`
+//      and the dropdown surfaces beside it;
+//   2. the header mark is an <img>, which no stylesheet can recolour.
+//
+// Imported from main.scss outside the mxcli:theme fence, so `mxcli theme apply`
+// leaves it alone — it survived the c76d4b7 re-apply untouched.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Charts.
+//
+// The line chart widget renders through Plotly, which paints its own paper: a
+// white <rect class="bg"> and a white background on .main-svg, both written as
+// inline style, plus dark grey ticks and gridlines. None of it reads a CSS
+// custom property, so on a #0E1116 page every chart came out as a white slab
+// with the rest of the page dark around it — the single loudest thing left in
+// the theme.
+//
+// Plotly's own way out is a layout JSON per chart (paper_bgcolor, font.color,
+// gridcolor), which would be five copies of the palette in the model, drifting
+// the moment a token changes. Overriding the paint here keeps one source of
+// truth. Inline style is what we are competing with, hence !important — the
+// one place in this theme that needs it.
+//
+// The traces themselves are left alone: Plotly's default categorical colours
+// read fine on the dark ground and are what the series legends are matched to.
+// ---------------------------------------------------------------------------
+.js-plotly-plot {
+  .main-svg { background: transparent !important; }
+
+  // The plot area and the paper behind it.
+  .bg { fill: var(--mxt-surface) !important; }
+
+  // Gridlines and the zero line: structure, not content — the same weight as a
+  // table rule.
+  .gridlayer path,
+  .zerolinelayer path { stroke: var(--mxt-line) !important; }
+
+  // Axis ticks, axis titles and the legend, all as muted ink.
+  .xtick text,
+  .ytick text,
+  .legendtext,
+  .g-xtitle text,
+  .g-ytitle text,
+  .infolayer text {
+    fill: var(--mxt-ink-muted) !important;
+    font-family: var(--mxt-font-mono) !important;
+  }
+
+  // The legend sits on the surface it labels; it does not need its own plane.
+  .legend .bg { fill: transparent !important; stroke: transparent !important; }
+
+  // Hover readouts are drawn as SVG, so they miss the popover styling entirely.
+  .hoverlayer .hovertext {
+    path, rect { fill: var(--mxt-ground) !important; stroke: var(--mxt-line) !important; }
+    text { fill: var(--mxt-ink) !important; }
+  }
+
+  // The modebar is a light-mode toolbar floating over a dark chart.
+  .modebar-btn path { fill: var(--mxt-ink-faint) !important; }
+  .modebar-btn:hover path { fill: var(--mxt-brand) !important; }
+  .modebar-group { background: transparent !important; }
+}
+
+// ---------------------------------------------------------------------------
+// The closed navigation rail.
+//
+// Atlas collapses the sidebar to --navsidebar-width-closed (48px) rather than
+// to nothing, because it expects every menu item to carry an icon: 48px is one
+// icon wide. MDL's MENU ITEM has no icon clause (FINDINGS §36), so every item
+// is text only and the rail renders "Constru", "Race re", "Live rac" — clipped
+// words down the left edge of every page.
+//
+// Until the items can carry icons, collapse it the whole way. The toggle is in
+// the header and opens the full 232px sidebar; a rail that shows nothing is
+// better than one that shows half a word.
+// ---------------------------------------------------------------------------
+.layout-atlas-responsive,
+.layout-atlas-responsive-default,
+.layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
+
+// datawidgets/web/_datagrid-filters.scss:71,143,153,206 — box-shadow with a
+// baked rgba(5,15,129,.05). Console separates planes by lightness, not shadow,
+// so this reads as a smudge under the filter-operator list. `--mxt-shadow` is
+// the token the generated layer uses for the same job on `.column-selectors`.
+.filter-selectors,
+.dropdown-list,
+.dropdown-content {
+  box-shadow: var(--mxt-shadow);
+  border: 1px solid var(--mxt-line);
+}
+
+// ---------------------------------------------------------------------------
+// The header mark.
+//
+// Atlas_Default renders Atlas_Core.Layout.logo, an SVG whose first element is
+// <rect fill="white">. It is an <img>, so its interior is out of CSS's reach
+// and the white tile cannot be recoloured — it can only be replaced.
+//
+// Collapsing the content box to zero and painting the replacement on the
+// padding box swaps the image without needing `content:` on a replaced element,
+// which is not portable. The URL is relative to theme.compiled.css, which
+// Mendix deploys to the web root alongside the rest of theme/web/.
+//
+// The mark is drawn as a mask rather than a coloured image, so its colour comes
+// from the palette: it follows a light/dark flip and a re-brand with no second
+// asset. An <img> cannot read a custom property; a mask's paint can.
+// ---------------------------------------------------------------------------
+img[src*="Atlas_Core$Layout$logo"] {
+  width: 0;
+  height: 0;
+  padding: 16px;
+  background-color: var(--mxt-brand);
+  -webkit-mask: url("./f1-logo.svg") center / contain no-repeat;
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}
+
+// The login page (theme/web/login.html) is plain HTML and points straight at
+// the asset, so it needs no swap — but it does need the same paint, or the
+// mark renders in the flat colour baked into the file.
+.loginpage-logo img {
+  width: 0;
+  height: 0;
+  padding: 22px;
+  background-color: var(--mxt-brand);
+  -webkit-mask: url("./f1-logo.svg") center / contain no-repeat;
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}
