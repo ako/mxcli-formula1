@@ -1,0 +1,65 @@
+/*
+ * Navigation and security for the frontend.
+ *
+ * One role: the Formula 1 enthusiast. The whole solution is read-only over a
+ * historical dataset, so there is nothing to grant beyond read and view.
+ *
+ * External entities still need entity access rules — the OData client fetches
+ * the rows, but Mendix will not show a user data their role cannot read.
+ */
+
+alter project security level PROTOTYPE;
+
+create module role Formula1Frontend.Enthusiast
+  description 'Browse every season, driver, constructor, circuit and result. Read-only.';
+create module role F1Live.Reader
+  description 'Read the live (CSV-backed) external entities.';
+create module role F1Cached.Reader
+  description 'Read the cached (Postgres-backed) external entities.';
+
+/* Live external entities */
+grant F1Live.Reader ON F1Live.Seasons (READ *);
+grant F1Live.Reader ON F1Live.Circuits (READ *);
+grant F1Live.Reader ON F1Live.Constructors (READ *);
+grant F1Live.Reader ON F1Live.Drivers (READ *);
+grant F1Live.Reader ON F1Live.Races (READ *);
+grant F1Live.Reader ON F1Live.RaceResults (READ *);
+grant F1Live.Reader ON F1Live.DriverStandings (READ *);
+grant F1Live.Reader ON F1Live.ConstructorStandings (READ *);
+
+/* Cached external entities */
+grant F1Cached.Reader ON F1Cached.Seasons (READ *);
+grant F1Cached.Reader ON F1Cached.Circuits (READ *);
+grant F1Cached.Reader ON F1Cached.Constructors (READ *);
+grant F1Cached.Reader ON F1Cached.Drivers (READ *);
+grant F1Cached.Reader ON F1Cached.Races (READ *);
+grant F1Cached.Reader ON F1Cached.RaceResults (READ *);
+grant F1Cached.Reader ON F1Cached.DriverStandings (READ *);
+grant F1Cached.Reader ON F1Cached.ConstructorStandings (READ *);
+
+/* Pages */
+GRANT VIEW ON PAGE Formula1Frontend.Home TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Seasons_Overview TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Drivers_Cached TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Drivers_Live TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Constructors_Overview TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Circuits_Overview TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.RaceResults_Overview TO Formula1Frontend.Enthusiast;
+
+create user role Enthusiast (
+  Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, System.User
+);
+
+create or replace navigation Responsive
+  HOME PAGE Formula1Frontend.Home
+  MENU (
+    MENU ITEM 'Home' PAGE Formula1Frontend.Home;
+    MENU ITEM 'Seasons' PAGE Formula1Frontend.Seasons_Overview;
+    MENU 'Drivers' (
+      MENU ITEM 'Cached (Postgres)' PAGE Formula1Frontend.Drivers_Cached;
+      MENU ITEM 'Live (CSV)' PAGE Formula1Frontend.Drivers_Live;
+    );
+    MENU ITEM 'Constructors' PAGE Formula1Frontend.Constructors_Overview;
+    MENU ITEM 'Circuits' PAGE Formula1Frontend.Circuits_Overview;
+    MENU ITEM 'Race results' PAGE Formula1Frontend.RaceResults_Overview;
+  );

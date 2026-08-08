@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§27 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§30 on **`45ae6a6`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1124,42 +1124,156 @@ yields a **single object**, not a list, so `HEAD()` on it fails with
 `The selected 'Rows' variable must be of type List`. Both spellings are useful;
 the difference is invisible in the syntax.
 
+## 28. Gap: `CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`
+
+*Verified 2026-08-07 on mxcli `45ae6a6`, on a **fresh** generation.*
+
+An attribute literally named `name` comes out of the generator prefixed with the
+remote entity type:
+
+| Service | Remote type | Contract says | Generated as |
+|---|---|---|---|
+| live | `Stg_Driver` | `name` | `Stg_Drivername` |
+| live | `Stg_Circuit` | `name` | `Stg_Circuitname` |
+| live | `Stg_Constructor` | `name` | `Stg_Constructorname` |
+| cached | `Driver` | `name` | `Drivername` |
+| cached | `Circuit` | `name` | `Circuitname` |
+
+Presumably `name` collides with something in the generator's model and it
+disambiguates by prefixing. Three consequences:
+
+- The local attribute name no longer matches the contract, so a page written
+  against the published `$metadata` fails with
+  `The selected attribute 'F1Live.Drivers.name' no longer exists.`
+- The **same field has a different name in each module** — `Stg_Drivername`
+  versus `Drivername` — so two pages over two services cannot share a column
+  definition, purely because the remote type names differ.
+- The backend's internal entity name (`Stg_Driver`) leaks into the frontend's
+  domain model.
+
+**It is only a naming problem — the mapping is intact.** Proven rather than
+assumed: `tests/name-mapping.test.mdl` reads the renamed attribute through both
+clients and gets `Ayrton Senna` back from each.
+
+This also corrects §25: the mangling is the **generator's**, not
+`CREATE OR MODIFY EXTERNAL ENTITY`'s. The modify does its own separate damage
+(stripping remote mappings from every attribute), but the rename was already
+there from the first generation.
+
+**Fix:** disambiguate only on a real collision, and prefer suffixing or quoting
+over prefixing with the remote type. Failing that, say so at generation time
+instead of leaving it to be discovered when a page will not build.
+
+## 29. `mxcli lint` validates widget design properties against the widget, not the theme
+
+*Verified 2026-08-07.*
+
+`mxcli check` accepted this after two rounds of correction, and the values it
+suggested were genuinely the right ones for the widget:
+
+```
+⚠ widget "dgDrivers" (datagrid) sets design property "Striped", which is not defined for this widget type [MDL-WIDGET11]
+  → Valid design properties for this widget: Align self, Hide on, Hover style, Row size, Spacing, Style
+⚠ design property "Row size" has value "Compact", which is not an allowed value [MDL-WIDGET12]
+  → Allowed values (case-sensitive): Small, Large
+```
+
+`'Row size': 'Small'` then passed `check` cleanly — and failed the build:
+
+```
+ERROR: Design property Row size is not supported by your theme.
+ERROR: Design property Hover style is not supported by your theme.
+```
+
+The `console` theme does not implement those Atlas design properties. The lint
+rule knows the widget's catalogue but not which subset the applied theme
+supports, so it can green-light a page that cannot build. Worth teaching the rule
+to read the theme's `design-properties.json` — mxcli generates the theme, so it
+knows.
+
+## 30. The pages, and proof the grid really pushes down
+
+*Verified 2026-08-08 with a real browser session (`run --screenshot` logs in as a
+demo user and captures the rendered page).*
+
+Seven pages on the external entities: Home, Seasons, Drivers ×2 (one per
+service), Constructors, Circuits, Race results. Every grid is paged, sortable and
+text-filterable, so every interaction is an OData request.
+
+The claim worth proving was that a **datagrid** emits the query options, not just
+that curl can. Temporarily logging `System.HttpRequest.Uri` inside
+`Read_Drivers`, then loading `/p/drivers-live` in the browser:
+
+```
+F1Pushdown: Drivers URI: /odata/f1-live/Drivers?$select=driverId%2Cname%2Cnationality%2C…
+                        &$count=true&$top=20&$orderby=driverId%20asc
+F1Pushdown: Drivers SQL tail:  ORDER BY id ASC LIMIT 20
+```
+
+`$top=20` → `LIMIT 20`; `$orderby=driverId` → `ORDER BY id` via the whitelist
+(the exposed name differs from the CSV column); `$count=true` runs the separate
+count query. The pager renders **1 to 20 of 917** on the live page and
+**1 to 25 of 27533** on race results — the full set, from CSVs, 25 rows at a time.
+
+Two things learned from the log that were not obvious:
+
+- The grid's **default sort is the key**, not the first column — `$orderby=driverId asc`
+  even though no column was clicked. Worth having a sensible whitelist entry for
+  the key attribute, which is why `driverId:id` is in the map.
+- **`$select` is sent and currently ignored.** The grid asked for 8 of the 14
+  attributes; the SQL still selects all 14. Harmless but wasteful, and an easy
+  next improvement — the whitelist already has everything needed to honour it.
+
+Also worth recording, since it looked like a bug and was not: the `console`
+theme renders **light** in these screenshots. It is set to `auto`
+(`$mxcli-theme-variant: auto` in `theme/web/main.scss`) and headless Chromium
+reports `prefers-color-scheme: light`, so Console's light palette is correct
+behaviour. The clipped labels in the collapsed navigation rail are likewise
+known and deliberately not fixed in CSS — mxcli's own theme docs say so.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
+1. **`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28) —
+   prefixed with the remote type, so pages written against the contract do not
+   build and the same field is named differently per module. The mapping works;
+   the name is wrong.
+2. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
    renames one and strips every remote mapping, leaving a project that cannot
    build. Silent, and the same class as issue #594 one level down.
-2. **`create or modify odata service` ignores published-member changes and drops
+3. **`create or modify odata service` ignores published-member changes and drops
    role grants** (§26) — a modify that quietly does not modify, and breaks the
    build in a second, unrelated-looking way.
-3. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
+4. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
    credentials are on the statement and go unused, so the client is created empty
    with only a warning.
-4. **Generated external entities ignore the contract's capability annotations** (§24) —
+5. **Generated external entities ignore the contract's capability annotations** (§24) —
    `Countable`/`Filterable`/`Sortable` default to true, so importing from a service
    that restricts any of them produces a project that will not build.
-5. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
+6. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
    `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
    starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
    query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
-6. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
+7. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
    `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
    published service fails the build until you switch it to `long`. One line, and the
    function's own comment flags Integer as unverified.
-7. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
+8. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
    a suite that needs startup state passes under `--attach` and fails under `--local`
    for reasons unrelated to the code. Say so in the output, or chain the original.
-8. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
+9. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
    sits below the `--list` branch in `cmd_test_run.go:136`.
-9. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
+10. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
    which `fa0cdb6` added and the checker accepts.
-10. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
+11. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
    `mxcli` is rebuilt, with no warning.
-11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-12. **`create module role` has no `or modify` form**, so a security script cannot be
+13. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+14. **`create module role` has no `or modify` form**, so a security script cannot be
    re-run — the reason this repo has a separate `07-demo-users.mdl`.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14

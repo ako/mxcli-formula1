@@ -1,0 +1,16 @@
+/**
+ * The generator renamed the `name` attribute (FINDINGS §28). This proves the
+ * renamed attribute still maps to the remote `name` and carries real data.
+ *
+ * @test Live client: the renamed name attribute still resolves
+ * @expect $result = 'Ayrton Senna'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Live_SennaName();
+/
+
+/**
+ * @test Cached client: the renamed name attribute still resolves
+ * @expect $result = 'Ayrton Senna'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Cached_SennaName();
+/

@@ -11,7 +11,10 @@ for f in ../model/frontend/0*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.mpr;
 |---|---|
 | `01-odata-clients.mdl` | Modules `F1Live` and `F1Cached`, their URL/credential constants, and one OData client each. |
 | `02-external-entities.mdl` | 16 external entities generated from the cached contracts. |
-| `03-smoke.mdl` | Retrieval microflows behind `tests/external-entities.test.mdl`. |
+| `03-smoke.mdl` | Retrieval microflows behind `tests/external-entities.test.mdl` and `tests/name-mapping.test.mdl`. |
+| `04-pages.mdl` | The seven browsing pages. |
+| `05-navigation-security.mdl` | Roles, entity/page access, the Responsive navigation profile. |
+| `06-demo-user.mdl` | `fan`. Separate because 05 is not re-runnable. |
 
 ## Two modules, not one
 
@@ -74,3 +77,38 @@ through both clients for real.
 cd Formula1Backend && ./mxcli run --local -p Formula1Backend.mpr    # terminal 1
 cd Formula1Frontend && ./mxcli test tests/ -p Formula1Frontend.mpr --local
 ```
+
+
+## The pages
+
+Home, Seasons, Drivers ×2 (one per service), Constructors, Circuits, Race
+results. Every grid is paged, sortable and text-filterable, so every interaction
+is an OData request to the backend.
+
+There is deliberately **no navigation snippet**. The `Responsive` profile already
+renders a menu rail; an in-page menu was a second copy of it, taking 2/12 of the
+width from the grid.
+
+Two things to know before editing a grid column:
+
+- **An attribute called `name` is not called `name`.** The generator prefixes it
+  with the remote type, and differently per service — `Stg_Drivername` on the
+  live side, `Drivername` on the cached side (FINDINGS §28). The captions hide
+  this from the user; the MDL cannot.
+- **Design properties that `mxcli check` accepts can still fail the build.** The
+  lint rule knows the widget's catalogue, not which subset the `console` theme
+  implements: `Row size` and `Hover style` pass `check` and are rejected by
+  `mxbuild` (FINDINGS §29). None are used here.
+
+## Seeing it work
+
+```bash
+cd Formula1Backend  && ./mxcli run --local -p Formula1Backend.mpr
+cd Formula1Frontend && ./mxcli run --local -p Formula1Frontend.mpr \
+    --app-port 8180 --admin-port 8190 --serve-port 6643
+```
+
+Then `http://frontend.local:8180/`, logging in as `fan` / `F1Enthusiast!2345`.
+
+`--screenshot --screenshot-user fan --screenshot-password … --screenshot-url /p/drivers-live`
+logs in and captures the page without a browser of your own.
