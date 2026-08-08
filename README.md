@@ -120,6 +120,15 @@ OData, into the read microflow, into a `read_csv()` scan and back.
 See `model/frontend/README.md` — in particular, do not patch generated external
 entities; fix the contract and regenerate.
 
+**Design.** The pages follow a supplied redesign that keeps the Console palette
+exactly — `#0E1116` ground, `#2DD4BF` primary, 6px radius, 28px rows, Space
+Grotesk over JetBrains Mono on every number — and changes the arrangement: a
+header band (eyebrow, title, subtitle, one badge), a row of tiles carrying the
+numbers that used to be a sentence, then panels holding one thing each with a
+muted subtitle on the title's baseline. `theme/web/_f1-layout.scss` is that
+layer; every value in it resolves through a `--mxt-*` token, so it follows a
+light/dark flip and a re-brand rather than pinning the look.
+
 **Theming.** `console`, variant `auto`, so the app follows the OS. The theme maps
 ~60 Atlas Core variables onto its palette; the widget modules' own styling used
 to be out of reach — Data Grid 2 bakes colours as Sass literals no token can
