@@ -1560,7 +1560,19 @@ the scripts quietly stop being the source of truth.
 
 ### Still open
 
-1. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+1. **`mxcli run --local` deletes the web client bundle it just built** (§35) — the
+   Gradle `package` pass during boot repopulates `deployment/web` without `dist/`,
+   so the app serves a 200 HTML shell and a black screen. Highest impact of anything
+   on this list: it makes the app unusable, and nothing in check, build, log or curl
+   reports it. Bundle after the boot's packaging, or exclude `dist/` from it.
+2. **`create or modify odata service` still drops role grants** (§34, §26) — the
+   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
+   service silently revokes its access and the build fails with "At least one
+   allowed role must be selected".
+3. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+   MDL passes it through and the build fails with "Error(s) in expression". Either
+   strip comments from expression text or reject them at check time.
+4. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
    constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
    reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
    entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
@@ -1663,3 +1675,64 @@ The list below is kept because the reasoning is still the record of why each mat
 run reported four independent failures with timings instead of one dead log. The
 ownership contract held exactly as documented across attach, edit, re-attach and host
 shutdown. `mxcli lint`'s MDL044 message (§13) is the best error text in the tool.
+
+## 35. The boot deletes the browser client it just built
+
+*Verified 2026-08-08 on mxcli `c76d4b7`. Symptom: every page is a black screen.*
+
+Both apps served a dark, empty page. Not the theme — `/dist/index.js` 404s, so
+the shell paints `--mxt-ground` and the client never starts.
+
+`mxcli run --local` bundles the web client on purpose, and the code says why:
+
+```go
+// 5b. Bundle the browser client (web/dist). The serve Deploy target writes the
+// client source but not the rollup bundle, so without this the app 404s on
+// /dist/index.js and renders blank.
+```
+
+It runs, and it succeeds — `Bundling web client... Web client bundled in 33.1s`,
+and `deployment/log/web-client-build.log` records `Bundling finished` at
+15:15:31. Then the runtime boot runs Gradle `clean-custom-classes compile
+package`, and at **15:16:22** that repopulates `deployment/web` — `index.html`
+and `index.js` rewritten, `dist/` gone. The bundle is deleted 51 seconds after
+it was written, by a later step of the same command, and nothing reports it.
+
+Ordering: build → **bundle** → hub register → **boot (Gradle package)**. The
+bundle needs to happen after the packaging, or the packaging needs to leave
+`dist/` alone.
+
+### Why it only started now
+
+Gradle has to have work to do. Adding the two `$filter` Java actions in §34
+forced a full recompile (`Full recompilation is required because no incremental
+change information is available`), and the package pass that follows is what
+clears `web/`. That is why the app booted fine for most of this project and then
+stopped: the same command, the same version, different Gradle state.
+
+A restart with nothing for Gradle to do leaves the bundle intact — which is the
+other half of the proof.
+
+### Working around it
+
+`scripts/run-app.sh` boots the app, waits for it to answer, and re-runs mxcli's
+own bundler if `dist/index.js` is missing — mxbuild's bundled node plus
+`tools/node/rollup-runner.mjs`, the exact command from
+`cmd/mxcli/docker/webclient.go`. ~30s, and it prints which branch it took.
+
+By hand:
+
+```bash
+M=~/.mxcli/mxbuild/11.13.0/modeler
+cd <App>/deployment/web && NODE_ENV=production \
+  $M/tools/node/linux-x64/node $M/tools/node/rollup-runner.mjs
+```
+
+### The trap inside the trap
+
+A blank page with a 404 on one asset is invisible to every check this project
+has. `mxcli check` passes, the build reports success, the runtime logs nothing,
+`curl /` returns **200** with a valid HTML shell, and the OData services all
+answer correctly. Only a browser sees it — which is exactly the gap that let it
+survive several restarts and a commit. Rendering the real app, not a probe page,
+is the only thing that catches this class.
