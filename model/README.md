@@ -26,6 +26,30 @@ for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Back
 | `09-query-pushdown.mdl` | Java actions that turn OData query options into SQL. Logic lives in `javasource/formula1backend/ODataQuery.java`. |
 | `10-live-pushdown.mdl` | The read microflows that use them — `Read_Drivers` and `Read_RaceResults`. **Owns those two microflows**; `02` must not redefine them, and must run before this. |
 | `11-pushdown-tests-support.mdl` | Thin wrappers so the Java actions can be unit-tested directly. |
+| `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
+
+## The folder layout
+
+`00`–`11` create everything at the module root, which is fine at ten documents
+and unreadable at forty. `12` sorts them:
+
+| Folder | Holds |
+|---|---|
+| `Warehouse/` | The DuckDB connection and the four constants that configure it. |
+| `Live/` | The eight read microflows behind `F1LiveApi`. |
+| `Cached/` | `ACT_RefreshAll`, `ASU_LoadCacheIfEmpty` and the eight refresh jobs. |
+| `Health/` | The eight row counts and `Check_ServicesAgree`. |
+| `TestSupport/` | Wrappers that exist only so tests can reach the Java actions. |
+
+Five documents stay at the root because mxcli cannot move them: the three
+pushdown **Java actions** and both **published OData services**. `MOVE` has no
+doctype for either and neither `CREATE` form takes a folder clause. FINDINGS §32.
+
+It is a separate script rather than `folder '…'` clauses on each definition
+because `CREATE OR REPLACE` preserves a document's existing folder — so
+re-running `00`–`11` leaves the layout alone — and because constants and the
+database connection have no folder clause to hang it on. Re-running `12` is a
+no-op on an already-tidy module.
 
 ## Re-runnability
 

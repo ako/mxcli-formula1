@@ -1326,6 +1326,79 @@ optimising 14% of the request.
   (`Maximum number of sessions exceeded! (You are currently using a trial license)`)
   is only in the runtime log. `page_grid.py` logs out at the end.
 
+## 32. Folders: `MOVE` covers most documents, but not Java actions or OData services
+
+*Verified 2026-08-08 against mxcli `45ae6a6`.*
+
+Everything the eleven build scripts created landed at the module root — 41
+documents in one flat list. `model/backend/12-folders.mdl` sorts 36 of them into
+five folders (`Warehouse`, `Live`, `Cached`, `Health`, `TestSupport`); five
+cannot be moved at all.
+
+Three facts make a separate folder script the right shape, rather than a
+`folder '…'` clause on each definition:
+
+- **`CREATE OR REPLACE` preserves the folder.** Moving `Count_Live_Seasons` into
+  `Health` and then re-running its original definition — no folder clause — left
+  it in `Health`. So the layout survives re-running `00`–`11`, and does not have
+  to be repeated in every script that touches a document.
+- **`MOVE` is idempotent.** Running the same move twice reports
+  `Moved … to new location` both times and changes nothing; `mxcli diff`
+  afterwards reports `0 new, 0 modified`.
+- **`MOVE` is doctype-agnostic where it works**, which matters because only
+  microflows have a create-time folder clause. Constants and the database
+  connection have none, so a create-time-only approach could not place them.
+
+### What `MOVE … TO FOLDER` accepts
+
+| Accepted | Rejected at parse time |
+|---|---|
+| `MICROFLOW`, `NANOFLOW`, `PAGE`, `SNIPPET`, `CONSTANT`, `ENUMERATION`, `DATABASE CONNECTION`, `FOLDER` | `JAVA ACTION`, `ODATA SERVICE`, `ODATA CLIENT`, `REST CLIENT`, `JSON STRUCTURE`, `IMPORT MAPPING`, `EXPORT MAPPING`, `LAYOUT`, `IMAGE`, `DOCUMENT` |
+
+The rejection is a grammar error (`no viable alternative at input 'MOVEJAVA'`),
+not a runtime one, so `mxcli check` catches it — but the message names the
+mangled token rather than saying the doctype is unsupported.
+
+So the three pushdown Java actions and both published OData services stay at the
+module root. `CREATE OR MODIFY JAVA ACTION` has no folder clause either (tried
+before `RETURNS`, after `EXPOSED AS`, and before `AS $$` — all parse errors), and
+neither does `CREATE ODATA SERVICE`. There is no MDL path to placing them.
+
+### Verifying a move needs the `.mpr`
+
+mxcli can move a document but cannot show where a document is. `SHOW STRUCTURE`
+lists documents flat, at every depth, with no folder headings; `DESCRIBE
+MICROFLOW` round-trips the definition without a folder clause. So there is no way
+to confirm from mxcli that a move landed, or to diff an intended layout against
+the real one.
+
+The `.mpr` answers directly — folders are units, and `ContainerID` is the parent:
+
+```python
+import sqlite3, collections
+c = sqlite3.connect("Formula1Backend/Formula1Backend.mpr")
+rows = list(c.execute("select UnitID, ContainerID, ContainmentName from Unit"))
+docs = collections.Counter(r[1] for r in rows if r[2] == 'Documents')
+# module 8cb93ff2: 5 direct documents, 5 folders holding 5/8/10/9/4
+```
+
+Before: 41 documents directly under the module. After: 5 (the three Java actions
+and the two OData services), plus `Warehouse` 5, `Live` 8, `Cached` 10,
+`Health` 9, `TestSupport` 4. Nested folders work too — `TO FOLDER
+'Health/Consistency'` created both levels.
+
+The move is model-level only: all 21 backend tests pass against the reorganised
+project (`--attach`), and both services still answer — live `@odata.count` 27533
+with pushdown intact, cached 917 drivers.
+
+### The three cached tests that fail under `--local` here
+
+Unrelated to folders, but worth recording because it looks alarming: on a fresh
+container `formula1backend_test` is empty, so the three tests that assert on
+materialised rows fail with 0. The dev database still has its 917 drivers. Run
+the suite with `--attach` against a running app (which is faster anyway, §14) or
+refresh the test database first.
+
 ## Suggested mxcli issues
 
 ### Still open
@@ -1370,6 +1443,12 @@ optimising 14% of the request.
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 14. **`create module role` has no `or modify` form**, so a security script cannot be
    re-run — the reason this repo has a separate `07-demo-users.mdl`.
+15. **`MOVE … TO FOLDER` has no doctype for Java actions or published OData services** (§32),
+   and neither `CREATE` form takes a folder clause — so those documents can never leave
+   the module root from MDL. Five of this backend's documents are stuck there.
+16. **Nothing reads a document's folder back** (§32) — `SHOW STRUCTURE` is flat at every
+   depth and `DESCRIBE` omits the folder, so a move cannot be verified, and an intended
+   layout cannot be diffed against the real one, without opening the `.mpr` as SQLite.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14
 
