@@ -198,3 +198,26 @@ BEGIN
   DECLARE $Who String = $Weekend/winnerName;
   RETURN $Who;
 END;
+
+/*
+ * The live overview. Asserts on the shape, not on values: the snapshot changes
+ * every time scripts/fetch-f1-live.sh runs, so pinning Norris on 70 laps would
+ * be a test that fails on the next race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveOrder ()
+  RETURNS Long AS $N
+BEGIN
+  -- Parens are required in a microflow CALL even with no arguments; a page
+  -- datasource is the opposite and rejects them.
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveOrder();
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveHasLeader ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  RETRIEVE $Leader FROM F1Now.Order WHERE position = 1 LIMIT 1;
+  DECLARE $Ok Boolean = $Leader != empty;
+  RETURN $Ok;
+END;

@@ -22,6 +22,10 @@
 # party, re-fetchable, ~26k rows a season — script committed, data not.
 /data/laps/
 
+# Near-live snapshots from OpenF1 (scripts/fetch-f1-live.sh). Stale the moment
+# they are written — the script is the artefact, not the data.
+/data/live/
+
 # DuckDB scratch files, if any are ever materialised next to the CSVs.
 *.duckdb
 *.duckdb.wal

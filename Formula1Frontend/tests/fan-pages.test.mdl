@@ -84,3 +84,19 @@ $result = CALL MICROFLOW Formula1Frontend.Test_LapChart();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_WeekendWinner();
 /
+
+/**
+ * The live overview asserts on shape, not values — the snapshot moves.
+ *
+ * @test Live race: a full grid is in the running order
+ * @expect $result > 15
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveOrder();
+/
+
+/**
+ * @test Live race: somebody is leading
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveHasLeader();
+/

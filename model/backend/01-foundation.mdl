@@ -413,6 +413,68 @@ create or modify non-persistent entity Formula1Backend.Stg_LapChart (
 );
 
 /* ---------------------------------------------------------------------------
+ * Near-live timing, from OpenF1.
+ *
+ * A different source with a different contract: f1db is a file that changes
+ * when someone publishes a release, OpenF1 is a service that changes during a
+ * race. scripts/fetch-f1-live.sh snapshots one session into data/live/ and the
+ * page reads whatever the last snapshot holds — so "live" here means "as fresh
+ * as the last fetch", which on a race Sunday means running it on a timer.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveEntry (
+  EntryKey: string(40),
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  DriverName: string(120),
+  Team: string(120),
+  TeamColour: string(10),
+  Position: long,
+  GapToLeader: string(20),
+  Interval: string(20),
+  LapNumber: long,
+  LastLapSeconds: decimal,
+  Sector1: decimal,
+  Sector2: decimal,
+  Sector3: decimal,
+  SpeedTrap: long,
+  Compound: string(20),
+  TyreAge: long,
+  PitStops: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveMessage (
+  MessageKey: string(60),
+  SessionKey: string(20),
+  At: string(20),
+  Category: string(40),
+  Flag: string(30),
+  Scope: string(30),
+  Lap: long,
+  Message: string(500)
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_LiveSession (
+  SessionKey: string(20),
+  SessionName: string(60),
+  SessionType: string(40),
+  Location: string(120),
+  CountryName: string(120),
+  CircuitName: string(120),
+  DateStart: string(40),
+  Year: long,
+  DriverCount: long,
+  LeadLap: long,
+  FetchedAt: string(40),
+  AirTemperature: decimal,
+  TrackTemperature: decimal,
+  Humidity: decimal,
+  Rainfall: decimal,
+  WindSpeed: decimal
+);
+
+/* ---------------------------------------------------------------------------
  * The connection. Type 'BYOD' is Studio Pro's "Other" — bring your own driver.
  * It skips the driver-presence check, which is the only reason a JDBC driver
  * Mendix has no picker entry for can be used at all.
@@ -820,5 +882,77 @@ begin
     map ( lapKey as LapKey, year as Year, round as Round, lap as Lap,
           s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
           s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+
+
+  /* -------------------------------------------------------------------------
+   * The live snapshot. Columns are declared rather than sniffed: these files
+   * are legitimately header-only before the first fetch, and read_csv infers
+   * nothing from an empty file.
+   * ---------------------------------------------------------------------- */
+
+  query GetLiveOrder
+    sql 'SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
+                code, driverName, team, teamColour, position, gapToLeader, interval,
+                lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
+                compound, tyreAge, pitStops
+         FROM read_csv({dataDir} || ''/../live/live-order.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
+                                  ''code'': ''VARCHAR'', ''driverName'': ''VARCHAR'',
+                                  ''team'': ''VARCHAR'', ''teamColour'': ''VARCHAR'',
+                                  ''position'': ''BIGINT'', ''gapToLeader'': ''VARCHAR'',
+                                  ''interval'': ''VARCHAR'', ''lapNumber'': ''BIGINT'',
+                                  ''lastLapSeconds'': ''DOUBLE'', ''sector1'': ''DOUBLE'',
+                                  ''sector2'': ''DOUBLE'', ''sector3'': ''DOUBLE'',
+                                  ''speedTrap'': ''BIGINT'', ''compound'': ''VARCHAR'',
+                                  ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT''})
+         ORDER BY position'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveEntry
+    map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
+          code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
+          position as Position, gapToLeader as GapToLeader, interval as Interval,
+          lapNumber as LapNumber, lastLapSeconds as LastLapSeconds, sector1 as Sector1,
+          sector2 as Sector2, sector3 as Sector3, speedTrap as SpeedTrap,
+          compound as Compound, tyreAge as TyreAge, pitStops as PitStops );
+
+  query GetLiveMessages
+    sql 'SELECT sessionKey || ''-'' || rowid AS messageKey, sessionKey, at, category,
+                flag, scope, lap, message
+         FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                  ''category'': ''VARCHAR'', ''flag'': ''VARCHAR'',
+                                  ''scope'': ''VARCHAR'', ''lap'': ''BIGINT'',
+                                  ''message'': ''VARCHAR''})'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveMessage
+    map ( messageKey as MessageKey, sessionKey as SessionKey, at as At,
+          category as Category, flag as Flag, scope as Scope, lap as Lap,
+          message as Message );
+
+  query GetLiveSession
+    sql 'SELECT s.sessionKey, s.sessionName, s.sessionType, s.location, s.countryName,
+                s.circuitName, s.dateStart, s.year, s.driverCount, s.leadLap, s.fetchedAt,
+                w.airTemperature, w.trackTemperature, w.humidity, w.rainfall, w.windSpeed
+         FROM read_csv({dataDir} || ''/../live/live-session.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''sessionName'': ''VARCHAR'',
+                                  ''sessionType'': ''VARCHAR'', ''location'': ''VARCHAR'',
+                                  ''countryName'': ''VARCHAR'', ''circuitName'': ''VARCHAR'',
+                                  ''dateStart'': ''VARCHAR'', ''year'': ''BIGINT'',
+                                  ''driverCount'': ''BIGINT'', ''leadLap'': ''BIGINT'',
+                                  ''fetchedAt'': ''VARCHAR''}) s
+         LEFT JOIN read_csv({dataDir} || ''/../live/live-weather.csv'', header = true,
+                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                  ''airTemperature'': ''DOUBLE'', ''trackTemperature'': ''DOUBLE'',
+                                  ''humidity'': ''DOUBLE'', ''rainfall'': ''DOUBLE'',
+                                  ''windSpeed'': ''DOUBLE''}) w
+                ON w.sessionKey = s.sessionKey'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveSession
+    map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
+          location as Location, countryName as CountryName, circuitName as CircuitName,
+          dateStart as DateStart, year as Year, driverCount as DriverCount,
+          leadLap as LeadLap, fetchedAt as FetchedAt, airTemperature as AirTemperature,
+          trackTemperature as TrackTemperature, humidity as Humidity,
+          rainfall as Rainfall, windSpeed as WindSpeed );
 
 end;

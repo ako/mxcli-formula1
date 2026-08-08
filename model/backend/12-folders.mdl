@@ -77,6 +77,7 @@ MOVE JAVA ACTION Formula1Backend.ODataFilterYear    TO FOLDER 'Live/Pushdown';
 MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1LiveNowApi TO FOLDER 'Services';
 
 -- The fan-facing reads: a career, a season's title fight, a team's failures.
 MOVE MICROFLOW Formula1Backend.Read_DriverSeasons  TO FOLDER 'Fan';
@@ -91,6 +92,12 @@ MOVE MICROFLOW Formula1Backend.Read_RaceSessions   TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_Calendar       TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_WeekendShape   TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_LapChart       TO FOLDER 'Fan/Weekend';
+
+-- Near-live timing from OpenF1, which is a different source with a different
+-- freshness contract — hence its own folder and its own service.
+MOVE MICROFLOW Formula1Backend.Read_LiveOrder      TO FOLDER 'LiveNow';
+MOVE MICROFLOW Formula1Backend.Read_LiveMessages   TO FOLDER 'LiveNow';
+MOVE MICROFLOW Formula1Backend.Read_LiveSession    TO FOLDER 'LiveNow';
 
 -- Not part of the running app: these exist so tests can reach the Java actions
 -- and the dynamic-SQL path directly. Kept together so they are easy to ignore.

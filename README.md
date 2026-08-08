@@ -180,6 +180,31 @@ accent-stripped surname restricted to that race's starters.
 Set `LAP_SEASONS="2023 2024"` to widen it; the default is one season because two
 would exceed the hourly budget.
 
+## Live race overview
+
+A fourth data source and a fourth service, `F1LiveNowApi` — `/odata/f1-now/` —
+carrying what neither f1db nor Jolpica publish: **live timing**.
+
+```
+Race @ Hungaroring, Budapest — lead lap 70, air 31.3°C, track 47.0°C
+  P1  NOR  Lando NORRIS     McLaren          gap 0.0     S1 29.105 S2 30.486 S3 24.034  SOFT(3) 2 stops
+  P2  VER  Max VERSTAPPEN   Red Bull Racing  gap 15.08   S1 29.425 S2 30.537 S3 24.258  SOFT(3) 2 stops
+  P3  ANT  Kimi ANTONELLI   Mercedes         gap 18.728  S1 29.053 S2 30.514 S3 23.905  HARD(0) 2 stops
+```
+
+Running order with gap to leader and to the car ahead, last lap and its three
+sectors, speed trap, tyre and age, pit stops; race-control messages newest
+first; and air/track temperature, rain and wind.
+
+Source: [OpenF1](https://openf1.org) — unofficial, free, key-less, documenting a
+~3 second delay during a session. `scripts/fetch-f1-live.sh` snapshots one
+session into `data/live/`; the page reads the last snapshot and **shows when it
+was taken**. Re-run and reload for the next one; on a race Sunday run it on a
+timer with `SESSION=latest`.
+
+One trap: OpenF1 **404s the entire request if you pass `limit`**. Filter with
+`session_key` / `driver_number` instead.
+
 ## The data
 
 `data/f1db/` — 47 CSV files, ~25 MB, covering every Formula 1 season from 1950

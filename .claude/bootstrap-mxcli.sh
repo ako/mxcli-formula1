@@ -38,6 +38,12 @@ if [ ! -f data/laps/f1db-laps.csv ]; then
   sh scripts/fetch-f1-laps.sh || echo "Lap fetch failed; the lap chart will be empty."
 fi
 
+# A near-live snapshot from OpenF1, so the live page has real data on a first
+# clone. Cheap (a handful of requests) and re-runnable any time.
+if [ ! -f data/live/live-order.csv ]; then
+  sh scripts/fetch-f1-live.sh || echo "Live fetch failed; the live page will be empty."
+fi
+
 # Two apps, two hostnames. Cookies are keyed on host name and ignore the port,
 # so backend and frontend on localhost:8080 / localhost:8180 would share one
 # cookie jar and silently overwrite each other's XASSESSIONID.

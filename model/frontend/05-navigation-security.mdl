@@ -16,6 +16,8 @@ create or modify module role F1Live.Reader
   description 'Read the live (CSV-backed) external entities.';
 create or modify module role F1Cached.Reader
   description 'Read the cached (Postgres-backed) external entities.';
+create or modify module role F1Now.Reader
+  description 'Read the near-live timing snapshot from OpenF1.';
 create or modify module role F1Fan.Reader
   description 'Read the derived career, season and reliability views, and the sourced facts.';
 
@@ -51,6 +53,11 @@ grant F1Fan.Reader ON F1Fan.Calendar (READ *);
 grant F1Fan.Reader ON F1Fan.WeekendShape (READ *);
 grant F1Fan.Reader ON F1Fan.LapChart (READ *);
 
+/* Near-live timing */
+grant F1Now.Reader ON F1Now.Order (READ *);
+grant F1Now.Reader ON F1Now.Messages (READ *);
+grant F1Now.Reader ON F1Now.Session (READ *);
+
 /* Pages */
 GRANT VIEW ON PAGE Formula1Frontend.Home TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Seasons_Overview TO Formula1Frontend.Enthusiast;
@@ -63,6 +70,7 @@ GRANT VIEW ON PAGE Formula1Frontend.Driver_Career TO Formula1Frontend.Enthusiast
 GRANT VIEW ON PAGE Formula1Frontend.Season_Summary TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Constructor_Detail TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Race_Weekend TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Live_Race TO Formula1Frontend.Enthusiast;
 
 /* Datasource microflows. A microflow reached from a page needs its own role. */
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverFact TO Formula1Frontend.Enthusiast;
@@ -79,15 +87,20 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Fronte
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Calendar TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveSession TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveOrder TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessages TO Formula1Frontend.Enthusiast;
 
 create or modify user role Enthusiast (
-  Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader, System.User
+  Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader,
+  F1Now.Reader, System.User
 );
 
 create or replace navigation Responsive
   HOME PAGE Formula1Frontend.Home
   MENU (
     MENU ITEM 'Home' PAGE Formula1Frontend.Home;
+    MENU ITEM 'Live race' PAGE Formula1Frontend.Live_Race;
     MENU ITEM 'Seasons' PAGE Formula1Frontend.Seasons_Overview;
     MENU 'Drivers' (
       MENU ITEM 'Cached (Postgres)' PAGE Formula1Frontend.Drivers_Cached;

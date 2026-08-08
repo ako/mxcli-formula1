@@ -101,3 +101,31 @@ create or modify odata client F1Fan.FanApi (
   HttpUsername: '@F1Fan.ApiUser',
   HttpPassword: '@F1Fan.ApiPassword'
 );
+
+/* --------------------------------------------------------------- live now -- */
+
+/*
+ * The fourth service, and the only one that is not a file: near-live timing
+ * from OpenF1, as fresh as the last run of scripts/fetch-f1-live.sh.
+ */
+
+create module F1Now;
+
+create or modify constant F1Now.ServiceUrl type string
+  default 'http://backend.local:8080/odata/f1-now/'
+  comment 'Base URL of the backend near-live service. Override per environment.';
+
+create or modify constant F1Now.ApiUser type string default 'f1api';
+create or modify constant F1Now.ApiPassword type string
+  default 'F1apiConsumer!2345' PRIVATE;
+
+create or modify odata client F1Now.NowApi (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-now-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: @F1Now.ServiceUrl,
+  UseAuthentication: 'true',
+  HttpUsername: '@F1Now.ApiUser',
+  HttpPassword: '@F1Now.ApiPassword'
+);
