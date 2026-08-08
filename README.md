@@ -110,6 +110,13 @@ OData, into the read microflow, into a `read_csv()` scan and back.
 See `model/frontend/README.md` — in particular, do not patch generated external
 entities; fix the contract and regenerate.
 
+**Theming.** `console`, variant `auto`, so the app follows the OS. The theme maps
+~60 Atlas Core variables onto its palette and stops there, which leaves the
+widget modules' own styling — Data Grid 2 bakes 23 colours as Sass literals no
+token can reach, including a pager caption at 1.02:1 contrast.
+`theme/web/_f1-widget-dark.scss` re-points the ones this app renders, and lives
+outside the `mxcli:theme` fence so `mxcli theme apply` still works. FINDINGS §33.
+
 ## The data
 
 `data/f1db/` — 47 CSV files, ~25 MB, covering every Formula 1 season from 1950

@@ -1399,6 +1399,107 @@ materialised rows fail with 0. The dev database still has its 917 drivers. Run
 the suite with `--attach` against a running app (which is faster anyway, §14) or
 refresh the test database first.
 
+## 33. Gap: the theme maps Atlas Core, and stops at the widget modules
+
+*Verified 2026-08-08 against mxcli `45ae6a6`, theme `console v1`, variant `auto`,
+by reading `deployment/web/theme.compiled.css` — what the browser actually
+applies — rather than the source.*
+
+The app is dark and on-palette, and then a few things are not: the pager caption
+is missing, row-select checkboxes are Mendix blue, popovers cast light-mode
+shadows. All of it has one cause.
+
+### The mechanism
+
+`mxcli theme --help` states the design: a theme is "a palette of `--mxt-*`
+tokens … and a shared map wiring those onto **~60 Atlas variables**", and
+"**Atlas Core is left untouched**". That is exactly what works — ground,
+surfaces, ink, brand, type, cards, buttons and form controls all follow the
+palette, in both variants, before first paint.
+
+What the map cannot reach is the theme source shipped *by the widget modules*
+under `themesource/`. Those files style things with **Sass** variables and
+literals, which are resolved at compile time — before any custom property
+exists. No `--mxt-*` value can move them; only a later CSS rule can.
+
+| module | colour declarations with a literal no token can reach |
+|---|---|
+| `datawidgets` (Data Grid 2) | **23** |
+| `atlas_web_content` | 6 |
+| `administration` | 0 |
+| `atlas_core`'s own SCSS | 492 — but nearly all legacy Bootstrap and `@media print` |
+
+The console theme contains no rule for any of them: `grep -E
+"pagination|paging|filter|datagrid"` over `_mxcli-atlas-map.scss` and
+`_mxcli-console.scss` returns nothing.
+
+### The one that is a real defect, not a nuance
+
+```css
+/* theme.compiled.css */
+.pagination-bar { … color: #0a1325; }
+```
+
+From `themesource/datawidgets/web/variables.scss:18` —
+`$pagination-caption-color: #0a1325 !default`. Against the ground (`#0e1116`)
+that measures **1.02:1**; WCAG AA wants 4.5:1. The caption — "1–15 of 77", the
+only thing telling you where you are in 27533 rows — is invisible. The pager
+*buttons* either side render correctly, because they use
+`color: var(--gray-darker, …)` and resolve through Atlas. Same widget, same bar,
+two different mechanisms, one of them reachable.
+
+### The full list, from `datawidgets`
+
+| file | what it bakes | shows as |
+|---|---|---|
+| `variables.scss:18` | `$pagination-caption-color: #0a1325` | invisible pager caption |
+| `_datagrid.scss:442` | `background-color: rgba(255,255,255,1)` | white flash on every page turn |
+| `_three-state-checkbox.scss` (9 decls) | `#e7e7e9` borders, `#264ae5` checked/indeterminate | stock Mendix blue in a teal app |
+| `_datagrid.scss:214,372` | `box-shadow: … rgba(32,43,54,.08)` | light-mode shadow under the column selector |
+| `_datagrid-filters.scss:71,143,153,206` | `box-shadow: … rgba(5,15,129,.05)` | same under the filter-operator list |
+| `_datagrid-dropdown-filter.scss:267` | `color: #000` | selected tag text lost on a dark chip |
+| `_export-alert.scss`, `_export-progress.scss` (6) | white panel, `#264ae5`, `#e33f4e` | not rendered here |
+| `_gallery-design-properties.scss:66`, `_tree-node.scss` (3) | `#fff` stripe, `#b6b8be` borders | not rendered here |
+
+### Fixed in this project
+
+`Formula1Frontend/theme/web/_f1-widget-dark.scss`, imported from `main.scss`
+**outside** the `mxcli:theme` fence — mxcli guarantees it will not touch lines
+outside its own block, so `mxcli theme apply` can still run. It re-points the
+first six rows at `--mxt-*` and leaves the last two alone, since this app
+renders neither. Every selector was read out of the compiled CSS, not guessed.
+
+Verified in both variants by loading the app's real `theme.compiled.css` into a
+probe page: caption `rgb(154,166,180)` dark / `rgb(85,96,110)` light, checked
+box `--mxt-brand`, loader `--mxt-surface`, popovers hairline-bordered and
+shadowless.
+
+### The header logo, and a way to make a raster follow a palette
+
+`Atlas_Default` renders `Atlas_Core.Layout.logo`, whose first element is
+`<rect fill="white">` — a bright tile on a dark ground, and out of CSS's reach
+because it is an `<img>`. The replacement is drawn as a **mask** rather than a
+coloured image:
+
+```scss
+img[src*="Atlas_Core$Layout$logo"] {
+  width: 0; height: 0; padding: 16px;      /* collapse the content box */
+  background-color: var(--mxt-brand);      /* paint follows the palette */
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}
+```
+
+Zero-size content box plus padding swaps the image without `content:` on a
+replaced element, which is not portable. And because the colour comes from the
+background rather than the file, the mark re-brands and flips light/dark with
+the rest of the theme — one asset, no variants.
+
+**Trap worth writing down:** the first version of that SVG carried an XML
+comment explaining `var(--mxt-brand)`. `--` is illegal inside an XML comment, so
+the file never parsed — and the browser reports it as `complete: true` with
+`naturalWidth: 0`, i.e. loaded and blank. `curl` returns 200 and the right
+content type. Nothing anywhere says "malformed".
+
 ## Suggested mxcli issues
 
 ### Still open
@@ -1449,6 +1550,17 @@ refresh the test database first.
 16. **Nothing reads a document's folder back** (§32) — `SHOW STRUCTURE` is flat at every
    depth and `DESCRIBE` omits the folder, so a move cannot be verified, and an intended
    layout cannot be diffed against the real one, without opening the `.mpr` as SQLite.
+17. **A theme needs a third layer for the widget modules** (§33) — the Atlas map covers
+   Atlas Core, but `themesource/datawidgets` bakes 23 colours as Sass literals that no
+   `--mxt-*` value can reach. Every dark-themed app using Data Grid 2 gets an invisible
+   pager caption (**1.02:1**, from `$pagination-caption-color: #0a1325`), a white
+   loading flash, and Mendix-blue row-select checkboxes. The fix is a generated partial
+   of ~25 rules per theme, mapping the same tokens onto the compiled selectors — the
+   list is in §33, and this repo's `_f1-widget-dark.scss` is a working version.
+18. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
+   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
+   default mark at least takes the brand colour.
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14
 

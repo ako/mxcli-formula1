@@ -1,0 +1,131 @@
+// ---------------------------------------------------------------------------
+// Widget-module patches — the layer the theme cannot supply.
+//
+// mxcli's theme maps ~60 *Atlas Core* variables onto its --mxt-* palette, and
+// leaves Atlas Core itself untouched. That covers the app: ground, surfaces,
+// ink, brand, type, cards, buttons all follow the palette.
+//
+// What it does not reach is the theme source shipped *by the widget modules*.
+// themesource/datawidgets (Data Grid 2) styles a number of things with Sass
+// variables and literals rather than CSS custom properties, so the value is
+// baked into theme.compiled.css before any token exists. No amount of
+// re-pointing --mxt-* can move it; only a later rule can.
+//
+// This file is that rule set. It lives outside the mxcli:theme fence in
+// main.scss, so `mxcli theme apply` will never touch it, and it is imported
+// last so it wins on order without !important.
+//
+// Every selector below was read out of deployment/web/theme.compiled.css, not
+// guessed. Each is annotated with the source line it corrects. FINDINGS §33
+// lists the ones deliberately left alone (export, gallery, tree node) because
+// this app renders none of them.
+// ---------------------------------------------------------------------------
+
+// datawidgets/web/variables.scss:18 — $pagination-caption-color: #0a1325.
+// A Sass variable, so unreachable: the caption ("1-15 of 77") measured
+// 1.02:1 against the ground and was simply invisible. The pager *buttons* were
+// fine because they use var(--gray-darker, …), which resolves through Atlas.
+.pagination-bar {
+  color: var(--mxt-ink-muted);
+}
+
+// datawidgets/web/_datagrid.scss:442 — background-color: rgba(255,255,255,1).
+// A full-width white panel that replaces the rows while a page loads: on a dark
+// app, every page turn flashed white.
+.widget-datagrid-loader-container {
+  background-color: var(--mxt-surface);
+}
+
+// datawidgets/web/_three-state-checkbox.scss — the row-select boxes down the
+// left of every grid. Nine baked literals: #e7e7e9 borders on a dark surface,
+// and Mendix blue #264ae5 for the checked and indeterminate states, which is
+// the one place stock blue still showed through the teal palette.
+input[type="checkbox"].three-state-checkbox {
+  &:before {
+    border-color: var(--mxt-line);
+    background-color: var(--mxt-surface);
+  }
+
+  &:checked:before,
+  &:indeterminate:before {
+    border-color: var(--mxt-brand);
+    background-color: var(--mxt-brand);
+  }
+
+  &:not(:indeterminate):after,
+  &:indeterminate:after {
+    border-color: var(--mxt-brand-ink);
+  }
+
+  &:not(:disabled):not(:checked):hover:after {
+    border-color: var(--mxt-line);
+  }
+
+  &:disabled:before,
+  &:disabled:after {
+    border-color: var(--mxt-surface-alt);
+    background-color: var(--mxt-surface-alt);
+  }
+
+  &:checked:disabled:before,
+  &:indeterminate:disabled:before {
+    border-color: transparent;
+    background-color: color-mix(in srgb, var(--mxt-brand) 40%, transparent);
+  }
+}
+
+// datawidgets/web/_datagrid.scss:214,372 and _datagrid-filters.scss:71,143,153,206
+// — light-mode drop shadows (rgba(32,43,54,.08), rgba(5,15,129,.05)) under the
+// popovers: the column-visibility list and the filter-operator list. Console
+// separates planes by lightness, not shadow, so these read as smudges. A
+// hairline in the line colour is what the rest of the theme uses.
+.column-selectors,
+.filter-selectors,
+.dropdown-list,
+.dropdown-content {
+  box-shadow: none;
+  border: 1px solid var(--mxt-line);
+}
+
+// datawidgets/web/_datagrid-dropdown-filter.scss:267 — color: #000 on a
+// selected tag, which sits on a tinted chip and disappears in dark.
+:where(.widget-dropdown-filter.variant-tag-picker) .widget-dropdown-filter-selected-item {
+  color: var(--mxt-ink);
+}
+
+// ---------------------------------------------------------------------------
+// The header mark.
+//
+// Atlas_Default renders Atlas_Core.Layout.logo, an SVG whose first element is
+// <rect fill="white">. It is an <img>, so its interior is out of CSS's reach
+// and the white tile cannot be recoloured — it can only be replaced.
+//
+// Collapsing the content box to zero and painting the replacement on the
+// padding box swaps the image without needing `content:` on a replaced element,
+// which is not portable. The URL is relative to theme.compiled.css, which
+// Mendix deploys to the web root alongside the rest of theme/web/.
+//
+// The mark is drawn as a mask rather than a coloured image, so its colour comes
+// from the palette: it follows a light/dark flip and a re-brand with no second
+// asset. An <img> cannot read a custom property; a mask's paint can.
+// ---------------------------------------------------------------------------
+img[src*="Atlas_Core$Layout$logo"] {
+  width: 0;
+  height: 0;
+  padding: 16px;
+  background-color: var(--mxt-brand);
+  -webkit-mask: url("./f1-logo.svg") center / contain no-repeat;
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}
+
+// The login page (theme/web/login.html) is plain HTML and points straight at
+// the asset, so it needs no swap — but it does need the same paint, or the
+// mark renders in the flat colour baked into the file.
+.loginpage-logo img {
+  width: 0;
+  height: 0;
+  padding: 22px;
+  background-color: var(--mxt-brand);
+  -webkit-mask: url("./f1-logo.svg") center / contain no-repeat;
+  mask: url("./f1-logo.svg") center / contain no-repeat;
+}

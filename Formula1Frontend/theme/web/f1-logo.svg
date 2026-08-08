@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Formula 1 data browser">
+  <g fill="#000000">
+    <path d="M4 6h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2.5v15h24v-15Z"/>
+    <rect x="6"  y="10.5" width="5" height="5"/>
+    <rect x="16" y="10.5" width="5" height="5"/>
+    <rect x="11" y="15.5" width="5" height="5"/>
+    <rect x="21" y="15.5" width="5" height="5"/>
+  </g>
+</svg>
