@@ -20,6 +20,15 @@ $mxcli-theme-variant: auto !default;
   --mxt-brand: #0d9488;
   --mxt-brand-hover: #0b7f75;
   --mxt-brand-ink: #ffffff;
+
+  // Console is dark-first, and its teal reads well on a dark ground. As LINK
+  // TEXT on the light palette the same teal is 3.74:1 against white — under the
+  // 4.5:1 AA needs for body text — so links get a darker teal of their own
+  // rather than the whole brand being darkened (which would also change every
+  // button fill). #0f766e measures 5.47:1 on surface, 5.10:1 on ground and
+  // 4.92:1 on surface-alt. (mxcli-todo findings #19c)
+  --mxt-link: #0f766e;
+  --mxt-link-hover: #0c5f58;
   --mxt-accent: #7c5ce0;
 
   --mxt-success: #2a8a3c;
@@ -314,4 +323,4 @@ h6,
     min-height: 44px;
   }
 }
-// mxcli:theme:end console 97b54ec7e5320bfd
+// mxcli:theme:end console 9117c595c1ce49ec

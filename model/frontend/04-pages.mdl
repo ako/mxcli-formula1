@@ -39,8 +39,8 @@ create or replace page Formula1Frontend.Drivers_Live
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Stg_Drivername, caption: 'Driver') {
-            textfilter fName (attribute: Stg_Drivername)
+          column colName (attribute: name, caption: 'Driver') {
+            textfilter fName (attribute: name)
           }
           column colNationality (attribute: nationality, caption: 'Nationality') {
             textfilter fNat (attribute: nationality)
@@ -71,8 +71,8 @@ create or replace page Formula1Frontend.Drivers_Cached
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Drivername, caption: 'Driver') {
-            textfilter fName (attribute: Drivername)
+          column colName (attribute: name, caption: 'Driver') {
+            textfilter fName (attribute: name)
           }
           column colNationality (attribute: nationality, caption: 'Nationality') {
             textfilter fNat (attribute: nationality)
@@ -129,8 +129,8 @@ create or replace page Formula1Frontend.Constructors_Overview
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Constructorname, caption: 'Constructor') {
-            textfilter fName (attribute: Constructorname)
+          column colName (attribute: name, caption: 'Constructor') {
+            textfilter fName (attribute: name)
           }
           column colCountry (attribute: country, caption: 'Country') {
             textfilter fCountry (attribute: country)
@@ -159,8 +159,8 @@ create or replace page Formula1Frontend.Circuits_Overview
           PageSize: 20,
           PagingPosition: both
         ) {
-          column colName (attribute: Circuitname, caption: 'Circuit') {
-            textfilter fName (attribute: Circuitname)
+          column colName (attribute: name, caption: 'Circuit') {
+            textfilter fName (attribute: name)
           }
           column colPlace (attribute: placeName, caption: 'Place') {
             textfilter fPlace (attribute: placeName)

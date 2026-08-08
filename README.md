@@ -15,7 +15,7 @@ A Mendix **solution**: two apps in one repo, provisioned and developed with
 >
 > **Who logs in:** the Formula 1 enthusiast.
 
-Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main**.
+Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main** (`c76d4b7`).
 
 ## The two apps
 
@@ -98,10 +98,12 @@ with the backend down.
 Verified against the running backend:
 
 ```
-PASS  Live client retrieves all 917 drivers straight from the CSVs (1.799s)
-PASS  Cached client retrieves all 917 drivers from Postgres          (452ms)
-PASS  Live client:   Senna has 41 race wins                          (637ms)
-PASS  Cached client: Senna has 41 race wins                          (416ms)
+PASS  Live client retrieves all 917 drivers straight from the CSVs (1.072s)
+PASS  Cached client retrieves all 917 drivers from Postgres          (533ms)
+PASS  Live client:   Senna has 41 race wins                          (634ms)
+PASS  Cached client: Senna has 41 race wins                          (421ms)
+PASS  Live client:   name maps to the remote name                    (469ms)
+PASS  Cached client: name maps to the remote name                    (385ms)
 ```
 
 `RETRIEVE ... WHERE driverId = 'ayrton-senna'` on the live client reaches through
@@ -111,11 +113,13 @@ See `model/frontend/README.md` — in particular, do not patch generated externa
 entities; fix the contract and regenerate.
 
 **Theming.** `console`, variant `auto`, so the app follows the OS. The theme maps
-~60 Atlas Core variables onto its palette and stops there, which leaves the
-widget modules' own styling — Data Grid 2 bakes 23 colours as Sass literals no
-token can reach, including a pager caption at 1.02:1 contrast.
-`theme/web/_f1-widget-dark.scss` re-points the ones this app renders, and lives
-outside the `mxcli:theme` fence so `mxcli theme apply` still works. FINDINGS §33.
+~60 Atlas Core variables onto its palette; the widget modules' own styling used
+to be out of reach — Data Grid 2 bakes colours as Sass literals no token can
+touch, including a pager caption at 1.02:1 contrast. mxcli `c76d4b7` generates
+`_mxcli-widgets.scss` for exactly that, so `theme/web/_f1-widget-dark.scss` is
+down to what it still misses: the filter-operator popover, and the header logo
+(an `<img>`, replaced with a mask painted from `--mxt-brand`). It sits outside
+the `mxcli:theme` fence, so `mxcli theme apply` leaves it alone. FINDINGS §33, §34.
 
 ## The data
 

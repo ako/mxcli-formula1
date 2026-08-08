@@ -10,11 +10,11 @@
 
 alter project security level PROTOTYPE;
 
-create module role Formula1Frontend.Enthusiast
+create or modify module role Formula1Frontend.Enthusiast
   description 'Browse every season, driver, constructor, circuit and result. Read-only.';
-create module role F1Live.Reader
+create or modify module role F1Live.Reader
   description 'Read the live (CSV-backed) external entities.';
-create module role F1Cached.Reader
+create or modify module role F1Cached.Reader
   description 'Read the cached (Postgres-backed) external entities.';
 
 /* Live external entities */
@@ -46,7 +46,7 @@ GRANT VIEW ON PAGE Formula1Frontend.Constructors_Overview TO Formula1Frontend.En
 GRANT VIEW ON PAGE Formula1Frontend.Circuits_Overview TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.RaceResults_Overview TO Formula1Frontend.Enthusiast;
 
-create user role Enthusiast (
+create or modify user role Enthusiast (
   Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, System.User
 );
 

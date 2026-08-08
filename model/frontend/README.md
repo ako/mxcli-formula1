@@ -61,8 +61,10 @@ the contract says, so a service restricting `Countable` or `Filterable` yields a
 project that will not build (FINDINGS §24).
 
 The tempting fix — `create or modify external entity … (Countable: false)` —
-**corrupts the entity**: it renames an attribute (`name` became
-`Stg_Circuitname`) and strips every remote mapping (FINDINGS §25). Do not do it.
+**corrupted the entity**: it renamed an attribute (`name` became
+`Stg_Circuitname`) and stripped every remote mapping (FINDINGS §25). `c76d4b7`
+fixes the mapping read-back, but this project has not re-tested it: regenerating
+from a corrected contract is the cheaper habit either way.
 
 Fix the published contract instead and regenerate. That is why all eight live
 resources are `Countable`: each read microflow takes a `System.ODataResponse` and
@@ -91,10 +93,11 @@ width from the grid.
 
 Two things to know before editing a grid column:
 
-- **An attribute called `name` is not called `name`.** The generator prefixes it
-  with the remote type, and differently per service — `Stg_Drivername` on the
-  live side, `Drivername` on the cached side (FINDINGS §28). The captions hide
-  this from the user; the MDL cannot.
+- **`name` is called `name` again.** The generator used to prefix it with the
+  remote type, and differently per service — `Stg_Drivername` live, `Drivername`
+  cached (FINDINGS §28). Fixed in mxcli `c76d4b7`; both modules were regenerated
+  and the page bindings now read `name`. Anything still referring to the old
+  spellings is stale.
 - **Design properties that `mxcli check` accepts can still fail the build.** The
   lint rule knows the widget's catalogue, not which subset the `console` theme
   implements: `Row size` and `Hover style` pass `check` and are rejected by

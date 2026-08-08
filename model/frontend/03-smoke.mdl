@@ -45,3 +45,35 @@ BEGIN
   END IF;
   RETURN $Wins;
 END;
+
+/*
+ * The `name` attribute, on both clients.
+ *
+ * These existed only in the .mpr until now — written by hand while §28 was
+ * being diagnosed, when the generator prefixed the attribute with its remote
+ * type (`Stg_Drivername` live, `Drivername` cached) and the question was
+ * whether the mangled attribute still mapped to the remote `name`. mxcli
+ * c76d4b7 stopped renaming it, so they now read `name` on both sides and are
+ * recorded here, where a rebuild will recreate them. FINDINGS §28, §34.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Live_SennaName ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Name String = '';
+  IF $Row != empty THEN
+    SET $Name = $Row/name;
+  END IF;
+  RETURN $Name;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Cached_SennaName ()
+  RETURNS String AS $Name
+BEGIN
+  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  DECLARE $Name String = '';
+  IF $Row != empty THEN
+    SET $Name = $Row/name;
+  END IF;
+  RETURN $Name;
+END;

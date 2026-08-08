@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§31 on **`45ae6a6`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on **`c76d4b7`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1500,67 +1500,123 @@ the file never parsed — and the browser reports it as `complete: true` with
 `naturalWidth: 0`, i.e. loaded and blank. `curl` returns 200 and the right
 content type. Nothing anywhere says "malformed".
 
+## 34. `c76d4b7`: fourteen of the eighteen open issues, re-verified here
+
+*Verified 2026-08-08 on mxcli `c76d4b7` (was `45ae6a6`), built from source.
+Every row below was executed against this project, not read from a commit
+message. Both suites pass afterwards: **21 backend + 6 frontend**.*
+
+### Fixed, and the workaround deleted
+
+| # | Was | Verified how |
+|---|---|---|
+| 6 | `dynamic $Variable` written as a literal (§21) | All four `dynamic '' + $Sql` clauses rewritten bare. Live service still answers `@odata.count` 27533 with `$skip=80&$orderby=driverName` → Adrian Sutil. `a32fde9` |
+| 15 | `MOVE` had no doctype for a Java action or an OData service (§32) | The last five documents moved: `Live/Pushdown` (3 Java actions) and `Services` (both services). **0 documents at the module root**, from 41. `30327d7` |
+| 1 | `CREATE EXTERNAL ENTITIES FROM` renamed `name` (§28) | Both consumer modules dropped and regenerated: `name: String(120)`, not `Stg_Drivername`/`Drivername`. Page bindings and the smoke microflows now say `name`. `4291f1d` |
+| 8 | `test --local` displaced the app's After-startup microflow (§19) | The three cached-service tests failed under `--local` on a fresh container and passed under `--attach`. Now **21/21 under `--local`** — `ASU_LoadCacheIfEmpty` runs and fills the test database. `00a6f51`, `9377fbb` |
+| 14 | `create module role` had no `or modify` form | `06-security.mdl` and `05-navigation-security.mdl` now re-run end to end. `create or modify user role` exists too, which was the next thing to fail. `98ddb29` |
+| 17 | Themes stopped at Atlas Core (§33) | `theme apply console` now writes `_mxcli-widgets.scss`, imported inside the fence. It covers everything this project's layer did *and more* — placeholder colour, export-alert focus ring, feedback and take-picture buttons. `f64115e` |
+| 9 | `test --list` ignored a project-relative path (§15) | `mxcli test tests/ --list` lists all 21. `b2c4f20` |
+
+### Fixed, partially
+
+| # | What changed | What is still there |
+|---|---|---|
+| 4 | `CREATE ODATA CLIENT` now authenticates the `$metadata` fetch (§23) — with literal credentials it caches **8 entity types** where it used to 401 | Give the same credentials as **constant references** (`HttpUsername: '@Module.ApiUser'`) and it is still 401. The constants exist and resolve at runtime; the fetch does not read them. Sharpened by the same release making `ServiceUrl` a constant *mandatory* — so the documented-good shape of a client is exactly the shape whose metadata fetch cannot authenticate |
+| 16 | `DESCRIBE MICROFLOW` now emits `folder 'Health'`, so a move can be confirmed (§32) | `SHOW STRUCTURE` is still flat at every depth — no folder grouping, so there is still no way to see a module's layout, only to interrogate one document at a time |
+
+### Landed upstream, not re-verified here
+
+`29481bc` (external-entity mapping read-back, §25), `b9827f1` (contract capability
+annotations, §24), `7da49c0` (published-member changes on modify, §26), `bab4d42`
+(publish `Integer` as `Int64`, §16) and `63f72e0` (MDL-ODATA01's hint, §15). This
+project routed around all five — it regenerates rather than modifies, and every
+whole number is already `long` — so re-verifying them would mean re-introducing
+the shapes that were broken. Left for a project that hits them naturally.
+
+### Still open, re-confirmed on `c76d4b7`
+
+- **`.ai-context/skills/` does not follow a binary upgrade** (§15, issue 11) — the
+  binary is `12:05`, the skills directory is still stamped `Aug 7 14:53`. A rebuild
+  leaves stale guidance in place with no warning.
+- **`theme apply` cannot help with the header logo** (§33, issue 18) — still a white
+  tile from `Atlas_Core.Layout.logo`; the mask rule stays in this project's layer.
+- **The filter-operator popover** — the generated widget layer handles
+  `.column-selectors` but not `.filter-selectors` / `.dropdown-list` /
+  `.dropdown-content`, which still carry `rgba(5,15,129,.05)`. Everything else this
+  project patched is now redundant and has been deleted.
+
+### Two things this round changed about the repo itself
+
+Regenerating the consumer modules turned up two microflows that existed **only in
+the `.mpr`** — `Probe_DynamicSql` and `Live_SennaName`/`Cached_SennaName`, written
+by hand while §21 and §28 were being diagnosed. Both are asserted on by the test
+suites, so a rebuild from `model/` produced a project whose tests could not run.
+They are now in `11-pushdown-tests-support.mdl` and `03-smoke.mdl`. The repeated
+lesson: a fix verified interactively has to be written back into the scripts, or
+the scripts quietly stop being the source of truth.
+
 ## Suggested mxcli issues
 
 ### Still open
 
-1. **`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28) —
-   prefixed with the remote type, so pages written against the contract do not
-   build and the same field is named differently per module. The mapping works;
-   the name is wrong.
-2. **`CREATE OR MODIFY EXTERNAL ENTITY` corrupts the attributes it does not mention** (§25) —
-   renames one and strips every remote mapping, leaving a project that cannot
-   build. Silent, and the same class as issue #594 one level down.
-3. **`create or modify odata service` ignores published-member changes and drops
-   role grants** (§26) — a modify that quietly does not modify, and breaks the
-   build in a second, unrelated-looking way.
-4. **`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23) — the
-   credentials are on the statement and go unused, so the client is created empty
-   with only a warning.
-5. **Generated external entities ignore the contract's capability annotations** (§24) —
-   `Countable`/`Filterable`/`Sortable` default to true, so importing from a service
-   that restricts any of them produces a project that will not build.
-6. **`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible** (§21) —
-   `cmd_microflows_builder_calls.go:1349` quotes any dynamic query not already
-   starting with a quote, and the AST keeps no literal-vs-expression flag. Blocks
-   query pushdown outright; the `dynamic '' + $Sql` workaround is not discoverable.
-7. **A published `Integer` is written as `Edm.Int32`; Mendix wants `Edm.Int64`** (§16) —
-   `mendixAttrTypeToEdm`, `cmd_odata.go:1625`. Every whole-number attribute in a
-   published service fails the build until you switch it to `long`. One line, and the
-   function's own comment flags Integer as unverified.
-8. **`mxcli test --local` silently displaces the app's After-startup microflow** (§19) —
-   a suite that needs startup state passes under `--attach` and fails under `--local`
-   for reasons unrelated to the code. Say so in the output, or chain the original.
-9. **`mxcli test --list` ignores a project-relative path** (§15) — `resolveTestPaths`
-   sits below the `--list` branch in `cmd_test_run.go:136`.
-10. **`MDL-ODATA01`'s hint omits `Countable`/`SkipSupported`/`TopSupported`** (§15),
-   which `fa0cdb6` added and the checker accepts.
-11. **`.ai-context/skills/` does not follow a binary upgrade** (§15) — stale skills after
-   `mxcli` is rebuilt, with no warning.
-12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
-   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-13. **Design-property lint does not know the theme** (§29) — `check` green-lights
-   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
-   theme. mxcli generates the theme, so it can read its `design-properties.json`.
-14. **`create module role` has no `or modify` form**, so a security script cannot be
-   re-run — the reason this repo has a separate `07-demo-users.mdl`.
-15. **`MOVE … TO FOLDER` has no doctype for Java actions or published OData services** (§32),
-   and neither `CREATE` form takes a folder clause — so those documents can never leave
-   the module root from MDL. Five of this backend's documents are stuck there.
-16. **Nothing reads a document's folder back** (§32) — `SHOW STRUCTURE` is flat at every
-   depth and `DESCRIBE` omits the folder, so a move cannot be verified, and an intended
-   layout cannot be diffed against the real one, without opening the `.mpr` as SQLite.
-17. **A theme needs a third layer for the widget modules** (§33) — the Atlas map covers
-   Atlas Core, but `themesource/datawidgets` bakes 23 colours as Sass literals that no
-   `--mxt-*` value can reach. Every dark-themed app using Data Grid 2 gets an invisible
-   pager caption (**1.02:1**, from `$pagination-caption-color: #0a1325`), a white
-   loading flash, and Mendix-blue row-select checkboxes. The fix is a generated partial
-   of ~25 rules per theme, mapping the same tokens onto the compiled selectors — the
-   list is in §33, and this repo's `_f1-widget-dark.scss` is a working version.
-18. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+1. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
+   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
+   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
+   tool insists on for the URL is the shape whose credentials it will not read.
+2. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+   document's folder, which closes half the gap; there is still no way to see a
+   module's layout in one place, or to diff an intended layout against the real one,
+   without reading the `.mpr` as SQLite.
+3. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
+4. **The widget layer misses the filter-operator popover** (§33, §34) —
+   `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
+   `.dropdown-list` or `.dropdown-content`, which still carry a baked
+   `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
+   fixed.
+5. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
+   Stale guidance, no warning.
+6. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
+7. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+
+### Fixed upstream in `c76d4b7`, re-verified in §34
+
+Kept because the reasoning is the record of why each mattered.
+
+1. ~~**`CREATE EXTERNAL ENTITIES FROM` renames an attribute called `name`** (§28)~~ —
+   prefixed with the remote type, so pages written against the contract did not build
+   and the same field was named differently per module. Now `name` on both clients;
+   this repo's page bindings were rewritten to match.
+2. ~~**`dynamic $Variable` is written as a literal, so runtime-built SQL is impossible**
+   (§21)~~ — blocked query pushdown outright, and the `dynamic '' + $Sql` workaround was
+   not discoverable. All four clauses here are now bare, and the service still pages.
+3. ~~**`MOVE … TO FOLDER` has no doctype for Java actions or published OData services**
+   (§32)~~ — five documents were stuck at the module root; the backend now has none.
+4. ~~**`mxcli test --local` silently displaces the app's After-startup microflow**
+   (§19)~~ — a suite needing startup state passed under `--attach` and failed under
+   `--local`. 21/21 under both now.
+5. ~~**`create module role` has no `or modify` form**~~ — a security script could not be
+   re-run. Both this repo's security scripts now do, `create or modify user role`
+   included.
+6. ~~**A theme needs a third layer for the widget modules** (§33)~~ — generated as
+   `_mxcli-widgets.scss`, covering more than the hand-written version it replaced.
+7. ~~**`mxcli test --list` ignores a project-relative path** (§15)~~.
+8. ~~**`CREATE ODATA CLIENT` fetches `$metadata` unauthenticated** (§23)~~ — fixed for
+   literal credentials; see still-open #1 for the constant-reference case.
+9. Landed but not re-verified here, because this project routes around all of them:
+   ~~`CREATE OR MODIFY EXTERNAL ENTITY` corrupting unmentioned attributes~~ (§25),
+   ~~generated entities ignoring capability annotations~~ (§24),
+   ~~`create or modify odata service` ignoring published-member changes~~ (§26),
+   ~~a published `Integer` written as `Edm.Int32`~~ (§16), and
+   ~~`MDL-ODATA01`'s incomplete hint~~ (§15).
 
 ### Fixed upstream in `45ae6a6`, re-verified in §14
 
