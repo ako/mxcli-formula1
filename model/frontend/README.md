@@ -82,6 +82,14 @@ feed them. Three things about them are worth knowing before editing:
   turns into SQL. An unconstrained retrieve would pull the whole resource.
 - **A page with a parameter needs it in the URL** — `url: 'driver/{Driver}'`.
   Without the segment the build fails.
+- **A live resource silently ignores the constraint you put on it.** This one
+  shipped a wrong page: the season standings grids were bound to
+  `F1Live.DriverStandings`, whose read microflow does not parse query options,
+  so `$filter=year eq 1957` was dropped, all 1680 rows came back newest-first,
+  and 1957 showed the 2026 grid. Nothing errored. Only `Drivers`,
+  `RaceResults` and the five `F1Fan` resources parse `$filter`; everything else
+  on the live service returns its whole list. Constrain against the **cached**
+  service, or against a resource you know pushes down.
 - **XPath wants lowercase `and`.** MDL passes the operator through verbatim, so
   `WHERE scope = 'driver' AND entityId = ...` compiles and then fails the build
   with CE0161.

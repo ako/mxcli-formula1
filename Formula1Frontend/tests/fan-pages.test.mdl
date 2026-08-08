@@ -36,3 +36,21 @@ $result = CALL MICROFLOW Formula1Frontend.Test_FerrariReasons();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_SennaFactTitle();
 /
+
+/**
+ * The regression: the standings grids were bound to the live service, whose
+ * read microflow ignores $filter, so 1957 showed the 2026 grid. 22 drivers were
+ * classified in 1957; 1680 is what the wrong binding returned.
+ *
+ * @test Season summary: 1957 standings are 1957's, not the newest 1680 rows
+ * @expect $result = 22
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1957Standings();
+/
+
+/**
+ * @test Season summary: 1957 ran eight rounds
+ * @expect $result = 8
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1957Rounds();
+/

@@ -131,6 +131,29 @@ CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaFactTitle ()
 BEGIN
   RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
   $Fact = CALL MICROFLOW Formula1Frontend.DS_DriverFact (Driver = $Driver);
-  $Title = $Fact/title;
+  DECLARE $Title String = $Fact/title;
   RETURN $Title;
+END;
+
+/*
+ * 1957, which is the season that caught the bug: the standings grids were bound
+ * to the live service, whose read microflow ignores $filter, so every season
+ * showed the newest rows. 22 is the number of drivers classified in 1957.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Standings ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Rounds ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
 END;

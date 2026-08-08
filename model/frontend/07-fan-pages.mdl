@@ -66,19 +66,34 @@ BEGIN
   RETURN $Rows;
 END;
 
+/*
+ * Standings come from the CACHED service, not the live one, and that is not a
+ * preference — it is the difference between right and wrong answers.
+ *
+ * A live resource backed by a read microflow receives the request but not the
+ * query options: Mendix applies none of them and returns whatever the microflow
+ * hands back (FINDINGS §22). Only Drivers, RaceResults and the five fan
+ * resources parse `$filter` themselves. `DriverStandings` does not — so
+ * constraining it on the year sent `$filter=year eq 1957`, got all 1680 rows
+ * back ordered by year descending, and the 1957 page showed the 2026 grid. The
+ * filter was silently dropped; nothing errored.
+ *
+ * The cached service publishes persistent entities, so Mendix pushes the
+ * constraint into SQL and 1957 returns its 22 rows.
+ */
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (
   $Season: F1Cached.Seasons)
-  RETURNS List of F1Live.DriverStandings AS $Rows
+  RETURNS List of F1Cached.DriverStandings AS $Rows
 BEGIN
-  RETRIEVE $Rows FROM F1Live.DriverStandings WHERE year = $Season/year;
+  RETRIEVE $Rows FROM F1Cached.DriverStandings WHERE year = $Season/year;
   RETURN $Rows;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings (
   $Season: F1Cached.Seasons)
-  RETURNS List of F1Live.ConstructorStandings AS $Rows
+  RETURNS List of F1Cached.ConstructorStandings AS $Rows
 BEGIN
-  RETRIEVE $Rows FROM F1Live.ConstructorStandings WHERE year = $Season/year;
+  RETRIEVE $Rows FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
   RETURN $Rows;
 END;
 
@@ -271,6 +286,9 @@ create or replace page Formula1Frontend.Season_Summary
 
     dynamictext consHeading (content: 'Constructors', rendermode: H3,
                              class: 'mx-spacing-top-large')
+    container consNote (class: 'mx-spacing-bottom-medium') {
+      dynamictext consNoteText (content: 'Empty before 1958: the constructors'' championship did not exist for the first eight seasons.')
+    }
     datagrid dgConstructorStandings (
       datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
       PageSize: 15,
