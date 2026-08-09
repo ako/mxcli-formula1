@@ -159,6 +159,8 @@
         <Property Name="avgQualifying" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="avgFinish" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="retirements" Type="Edm.Int64"/>
+        <Property Name="seasonBestPoints" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="pointsShare" Type="Edm.Int64"/>
       </EntityType>
       <EntityType Name="Stg_DriverRace">
         <Key>

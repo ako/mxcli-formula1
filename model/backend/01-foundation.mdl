@@ -189,7 +189,23 @@ create or modify non-persistent entity Formula1Backend.Stg_DriverSeason (
   BestFinish: long,
   AvgQualifying: decimal,
   AvgFinish: decimal,
-  Retirements: long
+  Retirements: long,
+  /*
+   * The winning driver's points in the same season, carried on every row.
+   *
+   * A career page draws each season's points as a bar against the season's
+   * best, and a bar needs its maximum next to its value — the row cannot see
+   * its siblings, and 2024's 437 means nothing beside 1958's 42 without it.
+   * Computing it here rather than in the client is also the only place it is
+   * cheap: one grouped scan of the standings, joined by year.
+   */
+  SeasonBestPoints: decimal,
+  /*
+   * The same comparison as a percentage, 0–100, so a client can draw the bar
+   * without doing arithmetic on two columns. Scoring systems changed six times;
+   * the share is the only number that means the same thing in 1958 and 2024.
+   */
+  PointsShare: long
 );
 
 /*
@@ -761,11 +777,17 @@ begin
                 min(rr.positionNumber) AS bestFinish,
                 round(avg(rr.qualificationPositionNumber), 1) AS avgQualifying,
                 round(avg(rr.positionNumber), 1) AS avgFinish,
-                sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements
+                sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements,
+                COALESCE(max(sb.bestPoints), 0) AS seasonBestPoints,
+                CAST(round(COALESCE(max(ds.points), sum(COALESCE(rr.points, 0)))
+                     / NULLIF(max(sb.bestPoints), 0) * 100) AS BIGINT) AS pointsShare
          FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
          LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
          LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
                 ON ds.year = rr.year AND ds.driverId = rr.driverId
+         LEFT JOIN (SELECT year, max(points) AS bestPoints
+                    FROM read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'')
+                    GROUP BY year) sb ON sb.year = rr.year
          GROUP BY rr.year, rr.driverId
          ORDER BY rr.year DESC
          LIMIT 1'
@@ -776,7 +798,8 @@ begin
           standingOrder as StandingOrder, points as Points, starts as Starts,
           wins as Wins, podiums as Podiums, poles as Poles, bestFinish as BestFinish,
           avgQualifying as AvgQualifying, avgFinish as AvgFinish,
-          retirements as Retirements );
+          retirements as Retirements, seasonBestPoints as SeasonBestPoints,
+          pointsShare as PointsShare );
 
   query GetDriverRaces
     sql 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey, rr.driverId AS driverId,

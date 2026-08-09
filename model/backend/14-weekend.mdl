@@ -243,14 +243,24 @@ BEGIN
   DECLARE $Circuits String = 'read_csv(''' + $Dir + '/f1db-circuits.csv'')';
   DECLARE $Gp String = 'read_csv(''' + $Dir + '/f1db-grands-prix.csv'')';
 
-  -- Which races the query is about: one by key, one season by year, or the most
-  -- recent season when the caller said nothing.
+  -- The third way in. A round-by-round strip holds a result, not a calendar
+  -- row, so opening the weekend behind a cell means asking for year + round.
+  -- Without this the round term is dropped and the season's first race comes
+  -- back for every cell — the same failure mode as the key, one step later.
+  $Round = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'round', Fallback = 0);
+
+  -- Which races the query is about: one by key, one round of one season, one
+  -- season by year, or the most recent season when the caller said nothing.
   DECLARE $Where String = 'r.year = (SELECT max(year) FROM ' + $Races + ')';
   IF $Key != '' THEN
     SET $Where = 'r.id || ''-c'' = ''' + $Key + '''';
   ELSE
     IF $Year != 0 THEN
       SET $Where = 'r.year = ' + toString($Year);
+      IF $Round != 0 THEN
+        SET $Where = $Where + ' AND r.round = ' + toString($Round);
+      END IF;
     END IF;
   END IF;
 
@@ -668,7 +678,9 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     BestFinish as 'bestFinish' (Filterable, Sortable),
     AvgQualifying as 'avgQualifying' (Filterable, Sortable),
     AvgFinish as 'avgFinish' (Filterable, Sortable),
-    Retirements as 'retirements' (Filterable, Sortable)
+    Retirements as 'retirements' (Filterable, Sortable),
+    SeasonBestPoints as 'seasonBestPoints' (Filterable, Sortable),
+    PointsShare as 'pointsShare' (Filterable, Sortable)
   );
 
   publish entity Formula1Backend.Stg_DriverRace as 'DriverRaces' (

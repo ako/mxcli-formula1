@@ -43,11 +43,19 @@ BEGIN
   $DriverId = CALL JAVA ACTION ODataPushdown.Key(
     Uri = $Request/Uri, KeyField = 'driverId');
 
+  -- A career page asks for every season; the banner asks for one of them. Both
+  -- are the same request with one more conjunct.
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+
   -- No driver, no career. 1=0 costs one scan of nothing rather than grouping
   -- every result the sport has ever recorded.
   DECLARE $Where String = ' WHERE 1=0';
   IF $DriverId != '' THEN
     SET $Where = ' WHERE rr.driverId = ''' + $DriverId + '''';
+    IF $Year != 0 THEN
+      SET $Where = $Where + ' AND rr.year = ' + toString($Year);
+    END IF;
   END IF;
 
   DECLARE $Sql String = 'SELECT rr.year || ''-'' || rr.driverId AS seasonKey,'
@@ -63,13 +71,21 @@ BEGIN
     + ' min(rr.positionNumber) AS bestFinish,'
     + ' round(avg(rr.qualificationPositionNumber), 1) AS avgQualifying,'
     + ' round(avg(rr.positionNumber), 1) AS avgFinish,'
-    + ' sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements'
+    + ' sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements,'
+    + ' COALESCE(max(sb.bestPoints), 0) AS seasonBestPoints,'
+    + ' CAST(round(COALESCE(max(ds.points), sum(COALESCE(rr.points, 0)))'
+    + '      / NULLIF(max(sb.bestPoints), 0) * 100) AS BIGINT) AS pointsShare'
     + ' FROM read_csv(''' + @Formula1Backend.DataDir + '/f1db-races-race-results.csv'') rr'
     + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c'
     + '   ON c.id = rr.constructorId'
     + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir
     + '/f1db-seasons-driver-standings.csv'') ds'
     + '   ON ds.year = rr.year AND ds.driverId = rr.driverId'
+    -- The season's winning score, joined by year. One grouped scan of the
+    -- standings, so the career page can draw each year against its own best.
+    + ' LEFT JOIN (SELECT year, max(points) AS bestPoints FROM read_csv('''
+    + @Formula1Backend.DataDir + '/f1db-seasons-driver-standings.csv'')'
+    + '            GROUP BY year) sb ON sb.year = rr.year'
     + $Where
     + ' GROUP BY rr.year, rr.driverId ORDER BY rr.year DESC';
 
@@ -101,9 +117,19 @@ BEGIN
   $DriverId = CALL JAVA ACTION ODataPushdown.Key(
     Uri = $Request/Uri, KeyField = 'driverId');
 
+  -- A career page reads every round the driver ever started; the round-by-round
+  -- strip reads one season of them. Both arrive as the same request with one
+  -- more conjunct, so the year is lifted out here rather than costing a whole
+  -- career's rows to draw twenty-four cells.
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+
   DECLARE $Where String = ' WHERE 1=0';
   IF $DriverId != '' THEN
     SET $Where = ' WHERE rr.driverId = ''' + $DriverId + '''';
+    IF $Year != 0 THEN
+      SET $Where = $Where + ' AND rr.year = ' + toString($Year);
+    END IF;
   END IF;
 
   DECLARE $Sql String = 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey,'

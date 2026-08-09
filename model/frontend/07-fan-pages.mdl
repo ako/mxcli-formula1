@@ -59,6 +59,101 @@ BEGIN
   RETURN $Rows;
 END;
 
+/*
+ * The peer row's twenty.
+ *
+ * A microflow rather than the list view's own `database from … sort by …
+ * limit`, because a list view keeps neither: mxcli writes the entity and drops
+ * the sort, and neither list view nor gallery takes a page size at all — only
+ * DATAGRID does. A gallery does keep the sort, but not the limit, which would
+ * make the chip row nine hundred drivers long.
+ *
+ * `SORT BY … LIMIT` in a retrieve becomes $orderby + $top on the wire, and both
+ * are pushed into SQL by Read_Drivers, so this is twenty rows fetched, not
+ * twenty rows chosen from nine hundred.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverPeers ()
+  RETURNS List of F1Live.Drivers AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Live.Drivers SORT BY points DESC LIMIT 20;
+  RETURN $Rows;
+END;
+
+/*
+ * The banner and the round-by-round strip are both about one season — the last
+ * one the driver started — so both need that year before they can ask for
+ * anything.
+ *
+ * The year is found by walking the career rather than by taking the first row.
+ * The resource does return them newest first, but that is the backend's ORDER
+ * BY, not a contract; a max over the list cannot be wrong whatever order they
+ * arrive in. MDL has no aggregate for it — `max` is not one of the two the
+ * bare-assignment form accepts — so it is a loop.
+ *
+ * Then a second, narrower read. `year` is pushed down on DriverSeasons now, so
+ * this is one row over the wire, not a career filtered in the client.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverLatestSeason (
+  $Driver: F1Live.Drivers)
+  RETURNS F1Fan.DriverSeasons AS $Latest
+BEGIN
+  RETRIEVE $Seasons FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+
+  DECLARE $Year Long = 0;
+  LOOP $Season IN $Seasons BEGIN
+    IF $Season/year > $Year THEN
+      SET $Year = $Season/year;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Latest FROM F1Fan.DriverSeasons
+    WHERE driverId = $Driver/driverId and year = $Year LIMIT 1;
+  RETURN $Latest;
+END;
+
+/*
+ * The same season's rounds, for the strip. Twenty-four cells, so twenty-four
+ * rows — `year` reaches the backend here too, and a career of 244 starts stays
+ * where it is.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverLatestRaces (
+  $Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverRaces AS $Rows
+BEGIN
+  RETRIEVE $Seasons FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+
+  DECLARE $Year Long = 0;
+  LOOP $Season IN $Seasons BEGIN
+    IF $Season/year > $Year THEN
+      SET $Year = $Season/year;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Rows FROM F1Fan.DriverRaces
+    WHERE driverId = $Driver/driverId and year = $Year;
+  RETURN $Rows;
+END;
+
+/*
+ * A strip cell holds a result, not a calendar entry, so opening the weekend
+ * behind it means resolving year + round back to the race first. Both terms are
+ * pushed down, so this is a single-row read and not a season fetched to throw
+ * twenty-three of it away.
+ *
+ * An unresolved round shows nothing rather than the wrong weekend — a driver
+ * can have a result in a season the calendar resource does not carry.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace (
+  $Race: F1Fan.DriverRaces)
+BEGIN
+  RETRIEVE $Cal FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Race/round LIMIT 1;
+
+  IF $Cal != empty THEN
+    SHOW PAGE Formula1Frontend.Race_Weekend (Race: $Cal);
+  END IF;
+END;
+
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
   RETURNS List of F1Fan.SeasonProgress AS $Rows
 BEGIN
@@ -109,13 +204,14 @@ END;
 /* --------------------------------------------------------- driver career -- */
 
 /*
- * The redesign's page shape, on all three: a header band (eyebrow, title,
- * subtitle, one badge number), a row of tiles carrying the numbers that used to
- * be a sentence, then panels — each with a title and a muted subtitle on the
- * same baseline — holding one thing each.
+ * The redesign's page shape, on all three: a peer chip row, a banner card
+ * carrying the identity and the headline numbers on one line, then panels —
+ * each with a title and a muted subtitle on the same baseline — holding one
+ * thing each, and a sourcing note at the foot.
  *
  * The classes come from theme/web/_f1-layout.scss and resolve through --mxt-*,
- * so nothing here fixes a colour or a size.
+ * so nothing here fixes a colour or a size. The two exceptions are the chart
+ * series colours, which live in the model because Plotly reads no CSS variable.
  */
 create or replace page Formula1Frontend.Driver_Career
 (
@@ -126,51 +222,198 @@ create or replace page Formula1Frontend.Driver_Career
 )
 {
   container pageBody {
-    dataview dvDriver (datasource: $Driver) {
-      container head (class: 'pagehead') {
-        container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: 'Driver', class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = fullName],
-                             rendermode: H2, class: 'pagehead-title')
-          dynamictext sub (content: '{1} · born {2}',
-            contentparams: [{1} = nationality, {2} = placeOfBirth],
-            class: 'pagehead-sub')
+    /*
+     * The peer row. The comp scopes it to one season's twenty entrants; this
+     * page is a whole career, so the peers are the twenty drivers with the most
+     * points ever scored — the set a reader is most likely to want next. Both
+     * the sort and the limit are pushed down, so it is twenty rows.
+     */
+    container chipsRow (class: 'chips-row') {
+      listview lvPeers (datasource: MICROFLOW Formula1Frontend.DS_DriverPeers) {
+        container chipPeer (
+          class: 'chip-pick',
+          dynamicclasses: 'if $currentObject/driverId = $Driver/driverId then ''is-picked'' else ''''',
+          OnClick: SHOW_PAGE Formula1Frontend.Driver_Career(Driver: $currentObject)
+        ) {
+          dynamictext chipAbbr (content: '{1}', contentparams: [{1} = abbreviation])
         }
-        container headBadge (class: 'pagehead-badge') {
-          dynamictext abbr (content: '{1}', contentparams: [{1} = abbreviation])
+      }
+    }
+
+    dataview dvDriver (datasource: $Driver, class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroMark (class: 'hero-mark') {
+          dynamictext heroNum (content: '{1}', contentparams: [{1} = abbreviation])
+        }
+        container heroId (class: 'hero-id') {
+          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+                                rendermode: H2, class: 'hero-name')
+          dynamictext heroSub (content: '{1} · born {2} · {3} starts',
+            contentparams: [{1} = nationality, {2} = placeOfBirth, {3} = raceStarts],
+            class: 'hero-sub')
+        }
+
+        /*
+         * The comp's five headline numbers are a season's, not a career's, so
+         * this block reads the driver's last season rather than their totals —
+         * Points, Position, Wins, Podiums, Avg finish, in that order.
+         */
+        dataview dvHeroStats (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver),
+          class: 'hero-stats'
+        ) {
+          container hsPoints (class: 'hero-stat') {
+            dynamictext hsPointsL (content: 'Points', class: 'hero-stat-label')
+            dynamictext hsPointsV (content: '{1}', contentparams: [{1} = points],
+                                   class: 'hero-stat-value')
+          }
+          container hsPos (class: 'hero-stat') {
+            dynamictext hsPosL (content: 'Position', class: 'hero-stat-label')
+            dynamictext hsPosV (content: 'P{1}', contentparams: [{1} = standingPosition],
+                                class: 'hero-stat-value')
+          }
+          container hsWins (class: 'hero-stat') {
+            dynamictext hsWinsL (content: 'Wins', class: 'hero-stat-label')
+            dynamictext hsWinsV (content: '{1}', contentparams: [{1} = wins],
+                                 class: 'hero-stat-value')
+          }
+          container hsPodiums (class: 'hero-stat') {
+            dynamictext hsPodiumsL (content: 'Podiums', class: 'hero-stat-label')
+            dynamictext hsPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                    class: 'hero-stat-value')
+          }
+          container hsAvg (class: 'hero-stat') {
+            dynamictext hsAvgL (content: 'Avg finish', class: 'hero-stat-label')
+            dynamictext hsAvgV (content: '{1}', contentparams: [{1} = avgFinish],
+                                class: 'hero-stat-value')
+          }
+        }
+      }
+    }
+
+    /*
+     * The season on one line. One cell per round, coloured by how it ended,
+     * finishing position inside it — and a cell opens that weekend, which is
+     * why ACT_OpenRoundOfRace exists.
+     */
+    dataview dvStrip (
+      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver),
+      class: 'panel'
+    ) {
+      container stripHead (class: 'panel-head') {
+        dynamictext stripTitle (content: '{1} season, round by round',
+                                contentparams: [{1} = year], class: 'panel-title')
+        dynamictext stripSub (
+          content: 'finishing position per round · open a round for the weekend',
+          class: 'panel-sub')
+      }
+      container stripGrid (class: 'strip-grid') {
+        listview lvStrip (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver)
+        ) {
+          container stripCell (
+            class: 'strip-cell',
+            dynamicclasses:
+              'if $currentObject/finishPosition = empty then ''strip-dnf''
+               else if $currentObject/finishPosition = 1 then ''strip-win''
+               else if $currentObject/finishPosition <= 3 then ''strip-podium''
+               else if $currentObject/points > 0 then ''strip-points''
+               else ''strip-none''',
+            OnClick: MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace(Race: $currentObject)
+          ) {
+            dynamictext stripPos (content: '{1}',
+              contentparams: [{1} = finishPosition],
+              visible: [finishPosition != empty])
+            dynamictext stripDnf (content: '×', visible: [finishPosition = empty])
+          }
+        }
+      }
+      container stripKey (class: 'legend-key') {
+        dynamictext lkWin (content: 'Win', class: 'legend-item legend-win')
+        dynamictext lkPodium (content: 'Podium', class: 'legend-item legend-podium')
+        dynamictext lkPoints (content: 'Points', class: 'legend-item legend-points')
+        dynamictext lkNone (content: 'No points', class: 'legend-item legend-none')
+        dynamictext lkDnf (content: 'DNF', class: 'legend-item legend-dnf')
+      }
+    }
+
+    /*
+     * Two charts on one row.
+     *
+     * The first is a genuine combination — points as columns on the left axis,
+     * championship finish as a reversed line on a right axis overlaid on it.
+     * Mendix ships no combo chart, but a Column chart series takes raw Plotly
+     * trace JSON, and the chart takes raw layout JSON, so the second series is
+     * declared as a scatter on y2 and the axis is defined alongside it. Every
+     * colour in these two strings is a literal because Plotly reads no CSS
+     * variable; they are the comp's own values.
+     */
+    container charts (class: 'split-even') {
+      container careerPanel (class: 'panel') {
+        container careerHead (class: 'panel-head') {
+          dynamictext careerTitle (content: 'Career, loaded seasons',
+                                   class: 'panel-title')
+          dynamictext careerSub (content: 'points and championship finish',
+                                 class: 'panel-sub')
+        }
+        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartCareer (
+          advancedOptions: true,
+          showLegend: false,
+          gridLines: 'horizontal',
+          customLayout: '{"margin":{"l":46,"r":40,"t":8,"b":34},"yaxis2":{"overlaying":"y","side":"right","autorange":"reversed","showgrid":false,"zeroline":false,"dtick":1}}',
+          customConfigurations: '{"displayModeBar":false}'
+        ) {
+          series sCareerPoints (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+            StaticXAttribute: year,
+            StaticYAttribute: points,
+            StaticName: 'Points',
+            AggregationType: 'none',
+            StaticBarColor: '''#3671C6''',
+            CustomSeriesOptions: '{"marker":{"cornerradius":2}}'
+          )
+          series sCareerFinish (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+            StaticXAttribute: year,
+            StaticYAttribute: standingOrder,
+            StaticName: 'Championship finish',
+            AggregationType: 'none',
+            CustomSeriesOptions: '{"type":"scatter","mode":"lines+markers","yaxis":"y2","line":{"color":"#A78BFA","width":2},"marker":{"color":"#A78BFA","size":6}}'
+          )
         }
       }
 
-      container kpis (class: 'kpis') {
-        container kStarts (class: 'kpi') {
-          dynamictext kStartsL (content: 'Starts', class: 'kpi-label')
-          dynamictext kStartsV (content: '{1}', contentparams: [{1} = raceStarts],
-                                class: 'kpi-value')
+      container qrPanel (class: 'panel') {
+        container qrHead (class: 'panel-head') {
+          dynamictext qrTitle (content: 'Qualifying vs race', class: 'panel-title')
+          dynamictext qrSub (content: 'each round · below the line means places gained',
+                             class: 'panel-sub')
         }
-        container kWins (class: 'kpi kpi-accent') {
-          dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
-          dynamictext kWinsV (content: '{1}', contentparams: [{1} = raceWins],
-                              class: 'kpi-value')
-        }
-        container kPodiums (class: 'kpi') {
-          dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
-          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
-                                 class: 'kpi-value')
-        }
-        container kPoles (class: 'kpi') {
-          dynamictext kPolesL (content: 'Poles', class: 'kpi-label')
-          dynamictext kPolesV (content: '{1}', contentparams: [{1} = polePositions],
-                               class: 'kpi-value')
-        }
-        container kTitles (class: 'kpi') {
-          dynamictext kTitlesL (content: 'Titles', class: 'kpi-label')
-          dynamictext kTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
-                                class: 'kpi-value')
-        }
-        container kPoints (class: 'kpi') {
-          dynamictext kPointsL (content: 'Career points', class: 'kpi-label')
-          dynamictext kPointsV (content: '{1}', contentparams: [{1} = points],
-                                class: 'kpi-value')
+        /*
+         * A scatter, drawn as a Line chart whose line style is custom and whose
+         * trace mode is markers only. The dotted diagonal is a layout shape, so
+         * "gained places" is everything under it.
+         */
+        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartQualRace (
+          enableAdvancedOptions: true,
+          showLegend: false,
+          gridLines: 'both',
+          xAxisLabel: 'Qualifying',
+          yAxisLabel: 'Race',
+          customLayout: '{"margin":{"l":48,"r":16,"t":8,"b":54},"yaxis":{"autorange":"reversed","zeroline":false},"xaxis":{"zeroline":false},"shapes":[{"type":"line","xref":"x","yref":"y","x0":1,"y0":1,"x1":22,"y1":22,"line":{"color":"#6E7681","width":1,"dash":"dot"}}]}',
+          customConfigurations: '{"displayModeBar":false}'
+        ) {
+          line lQualRace (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver),
+            StaticXAttribute: qualifyingPosition,
+            StaticYAttribute: finishPosition,
+            StaticName: 'Round',
+            LineStyle: 'custom',
+            CustomSeriesOptions: '{"mode":"markers","marker":{"color":"#3671C6","size":9,"opacity":0.85}}'
+          )
         }
       }
     }
@@ -199,13 +442,38 @@ create or replace page Formula1Frontend.Driver_Career
           column colTeams (attribute: constructors, caption: 'Team')
           column colPos (attribute: standingPosition, caption: 'Pos', Alignment: right)
           column colPts (attribute: points, caption: 'Points', Alignment: right)
-          column colStarts (attribute: starts, caption: 'Starts', Alignment: right)
+          column colStarts (attribute: starts, caption: 'Starts', Alignment: right, Hidable: hidden)
           column colWins (attribute: wins, caption: 'Wins', Alignment: right)
           column colPodiums (attribute: podiums, caption: 'Podium', Alignment: right)
           column colPoles (attribute: poles, caption: 'Pole', Alignment: right)
-          column colDnf (attribute: retirements, caption: 'DNF', Alignment: right)
-          column colAvgQ (attribute: avgQualifying, caption: 'Avg qual', Alignment: right)
-          column colAvgF (attribute: avgFinish, caption: 'Avg finish', Alignment: right)
+          column colDnf (attribute: retirements, caption: 'DNF', Alignment: right, Hidable: hidden)
+          column colAvgQ (attribute: avgQualifying, caption: 'Avg qual', Alignment: right, Hidable: hidden)
+          column colAvgF (attribute: avgFinish, caption: 'Avg finish', Alignment: right, Hidable: hidden)
+          /*
+           * The comp's last column: the season's points drawn against the
+           * season's winning score, because 42 in 1958 and 437 in 2024 are the
+           * same achievement and the raw number says the opposite.
+           *
+           * The width is a class, not an inline style — a page cannot compute a
+           * style string, but it can compute a class name, so pointsShare
+           * names its own width and .w-0 … .w-100 carry them. The share is read
+           * off the row; the backend does the division, where the season's best
+           * is one join away.
+           */
+          column colShare (
+            caption: 'Points relative to the season''s best',
+            ColumnWidth: manual, Size: 3, Sortable: false
+          ) {
+            container barTrack (class: 'bar-track') {
+              container barFill (
+                class: 'bar-fill',
+                dynamicclasses: 'if $currentObject/pointsShare = empty then ''w-0'' else ''w-'' + toString($currentObject/pointsShare)'
+              ) {
+                dynamictext barValue (content: '{1}%',
+                  contentparams: [{1} = pointsShare])
+              }
+            }
+          }
         }
       }
     }
@@ -249,6 +517,16 @@ create or replace page Formula1Frontend.Driver_Career
           }
         }
       }
+    }
+
+    /*
+     * The footnote the comp ends every screen on. Ours says something different
+     * because our numbers are different: none of this is modelled, all of it is
+     * f1db, and the two that are computed say so.
+     */
+    container dataNote (class: 'data-note') {
+      dynamictext noteLead (content: 'Data note.', class: 'data-note-lead')
+      dynamictext noteBody (content: ' Results, standings, grids and session classifications are f1db, read straight from the CSVs on each request — nothing here is modelled or interpolated. Practice columns are empty before the era each session was timed. Championship finish is the published standing; the share bar is that season''s points over the season''s winning score, which is the only way scoring systems six revisions apart can be compared.')
     }
   }
 }
