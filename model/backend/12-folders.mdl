@@ -14,12 +14,14 @@
  *
  *   Warehouse/      how the CSVs are reached: the DuckDB connection and its config
  *   Live/           the read microflows behind F1LiveApi
- *   Live/Pushdown/  the Java actions that turn OData query options into SQL
  *   Cached/         the refresh jobs that fill Postgres behind F1CachedApi
  *   Health/         row counts and the invariant that the two services agree
  *   Fan/            the read microflows behind F1FanApi
- *   Services/       all three published OData services
- *   TestSupport/    wrappers that exist only so tests can call Java actions
+ *   Fan/Weekend/    the five that answer for one Grand Prix
+ *   LiveNow/        near-live timing from OpenF1
+ *   Ops/            the Postgres connection whose logic is stored procedures
+ *   Services/       all five published OData services
+ *   TestSupport/    wrappers that exist only so tests can reach ODataPushdown
  *
  * The last two folders were impossible when this file was written: MOVE had no
  * doctype for a Java action or a published OData service, so five documents were
@@ -77,6 +79,7 @@ MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
 MOVE ODATA SERVICE Formula1Backend.F1LiveNowApi TO FOLDER 'Services';
+MOVE ODATA SERVICE Formula1Backend.F1OpsApi     TO FOLDER 'Services';
 
 -- The fan-facing reads: a career, a season's title fight, a team's failures.
 MOVE MICROFLOW Formula1Backend.Read_DriverSeasons  TO FOLDER 'Fan';
@@ -91,6 +94,17 @@ MOVE MICROFLOW Formula1Backend.Read_RaceSessions   TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_Calendar       TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_WeekendShape   TO FOLDER 'Fan/Weekend';
 MOVE MICROFLOW Formula1Backend.Read_LapChart       TO FOLDER 'Fan/Weekend';
+
+-- Stored procedures in somebody else's Postgres, over OData. Its own folder
+-- because it is the only part of this app that reaches a routine rather than a
+-- query, and the only one whose connection is not the DuckDB warehouse.
+MOVE DATABASE CONNECTION Formula1Backend.F1Ops TO FOLDER 'Ops';
+MOVE CONSTANT Formula1Backend.OpsDbUrl         TO FOLDER 'Ops';
+MOVE CONSTANT Formula1Backend.OpsDbUser        TO FOLDER 'Ops';
+MOVE CONSTANT Formula1Backend.OpsDbPassword    TO FOLDER 'Ops';
+MOVE MICROFLOW Formula1Backend.Read_DriverForm   TO FOLDER 'Ops';
+MOVE MICROFLOW Formula1Backend.Read_Predictions  TO FOLDER 'Ops';
+MOVE MICROFLOW Formula1Backend.Insert_Prediction TO FOLDER 'Ops';
 
 -- Near-live timing from OpenF1, which is a different source with a different
 -- freshness contract — hence its own folder and its own service.
@@ -111,4 +125,6 @@ MOVE MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO FOLDER 'TestSuppor
 MOVE MICROFLOW Formula1Backend.TestSupport_Key             TO FOLDER 'TestSupport';
 MOVE MICROFLOW Formula1Backend.TestSupport_FilterNumber    TO FOLDER 'TestSupport';
 MOVE MICROFLOW Formula1Backend.TestSupport_Dialect         TO FOLDER 'TestSupport';
+MOVE MICROFLOW Formula1Backend.TestSupport_CallStatement   TO FOLDER 'TestSupport';
+MOVE MICROFLOW Formula1Backend.TestSupport_CallIsRejected  TO FOLDER 'TestSupport';
 MOVE MICROFLOW Formula1Backend.Probe_DynamicSql            TO FOLDER 'TestSupport';

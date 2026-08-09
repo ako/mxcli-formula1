@@ -214,6 +214,49 @@ return odatapushdown.ODataQueryParser.filterNumber(Uri, Field, Fallback);
 $$;
 
 /*
+ * Invoking a stored routine — a procedure, a table-valued function, a package
+ * body — rather than a query.
+ *
+ * This is where a lot of the logic worth exposing actually lives, and the part
+ * of a legacy system nobody gets to rewrite. Five engines, three kinds of
+ * routine, and almost no two agree on the spelling:
+ *
+ *   postgresql  SELECT * FROM f(a, b)            CALL p(a, b, NULL, NULL)
+ *   sqlserver   SELECT * FROM f(a, b)            EXEC p @x = a, @y = b
+ *   oracle      SELECT * FROM TABLE(f(a, b))     BEGIN p(a, b); END;
+ *   mysql       (no table functions)             CALL p(a, b)
+ *   duckdb      SELECT * FROM macro(a, b)        (no procedures)
+ *
+ * `Parameters` is a comma-separated list of Mendix query-parameter NAMES, in
+ * the routine's own argument order — never values. What comes back is a
+ * statement full of `{placeholders}` for `execute database query` to bind:
+ *
+ *   CallStatement('f1ops.driver_form', 'table', 'driverId,lastN', 'postgresql')
+ *     -> SELECT * FROM f1ops.driver_form({driverId}, {lastN})
+ *
+ * So unlike the $filter translation there is nothing to escape here: a WHERE
+ * clause has to be built as text because its shape comes from the client, but
+ * a routine call's shape is fixed by the routine and only its values vary. The
+ * only text this emits is the routine name, checked against an identifier
+ * pattern, and punctuation.
+ *
+ * The literal `null` is allowed as a parameter and passes through as SQL NULL —
+ * that is how a Postgres procedure's INOUT slots are filled. It answers with
+ * one row carrying them, which is what lets a procedure be read through the
+ * same interface as a SELECT.
+ */
+CREATE OR MODIFY JAVA ACTION ODataPushdown.CallStatement(
+  Routine: String NOT NULL,
+  Kind: String NOT NULL,
+  Parameters: String,
+  Dialect: String NOT NULL
+) RETURNS String
+EXPOSED AS 'Stored routine call for this engine' IN 'OData pushdown'
+AS $$
+return odatapushdown.RoutineCall.statement(Routine, Kind, Parameters, Dialect);
+$$;
+
+/*
  * One role, so the read microflows can instantiate a Query.
  *
  * A non-persistable entity still needs entity access once project security is

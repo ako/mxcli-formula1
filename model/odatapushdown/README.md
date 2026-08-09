@@ -39,14 +39,16 @@ Two files and a script. No jar, no dependency.
 ```
 ODataPushdown.Parse(Uri, Columns, Dialect, MaxTop, DefaultTop,
                     DefaultOrderBy, KeyField, RejectUnsupported)
-                                              -> ODataPushdown.Query
-ODataPushdown.Key(Uri, KeyField)              -> String
+                                                 -> ODataPushdown.Query
+ODataPushdown.Key(Uri, KeyField)                 -> String
 ODataPushdown.FilterNumber(Uri, Field, Fallback) -> Long
+ODataPushdown.CallStatement(Routine, Kind, Parameters, Dialect) -> String
 ```
 
 `Parse` is the whole thing. `Key` and `FilterNumber` are the short forms for the
 common case — a resource reachable one way only ("the sessions of this weekend"),
-whose entire contract is one value out of `$filter`.
+whose entire contract is one value out of `$filter`. `CallStatement` is for
+resources backed by a stored routine rather than a query; see below.
 
 ### `ODataPushdown.Query`
 
@@ -190,22 +192,84 @@ whitelisted rather than their content escaped.
 
 ```
 javasource/odatapushdown/ODataQueryParser.java   the parser — plain Java, no Mendix
+javasource/odatapushdown/RoutineCall.java        stored-routine invocation, per engine
 javasource/odatapushdown/QueryObject.java        the binding — Core.instantiate and setValue
-model/odatapushdown/module.mdl                   entity, three actions, module role
+model/odatapushdown/module.mdl                   entity, four actions, module role
 ```
 
 The split is deliberate: `ODataQueryParser` is strings in, strings out, so it
 runs under jshell or a JUnit test with no runtime around it. That is how the
 grammar above was checked term by term.
 
+## Stored routines
+
+A great deal of what is worth exposing is not a table but a **routine** — a
+stored procedure, a table-valued function, a package body — and it is the part
+of a legacy system nobody gets to rewrite. `CallStatement` renders the
+invocation for the engine you are on:
+
+```
+CallStatement('f1ops.driver_form', 'table', 'driverId,lastN', 'postgresql')
+  -> SELECT * FROM f1ops.driver_form({driverId}, {lastN})
+```
+
+`Parameters` is a comma-separated list of **Mendix query-parameter names**, in
+the routine's own argument order. It never renders a value: what comes back is a
+template full of `{placeholders}` for `execute database query` to bind. The
+literal `null` passes through as SQL `NULL`, which is how a Postgres procedure's
+INOUT slots are filled.
+
+That is a stronger position than the `$filter` translation can take. A `WHERE`
+clause has to be built as text because its *shape* comes from the client; a
+routine call's shape is fixed by the routine and only its values vary. The only
+text this emits is the routine name, and that is checked against an identifier
+pattern rather than escaped.
+
+| `Kind` | postgresql / duckdb | sqlserver | oracle | mysql |
+|---|---|---|---|---|
+| `table` | `SELECT * FROM f(a,b)` | `SELECT * FROM f(a,b)` | `SELECT * FROM TABLE(f(a,b))` | refused — MySQL has none |
+| `procedure` | `CALL p(a,b)` | `EXEC p @x = a, @y = b` | `BEGIN p(a,b); END;` | `CALL p(a,b)` |
+| `scalar` | `SELECT f(a) AS result` | same | same | same |
+
+DuckDB refuses `procedure` for the same reason MySQL refuses `table`: it does
+not have them. Emitting something that parses and returns the wrong shape would
+be worse than saying so.
+
+### Two things Mendix imposes here
+
+**A returning procedure has to be wrapped.** Mendix's External Database
+Connector inspects the statement and sends a `CALL` down JDBC `executeUpdate`
+(`QueryDispatcher:153`), so a procedure that answers with a row — which is what
+Postgres INOUT parameters do — dies with *"A result was returned when none was
+expected"*. There is no `execute database statement` activity to reach for; the
+only door is `execute database query`, and it wants a `SELECT`. The fix is a
+one-line function in the database that `CALL`s the procedure and returns its
+row. `CallStatement` still renders the correct `CALL` — the limitation is
+Mendix's, not the SQL's.
+
+**A routine's arguments are not columns of its result**, but Mendix validates
+`$filter` against the published metadata before the read microflow runs. So
+`?$filter=driverId eq 'x'` on a resource with no `driverId` attribute is
+answered `400 Could not map 'driverId' to attribute or association`. A
+parameterised resource has to carry its own parameters as attributes and echo
+them back on every row.
+
+Both are worked through end to end in `model/backend/16-ops-procedures.mdl`.
+
 ## Roadmap
 
-**Stored procedures, through OData actions.** The bind style already reaches a
-procedure's *result set* — point a named query at `CALL sp_x(?)` and the module
-supplies the arguments. What it cannot do is expose the procedure as something a
-client can *invoke*: an OData action or function, `POST /odata/x/RunReport`. That
-is the other half of putting an existing RDBMS behind an OData surface, and the
-piece that turns this from a read-only projection into a two-way integration.
+**Real OData actions.** A procedure that changes something wants to be an OData
+action — `POST /odata/x/RecordPrediction`, arguments in the body, an
+`ActionImport` in `$metadata`. Mendix supports it: the metamodel has
+`ODataPublish$PublishedMicroflow` and the model SDK has `NewPublishedMicroflow()`.
+**MDL cannot write one** — `create odata service` takes `publish entity` blocks
+and nothing else, and the writer never emits a `Microflows` collection. Until
+that lands, publish the invocation as an entity set whose `InsertMode` is a
+microflow: POST the arguments, the microflow runs the routine and writes the
+answer back onto the same object, and Mendix returns it in the 201. It is
+discoverable, it works from any client, and it costs you the operation's name
+and the parameters-as-attributes tax above. Swap it the day MDL grows the
+syntax — the microflow underneath does not change.
 
 **Everything Mendix emits, as Mendix grows.** The grammar here is a snapshot of
 one client version, captured empirically because there is nothing to read. When

@@ -1564,25 +1564,37 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
-1. **The external-entity generator ignores the contract's `$top`/`$skip`
+1. **MDL cannot declare a published OData action** (§47) — `create odata service`
+   admits `publish entity` blocks and nothing else, so a microflow cannot be
+   published as an action or function import. Mendix supports it in full:
+   `ODataPublish$PublishedMicroflow` is in the metamodel,
+   `PublishedODataService2` carries a `Microflows` collection, and
+   `modelsdk/gen/odatapublish` already has `NewPublishedMicroflow()` and
+   `NewPublishedMicroflowParameter()` with every setter wired —
+   `mdl/backend/modelsdk/odata_write.go` simply never populates it. This is the
+   one thing standing between MDL and putting an existing RDBMS's stored
+   procedures behind an OData surface properly; the workaround (an entity set
+   with an insert microflow) costs the operation's name, turns parameters into
+   attributes, and returns 201 for a request the domain rejected.
+2. **The external-entity generator ignores the contract's `$top`/`$skip`
    capabilities** (§42) — `cmd_contract.go:1214` stamps `SkipSupported` and
    `TopSupported` true whatever the metadata says, while deriving Creatable and
    Deletable from it two lines above. A service that honestly declares
    `TopSupported: No` then makes the consuming app unbuildable with CE6630, and
    MDL cannot correct it after the fact. This blocks the remedy MDL-ODATA03
    itself recommends.
-2. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
+3. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
    fetch is in the create path only, so after a published service changes shape
    the client keeps its cached contract, reports "Modified OData client", and
    `create external entities` regenerates from stale metadata without saying so.
    Recovery is drop-and-recreate, which cascades into every page and grant that
    binds those entities.
-3. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
+4. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
    `System.HttpRequest` parameter, so adding one for an unrelated reason (the
    key lookup) silences it while `?$top=5` still returns all 77 rows. Check for
    a use of the request, not its presence. (The nine now really do page, §43,
    but the rule would not have noticed either way.)
-4. **`authentication microflow` cannot name its microflow** (§40) — the type is
+5. **`authentication microflow` cannot name its microflow** (§40) — the type is
    accepted, the microflow is silently dropped, and the build then fails with
    CE0333 "Please select a microflow to use for authentication". Custom
    authentication is the one documented way off per-request password hashing,
@@ -1591,13 +1603,13 @@ the scripts quietly stop being the source of truth.
    field, the writer and the reader all exist — `visitor_odata.go:323` recognises
    the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
    `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
-5. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+6. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
    to forget a case. Declaring what is filterable already happens in `expose (…)`;
    handing the microflow the parsed values rather than the raw request would
    remove the class instead of the instance.
-6. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+7. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
    sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
    never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
    help). This is why five rendering defects survived — a white chart under every
@@ -1605,15 +1617,15 @@ the scripts quietly stop being the source of truth.
    `check`, the build, the log or `curl` can see. Whatever the mechanism (a
    loopback exemption, an http-safe cookie under `--hub`), being able to render
    the real app is the highest-leverage check missing here.
-7. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+8. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
    next boot then refuses, correctly, on the previous run's corpse: *"port 6643
    is already in use"*. The guard is right; the diagnosis is misleading, because
    the process it names is one you already killed. Reap the child on exit, or
    print the offending pid so the fix is one command rather than three.
-8. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+9. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
    icon rail, and a text-only menu renders "Constru" down the left edge of every
    page. There is no way to fix it in the navigation model.
-9. **`create or modify odata service` still drops role grants** (§34, §26) — the
+10. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
@@ -1621,23 +1633,23 @@ the scripts quietly stop being the source of truth.
    — and `mdl/backend/modelsdk/odata_write.go`, the writer this project's path
    uses, has no `AllowedModuleRoles` handling at all, so it still drops them.
    Reproduced twice on `b4a825e`. §41.
-10. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+11. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-11. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+12. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
    here are still stamped two days earlier, so a rebuild alone does not carry it.
-12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+13. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-13. **Design-property lint does not know the theme** (§29) — `check` green-lights
+14. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
 
-14. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+15. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
    naming a microflow that no longer exists throws on every startup and blocks
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
@@ -2803,3 +2815,168 @@ expose the procedure as something a client can **invoke**: an OData action or
 function, `POST /odata/x/RunReport`. That is the other half of putting an
 existing RDBMS behind an OData surface, and the piece that turns this from a
 read-only projection into a two-way integration. Not started.
+
+## 47. Stored procedures over OData: everything except the action
+
+§46 left stored procedures as roadmap. This is what happened when they were
+built, which is: the database half works, the publishing half is one missing
+piece of MDL, and four things bite on the way that nothing documents.
+
+### The setup, so the finding is not a toy
+
+`scripts/create-f1ops-db.sh` builds `f1ops`, a real Postgres database holding
+the F1 data and two routines of deliberately different kinds:
+
+- `f1ops.driver_form(p_driver_id, p_last_n)` — a **table-valued function**.
+  plpgsql, with a loop and a running average, so it is procedural rather than a
+  view in a hat.
+- `f1ops.record_prediction(...)` — a **procedure** with INOUT parameters. It
+  validates and then writes, because that is the other reason logic sits in a
+  database: the rule lives next to the data and every caller gets it.
+
+`model/backend/16-ops-procedures.mdl` puts both behind `F1OpsApi`
+(`/odata/f1-ops/`). Nothing in this app owns that schema, which is the point.
+
+### The module gained one action
+
+`ODataPushdown.CallStatement(Routine, Kind, Parameters, Dialect)` renders the
+invocation for the engine you are on. Five engines, three kinds, almost no two
+agreeing:
+
+```
+             table                            procedure
+pg/duckdb    SELECT * FROM f(a,b)             CALL p(a,b)      (duckdb: none)
+sqlserver    SELECT * FROM f(a,b)             EXEC p @x=a, @y=b
+oracle       SELECT * FROM TABLE(f(a,b))      BEGIN p(a,b); END;
+mysql        none                             CALL p(a,b)
+```
+
+`Parameters` is a list of Mendix parameter **names**, never values, so it emits
+`SELECT * FROM f1ops.driver_form({driverId}, {lastN})` — a template for
+`execute database query` to bind. That is a stronger position than the `$filter`
+translation can take: a `WHERE` clause has to be built as text because its shape
+comes from the client, but a routine call's shape is fixed by the routine and
+only its values vary. The only text emitted is the routine name, and that is
+checked against an identifier pattern rather than escaped. Fourteen tests.
+
+### Four things that bite
+
+**1. MDL cannot declare an OData action.** This is the finding.
+
+A procedure that changes something wants to be an action:
+`POST /odata/f1-ops/RecordPrediction`, arguments in the body, an `ActionImport`
+in `$metadata`. Mendix supports it — `ODataPublish$PublishedMicroflow` is in the
+metamodel, `PublishedODataService2` has a `Microflows` collection, and
+`modelsdk/gen/odatapublish` has `NewPublishedMicroflow()` and
+`NewPublishedMicroflowParameter()` with every setter wired.
+
+MDL has no syntax for it. `createODataServiceStatement` in `MDLService.g4`
+admits `publishEntityBlock*` and nothing else; `publish microflow …`,
+`publish action …` and every variant tried is a parse error at `missing ENTITY`.
+And `mdl/backend/modelsdk/odata_write.go` has zero references to
+`PublishedMicroflow`, so even the SDK path never populates the collection. The
+`$metadata` this app publishes has an `EntityContainer` with two `EntitySet`
+elements and no `ActionImport` — that is the gap, visible from outside.
+
+Everything else in the metamodel is one grammar rule away:
+
+```
+publishMicroflowBlock
+    : PUBLISH MICROFLOW qualifiedName (AS STRING_LITERAL)?
+      (LPAREN publishedParam (COMMA publishedParam)* RPAREN)?
+      (RETURNS dataType)?
+      SEMICOLON?
+```
+
+**2. A returning procedure cannot be called at all.** The obvious statement,
+
+```sql
+CALL f1ops.record_prediction({driverId}, ..., NULL, NULL, NULL)
+```
+
+is correct Postgres and is exactly what `CallStatement` renders. Mendix will not
+run it. The External Database Connector inspects the statement and dispatches a
+`CALL` as an update —
+`QueryDispatcher:153 -> JdbcConnector.executeStatement:118 -> executeUpdate` —
+and PgJDBC then refuses, because a `CALL` with INOUT parameters answers with a
+row: *"A result was returned when none was expected"*. There is no
+`execute database statement` activity to reach for; the only door is
+`execute database query`, and it wants a `SELECT`.
+
+The workaround is a one-line function in the database that `CALL`s the procedure
+and returns its row, so the invocation begins with `SELECT`. Every Mendix app
+that needs a returning procedure will write it. The procedure is untouched and
+is still what runs.
+
+**3. A routine's arguments are not columns of its result.** Mendix validates
+`$filter` against the published metadata *before* the read microflow runs, so
+`?$filter=driverId eq 'ayrton-senna'` against a resource whose entity has no
+`driverId` attribute is answered
+
+```
+400  Could not map 'driverId' to attribute or association.
+```
+
+and the microflow never sees it. A parameterised resource therefore has to carry
+its own parameters as attributes and echo them back on every row —
+`SELECT f.*, {driverId} AS driver_id, … FROM f1ops.driver_form(…) f`.
+
+An OData action would take them as parameters and need none of this. It is the
+sharpest single cost of finding 1: every parameterised resource pays it.
+
+**4. The Postgres driver has to be declared and shipped, twice over.** Mendix
+runs on Postgres, so a `type 'PostgreSQL'` connection looked like it needed
+nothing. It needs both:
+
+- **build**: without a module jar dependency, mxbuild fails CE5278 "The
+  PostgreSQL JDBC driver (org.postgresql:postgresql) is missing from the module
+  settings";
+- **run**: declared but `included = false`, the build is green and the first
+  request dies with *"No JDBC driver found in app for URL: jdbc:postgresql://…"*
+  — the Connector resolves drivers from the app's classpath, not the runtime's.
+
+So `included = true` and `mxcli sync-java-deps`, exactly as for DuckDB. Being
+the same database Mendix itself runs on buys nothing.
+
+### What shipped instead of an action
+
+The procedure is published as an entity set whose `InsertMode` is a microflow —
+the OData-v2-era idiom for an action. A client POSTs the arguments, the
+microflow calls the routine and writes the answer back onto the same object, and
+Mendix returns it in the 201. Note the insert microflow must return **Nothing**
+(CE6588); Mendix serialises the parameter object itself, which is what lets the
+answer come back.
+
+```
+POST /odata/f1-ops/Predictions  {"driverId":"max-verstappen","raceId":551,
+                                 "position":1,"submittedBy":"fan"}
+  201  {"predictionKey":"2", …, "accepted":true,  "message":"recorded"}
+
+POST … {"driverId":"nobody-here", …}
+  201  {"predictionKey":"",  …, "accepted":false, "message":"no such driver: nobody-here"}
+
+POST … {"position":99, …}
+  201  {"predictionKey":"",  …, "accepted":false, "message":"position must be between 1 and 20"}
+
+GET  /odata/f1-ops/Predictions('2')
+       {"predictionKey":"2","driverId":"max-verstappen","position":1, …}
+
+GET  /odata/f1-ops/DriverForm?$filter=driverId eq 'ayrton-senna' and lastN eq 3
+       three rows, rollingAvg 30.00 each  (1994: three DNFs)
+```
+
+The refusals come back as `accepted=false` with the database's own message
+rather than as a 500, because they are answers and not failures: the procedure
+validated the request and said no. A 500 would lose the reason.
+
+What it costs against a real action: the operation is named `Predictions` rather
+than `RecordPrediction`, the arguments are attributes rather than parameters,
+and a POST that the domain rejects is still a 201. Swap it the day MDL grows the
+syntax — the microflow underneath does not change.
+
+`mxcli check` (MDL-ODATA02) caught the one thing that would have made this
+another §37: `Predictions` declares a KEY, so a client that has just POSTed will
+re-read by it. The predictions are in a table, so the lookup is answerable, and
+`Read_Predictions` answers it. Dropping the KEY is not an alternative — Mendix
+requires one (CE6585).
+

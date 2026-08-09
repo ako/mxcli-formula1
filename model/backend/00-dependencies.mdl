@@ -20,3 +20,32 @@ alter module Formula1Backend
     version  = '1.5.5.1',
     included = true,
   );
+
+/*
+ * The PostgreSQL JDBC driver, for the F1Ops connection in 16.
+ *
+ * Mendix runs on Postgres and has the driver on its own classpath, so this
+ * looks unnecessary twice over. It is needed twice over:
+ *
+ *   - at build time, because a `type 'PostgreSQL'` database connection is
+ *     checked against the MODULE's declared dependencies. Without the
+ *     declaration mxbuild fails with CE5278 "The PostgreSQL JDBC driver
+ *     (org.postgresql:postgresql) is missing from the module settings".
+ *
+ *   - at run time, because the External Database Connector resolves drivers
+ *     from the APP's classpath and not the runtime's. Declared but with
+ *     `included = false` the build is green and the first request dies with
+ *     "No JDBC driver found in app for URL: jdbc:postgresql://…  Add the
+ *     appropriate JDBC driver JAR to your app via Module Settings."
+ *
+ * So `included = true`, and `mxcli sync-java-deps` fetches it into vendorlib/
+ * exactly as it does for DuckDB. Being the same database Mendix itself runs on
+ * buys nothing here.
+ */
+alter module Formula1Backend
+  add jar dependency (
+    group    = 'org.postgresql',
+    artifact = 'postgresql',
+    version  = '42.7.4',
+    included = true,
+  );

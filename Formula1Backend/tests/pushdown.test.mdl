@@ -430,3 +430,117 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_Dialect(Uri = '/odata/f1-li
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_Dialect(Uri = '/odata/f1-live/Drivers?$top=10&$skip=5', Dialect = 'mysql');
 /
+
+/* ------------------------------------------------- stored routines */
+
+/**
+ * A table-valued function, in the four engines that have them. The statement
+ * comes back full of {placeholders} — this renderer never emits a value, so
+ * there is nothing here that could carry SQL. FINDINGS §47.
+ *
+ * @test Postgres: SELECT * FROM f(...)
+ * @expect $result = 'SELECT * FROM f1ops.driver_form({driverId}, {lastN})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'postgresql');
+/
+
+/**
+ * @test DuckDB spells a table macro the same way
+ * @expect $result = 'SELECT * FROM f1ops.driver_form({driverId}, {lastN})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'duckdb');
+/
+
+/**
+ * @test Oracle needs TABLE() around a pipelined function
+ * @expect $result = 'SELECT * FROM TABLE(f1ops.driver_form({driverId}, {lastN}))'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'oracle');
+/
+
+/**
+ * MySQL has no table-valued functions at all. Emitting something that parses
+ * and returns one scalar column would be worse than saying so.
+ *
+ * @test MySQL refuses a table function rather than approximating one
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'mysql');
+/
+
+/**
+ * The procedure, with its three INOUT slots. They have to be present in the
+ * call and there is nothing to bind into them, so `null` passes through as a
+ * literal and Postgres fills them on the way out.
+ *
+ * @test Postgres: CALL with the INOUT slots as literal NULLs
+ * @expect $result = 'CALL f1ops.record_prediction({driverId}, {raceId}, {position}, {submittedBy}, NULL, NULL, NULL)'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId,position,submittedBy,null,null,null', Dialect = 'postgresql');
+/
+
+/**
+ * @test SQL Server: EXEC with named arguments, OUTPUT slots omitted
+ * @expect $result = 'EXEC f1ops.record_prediction @driverId = {driverId}, @raceId = {raceId}'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId,null', Dialect = 'sqlserver');
+/
+
+/**
+ * @test Oracle wraps a procedure call in an anonymous block
+ * @expect $result = 'BEGIN f1ops.record_prediction({driverId}, {raceId}); END;'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId', Dialect = 'oracle');
+/
+
+/**
+ * @test MySQL: CALL, positional
+ * @expect $result = 'CALL f1ops.record_prediction({driverId}, {raceId})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId', Dialect = 'mysql');
+/
+
+/**
+ * @test DuckDB refuses a procedure — it has macros, not procedures
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'anything', Kind = 'procedure', Parameters = '', Dialect = 'duckdb');
+/
+
+/**
+ * @test A scalar function
+ * @expect $result = 'SELECT f1ops.points_for({position}) AS result'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.points_for', Kind = 'scalar', Parameters = 'position', Dialect = 'postgresql');
+/
+
+/**
+ * @test No arguments is a call with empty parentheses, not a syntax error
+ * @expect $result = 'CALL f1ops.rebuild()'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.rebuild', Kind = 'procedure', Parameters = '', Dialect = 'postgresql');
+/
+
+/**
+ * The routine name is the only text this emits, so it is the only thing that
+ * could carry SQL — and it is checked rather than escaped.
+ *
+ * @test A routine name that is not an identifier is refused
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.x(); DROP TABLE prediction; --', Kind = 'procedure', Parameters = '', Dialect = 'postgresql');
+/
+
+/**
+ * @test A parameter name that is not an identifier is refused
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.rebuild', Kind = 'procedure', Parameters = 'id) OR 1=1 --', Dialect = 'postgresql');
+/
+
+/**
+ * @test An unknown routine kind is refused rather than guessed at
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.rebuild', Kind = 'stored', Parameters = '', Dialect = 'postgresql');
+/

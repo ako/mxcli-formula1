@@ -197,3 +197,43 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortDirection    TO Formu
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Key              TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_FilterNumber     TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Dialect          TO Formula1Backend.DataAdmin;
+
+/*
+ * The stored-routine call renderer, across all five engines.
+ *
+ * It emits placeholders and never values, so unlike the $filter tests there is
+ * nothing here about escaping — only about which of the five spellings each
+ * engine wants, which is the part that costs an afternoon per engine.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallStatement (
+  $Routine: String,
+  $Kind: String,
+  $Parameters: String,
+  $Dialect: String
+)
+  RETURNS String AS $Sql
+BEGIN
+  $Sql = CALL JAVA ACTION ODataPushdown.CallStatement(
+    Routine = $Routine, Kind = $Kind, Parameters = $Parameters, Dialect = $Dialect);
+  RETURN $Sql;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallIsRejected (
+  $Routine: String,
+  $Kind: String,
+  $Parameters: String,
+  $Dialect: String
+)
+  RETURNS Boolean AS $Rejected
+BEGIN
+  DECLARE $Rejected Boolean = false;
+  $Sql = CALL JAVA ACTION ODataPushdown.CallStatement(
+    Routine = $Routine, Kind = $Kind, Parameters = $Parameters, Dialect = $Dialect)
+  ON ERROR {
+    SET $Rejected = true;
+  };
+  RETURN $Rejected;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_CallStatement   TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_CallIsRejected  TO Formula1Backend.DataAdmin;

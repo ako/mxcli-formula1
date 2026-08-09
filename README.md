@@ -87,6 +87,15 @@ client emits, captured off the wire because
 [the requirements page](https://docs.mendix.com/refguide/consumed-odata-service-requirements/)
 names the query options and not one operator.
 
+It also renders **stored routine** invocations — `SELECT * FROM f(…)`,
+`CALL p(…)`, `EXEC p @x = …`, `BEGIN p(…); END;` — as bound templates, for
+resources whose logic lives in the database rather than in a table. A fifth
+service, `F1OpsApi`, puts a real Postgres schema's table function and procedure
+behind OData to prove it (`scripts/create-f1ops-db.sh`). The one thing missing
+is a real OData action: Mendix's metamodel has one, MDL has no syntax for it, so
+the procedure is published as an entity set with an insert microflow. FINDINGS
+§47.
+
 A datagrid showing rows 80–100 sorted by name:
 
 | | before | after |

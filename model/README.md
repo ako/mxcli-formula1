@@ -6,9 +6,11 @@ backend back. That is how the current `.mpr` was built, twice over, after the
 domain model had to be reshaped.
 
 ```bash
+scripts/create-f1ops-db.sh          # the Postgres database 16 reaches into
 cd Formula1Backend
 ./mxcli exec ../model/odatapushdown/module.mdl -p Formula1Backend.mpr
 for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; done
+./mxcli sync-java-deps -p Formula1Backend.mpr
 ./mxcli -p Formula1Backend.mpr -c \
   "alter settings model AfterStartupMicroflow = 'Formula1Backend.ASU_LoadCacheIfEmpty';"
 ```
@@ -34,6 +36,7 @@ another project and it works there unchanged; that is the point of it.
 | `11-pushdown-tests-support.mdl` | Thin wrappers so `ODataPushdown` can be unit-tested directly, plus `Probe_DynamicSql`. |
 | `13-fan-resources.mdl` | The five derived views the fan pages are built on. Owns those microflows; **not** the service. |
 | `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Re-grants service access after it, which the modify still drops. |
+| `16-ops-procedures.mdl` | `F1OpsApi` — a Postgres database this app does not own, with its logic in **stored procedures**. A table function behind a read, and a procedure behind an insert, which is the nearest thing to an OData action MDL can declare. Needs `scripts/create-f1ops-db.sh` first. |
 | `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
 
 ## The folder layout
@@ -80,7 +83,7 @@ The user roles (`ApiConsumer`, `Administrator`) live at project level and surviv
 the drop; `06` uses `alter user role … add module roles` for `Administrator`
 because the blank template already ships one.
 
-## Five things that will bite whoever edits this
+## Six things that will bite whoever edits this
 
 - **Whole numbers are `long`, not `integer`.** mxcli used to publish a Mendix
   `Integer` as `Edm.Int32` where Mendix wants `Edm.Int64`, and every exposed
@@ -94,6 +97,11 @@ because the blank template already ships one.
   `System.ODataResponse` parameter.
 - **The standings key is `(year, positionDisplayOrder)`.** Not `(year,
   constructorId)`: Brabham has three 1966 rows, one per engine. FINDINGS §18.
+- **A `type 'PostgreSQL'` connection still needs the driver declared AND
+  shipped.** Mendix runs on Postgres and it buys nothing: without a module jar
+  dependency the build fails CE5278, and with `included = false` the build is
+  green and the first request dies with "No JDBC driver found in app for URL".
+  FINDINGS §47.
 - **`drop module ODataPushdown` deletes `javasource/odatapushdown/` with it**,
   hand-written classes included — the drop takes the whole Java package, not
   only the generated action wrappers. To re-apply the module cleanly, run the
