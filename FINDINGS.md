@@ -2511,13 +2511,84 @@ The published contract is byte-identical afterwards — capabilities were alread
 `true` and are now honest — so no client, external entity or page needed
 regenerating. 26/26 backend, 23/23 frontend.
 
-### What this leaves
+### What this left
 
-`$orderby` is still not pushed down: these resources sort the way their query
-says, and a client that asks for a different order gets the default. Unlike
-paging, that cannot be done with a bound parameter — an ORDER BY is SQL text, so
-it needs either the whitelist-and-splice treatment from `10-live-pushdown.mdl`
-(which means duplicating each SELECT into its microflow) or a column whitelist
-bound into a `CASE`. Neither is free, and no consumer sorts these today.
-`MDL-ODATA03` does not cover `$orderby`, so nothing flags it — noted here so it
-is a decision rather than an oversight.
+`$orderby`, which §44 then closed — by the second of the two routes sketched
+here, a column whitelist bound into a `CASE`.
+
+## 44. Ordering by a bound CASE, so the SQL can stay where it is
+
+The last of the three query options. `$filter`'s key half landed in §42 and
+paging in §43, both as bound parameters. `$orderby` cannot be one: an ORDER BY
+is SQL text, and a bound parameter is a value.
+
+### Why not the obvious route
+
+`10-live-pushdown.mdl` already solves this for Drivers and RaceResults — build
+the statement in the microflow, splice in a whitelisted clause. Doing the same
+here would mean lifting nine SELECTs out of the connection and into microflow
+string concatenation, and three of them are the live snapshots whose `read_csv`
+carries a full column-type spec:
+
+```
+columns = {'sessionKey': 'VARCHAR', 'driverNumber': 'BIGINT', 'code': 'VARCHAR', …}
+```
+
+Eighteen of those, as `+ '…'` fragments, duplicated from a query that still has
+to exist for its mapping. That is the drift §42 was written to avoid.
+
+### What was done instead
+
+The order is chosen *inside* the query, by a CASE over the exposed names, with
+the name and direction arriving as bound parameters:
+
+```sql
+ORDER BY
+  CASE WHEN {sortDir} = 'A' THEN (CASE {sortCol}
+       WHEN 'championDriver' THEN t.championDriverName … END) END ASC  NULLS LAST,
+  CASE WHEN {sortDir} = 'D' THEN (CASE {sortCol} … END)               END DESC NULLS LAST,
+  CASE WHEN {sortDir} = 'A' THEN (CASE {sortCol}
+       WHEN 'year' THEN CAST(t.year AS DOUBLE) … END) END ASC  NULLS LAST,
+  CASE WHEN {sortDir} = 'D' THEN (CASE {sortCol} … END)               END DESC NULLS LAST,
+  t.year DESC                                        -- the query's own order
+```
+
+When `{sortCol}` is empty every CASE is NULL, every row ties, and the query's
+own ORDER BY decides — so a caller that asks for nothing gets exactly what it
+got before. Four terms rather than one because a direction cannot be bound
+either, and because a CASE has a single type: text and numeric columns need
+their own arms. Dates go in the text arm as `CAST(… AS VARCHAR)`, which sorts
+correctly precisely because DuckDB renders them ISO; booleans go in the numeric
+arm as 0/1.
+
+96 sortable columns across the nine, so the blocks were generated from the
+`expose` clauses and the entity types rather than typed out.
+
+The two readers return values, not a clause, and the whitelist they check is
+the same list of names the CASE matches on — one place to add a column, one
+place to forget one.
+
+### Verified
+
+```
+/Seasons?$top=4                              2026 | 2025 | 2024 | 2023   (default)
+/Seasons?$top=4&$orderby=year asc            1950 | 1951 | 1952 | 1953
+/Seasons?$top=4&$orderby=raceCount desc        24 | 24 | 22 | 22
+/Circuits?$top=4&$orderby=length desc      25.579 | 8.36 | 8.302 | 8.3
+/Seasons?$orderby=raceCount asc,year desc   7/1955 | 7/1950 | 8/1961      (first term)
+/DriverStandings?$orderby=points desc&$top=3&$count=true
+                                            575 | 454 | 437,  count=1680
+```
+
+Composes with the key and the page, and the published contract is unchanged —
+these are query parameters, not model — so again nothing downstream needed
+regenerating. Six tests on the readers; 32/32 backend, 23/23 frontend.
+
+### A defence that turned out to be a second line
+
+The whitelist exists so an unknown name cannot reach the SQL. It never gets the
+chance: Mendix validates `$orderby` against the published entity first and
+answers `400 "Could not map 'nonsense' to attribute or association."` before the
+read microflow runs. Worth knowing that the platform does that much — and worth
+keeping the whitelist anyway, since it is what stops an *exposed* column being
+sorted on when the query has no arm for it.

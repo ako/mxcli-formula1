@@ -525,12 +525,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.year AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.year AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''championDriver'' THEN t.championDriverName WHEN ''championConstructor'' THEN t.championConstructorName END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''championDriver'' THEN t.championDriverName WHEN ''championConstructor'' THEN t.championConstructorName END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''raceCount'' THEN CAST(t.raceCount AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''raceCount'' THEN CAST(t.raceCount AS DOUBLE) END) END DESC NULLS LAST,
+           t.year DESC
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_Season
     map ( year as Year, championDriverName as ChampionDriverName,
           championConstructorName as ChampionConstructorName, raceCount as RaceCount );
@@ -543,12 +550,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.name
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.id WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName WHEN ''placeName'' THEN t.placeName WHEN ''country'' THEN t.countryId END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.id WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName WHEN ''placeName'' THEN t.placeName WHEN ''country'' THEN t.countryId END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''latitude'' THEN CAST(t.latitude AS DOUBLE) WHEN ''longitude'' THEN CAST(t.longitude AS DOUBLE) WHEN ''length'' THEN CAST(t.length AS DOUBLE) WHEN ''turns'' THEN CAST(t.turns AS DOUBLE) WHEN ''racesHeld'' THEN CAST(t.totalRacesHeld AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''latitude'' THEN CAST(t.latitude AS DOUBLE) WHEN ''longitude'' THEN CAST(t.longitude AS DOUBLE) WHEN ''length'' THEN CAST(t.length AS DOUBLE) WHEN ''turns'' THEN CAST(t.turns AS DOUBLE) WHEN ''racesHeld'' THEN CAST(t.totalRacesHeld AS DOUBLE) END) END DESC NULLS LAST,
+           t.name
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_Circuit
     map ( id as CircuitId, name as Name, fullName as FullName, placeName as PlaceName,
           countryId as Country, latitude as Latitude, longitude as Longitude,
@@ -562,12 +576,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.name
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''constructorId'' THEN t.id WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName WHEN ''country'' THEN t.countryId END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''constructorId'' THEN t.id WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName WHEN ''country'' THEN t.countryId END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''championshipWins'' THEN CAST(t.totalChampionshipWins AS DOUBLE) WHEN ''raceStarts'' THEN CAST(t.totalRaceStarts AS DOUBLE) WHEN ''raceWins'' THEN CAST(t.totalRaceWins AS DOUBLE) WHEN ''podiums'' THEN CAST(t.totalPodiums AS DOUBLE) WHEN ''points'' THEN CAST(t.totalPoints AS DOUBLE) WHEN ''polePositions'' THEN CAST(t.totalPolePositions AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''championshipWins'' THEN CAST(t.totalChampionshipWins AS DOUBLE) WHEN ''raceStarts'' THEN CAST(t.totalRaceStarts AS DOUBLE) WHEN ''raceWins'' THEN CAST(t.totalRaceWins AS DOUBLE) WHEN ''podiums'' THEN CAST(t.totalPodiums AS DOUBLE) WHEN ''points'' THEN CAST(t.totalPoints AS DOUBLE) WHEN ''polePositions'' THEN CAST(t.totalPolePositions AS DOUBLE) END) END DESC NULLS LAST,
+           t.name
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_Constructor
     map ( id as ConstructorId, name as Name, fullName as FullName, countryId as Country,
           totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
@@ -598,12 +619,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.round
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''raceDate'' THEN CAST(t.date AS VARCHAR) WHEN ''officialName'' THEN t.officialName WHEN ''grandPrixId'' THEN t.grandPrixId WHEN ''circuitId'' THEN t.circuitId WHEN ''circuitName'' THEN t.circuitName END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''raceDate'' THEN CAST(t.date AS VARCHAR) WHEN ''officialName'' THEN t.officialName WHEN ''grandPrixId'' THEN t.grandPrixId WHEN ''circuitId'' THEN t.circuitId WHEN ''circuitName'' THEN t.circuitName END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''raceId'' THEN CAST(t.id AS DOUBLE) WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''round'' THEN CAST(t.round AS DOUBLE) WHEN ''laps'' THEN CAST(t.laps AS DOUBLE) WHEN ''distance'' THEN CAST(t.distance AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''raceId'' THEN CAST(t.id AS DOUBLE) WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''round'' THEN CAST(t.round AS DOUBLE) WHEN ''laps'' THEN CAST(t.laps AS DOUBLE) WHEN ''distance'' THEN CAST(t.distance AS DOUBLE) END) END DESC NULLS LAST,
+           t.year DESC, t.round
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_Race
     map ( id as RaceId, year as Year, round as Round, date as RaceDate,
           officialName as OfficialName, grandPrixId as GrandPrixId,
@@ -657,12 +685,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.positionDisplayOrder
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''standingKey'' THEN t.standingKey WHEN ''driverId'' THEN t.driverId WHEN ''positionText'' THEN t.positionText WHEN ''driverName'' THEN t.driverName END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''standingKey'' THEN t.standingKey WHEN ''driverId'' THEN t.driverId WHEN ''positionText'' THEN t.positionText WHEN ''driverName'' THEN t.driverName END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END DESC NULLS LAST,
+           t.year DESC, t.positionDisplayOrder
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_DriverStanding
     map ( standingKey as StandingKey, year as Year,
           positionDisplayOrder as PositionOrder,
@@ -681,12 +716,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.positionDisplayOrder
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''standingKey'' THEN t.standingKey WHEN ''constructorId'' THEN t.constructorId WHEN ''positionText'' THEN t.positionText WHEN ''constructorName'' THEN t.constructorName WHEN ''engineManufacturer'' THEN t.engineManufacturerId END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''standingKey'' THEN t.standingKey WHEN ''constructorId'' THEN t.constructorId WHEN ''positionText'' THEN t.positionText WHEN ''constructorName'' THEN t.constructorName WHEN ''engineManufacturer'' THEN t.engineManufacturerId END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END DESC NULLS LAST,
+           t.year DESC, t.positionDisplayOrder
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_ConstructorStanding
     map ( standingKey as StandingKey, year as Year,
           positionDisplayOrder as PositionOrder,
@@ -984,12 +1026,19 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.entryKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.entryKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.position
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''entryKey'' THEN t.entryKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''driverName'' THEN t.driverName WHEN ''team'' THEN t.team WHEN ''teamColour'' THEN t.teamColour WHEN ''gapToLeader'' THEN t.gapToLeader WHEN ''interval'' THEN t.interval WHEN ''compound'' THEN t.compound END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''entryKey'' THEN t.entryKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''driverName'' THEN t.driverName WHEN ''team'' THEN t.team WHEN ''teamColour'' THEN t.teamColour WHEN ''gapToLeader'' THEN t.gapToLeader WHEN ''interval'' THEN t.interval WHEN ''compound'' THEN t.compound END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''lastLapSeconds'' THEN CAST(t.lastLapSeconds AS DOUBLE) WHEN ''sector1'' THEN CAST(t.sector1 AS DOUBLE) WHEN ''sector2'' THEN CAST(t.sector2 AS DOUBLE) WHEN ''sector3'' THEN CAST(t.sector3 AS DOUBLE) WHEN ''speedTrap'' THEN CAST(t.speedTrap AS DOUBLE) WHEN ''tyreAge'' THEN CAST(t.tyreAge AS DOUBLE) WHEN ''pitStops'' THEN CAST(t.pitStops AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''lastLapSeconds'' THEN CAST(t.lastLapSeconds AS DOUBLE) WHEN ''sector1'' THEN CAST(t.sector1 AS DOUBLE) WHEN ''sector2'' THEN CAST(t.sector2 AS DOUBLE) WHEN ''sector3'' THEN CAST(t.sector3 AS DOUBLE) WHEN ''speedTrap'' THEN CAST(t.speedTrap AS DOUBLE) WHEN ''tyreAge'' THEN CAST(t.tyreAge AS DOUBLE) WHEN ''pitStops'' THEN CAST(t.pitStops AS DOUBLE) END) END DESC NULLS LAST,
+           t.position
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_LiveEntry
     map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
           code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
@@ -1020,11 +1069,18 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.messageKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.messageKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''messageKey'' THEN t.messageKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''at'' THEN t.atTime WHEN ''category'' THEN t.category WHEN ''flag'' THEN t.flag WHEN ''scope'' THEN t.scope WHEN ''message'' THEN t.message END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''messageKey'' THEN t.messageKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''at'' THEN t.atTime WHEN ''category'' THEN t.category WHEN ''flag'' THEN t.flag WHEN ''scope'' THEN t.scope WHEN ''message'' THEN t.message END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''lap'' THEN CAST(t.lap AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''lap'' THEN CAST(t.lap AS DOUBLE) END) END DESC NULLS LAST
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_LiveMessage
     map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
           category as Category, flag as Flag, scope as Scope, lap as Lap,
@@ -1051,11 +1107,18 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.sessionKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.sessionKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''sessionKey'' THEN t.sessionKey WHEN ''sessionName'' THEN t.sessionName WHEN ''sessionType'' THEN t.sessionType WHEN ''location'' THEN t.location WHEN ''countryName'' THEN t.countryName WHEN ''circuitName'' THEN t.circuitName WHEN ''dateStart'' THEN t.dateStart WHEN ''fetchedAt'' THEN t.fetchedAt END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''sessionKey'' THEN t.sessionKey WHEN ''sessionName'' THEN t.sessionName WHEN ''sessionType'' THEN t.sessionType WHEN ''location'' THEN t.location WHEN ''countryName'' THEN t.countryName WHEN ''circuitName'' THEN t.circuitName WHEN ''dateStart'' THEN t.dateStart WHEN ''fetchedAt'' THEN t.fetchedAt END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''driverCount'' THEN CAST(t.driverCount AS DOUBLE) WHEN ''leadLap'' THEN CAST(t.leadLap AS DOUBLE) WHEN ''airTemperature'' THEN CAST(t.airTemperature AS DOUBLE) WHEN ''trackTemperature'' THEN CAST(t.trackTemperature AS DOUBLE) WHEN ''humidity'' THEN CAST(t.humidity AS DOUBLE) WHEN ''rainfall'' THEN CAST(t.rainfall AS DOUBLE) WHEN ''windSpeed'' THEN CAST(t.windSpeed AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''driverCount'' THEN CAST(t.driverCount AS DOUBLE) WHEN ''leadLap'' THEN CAST(t.leadLap AS DOUBLE) WHEN ''airTemperature'' THEN CAST(t.airTemperature AS DOUBLE) WHEN ''trackTemperature'' THEN CAST(t.trackTemperature AS DOUBLE) WHEN ''humidity'' THEN CAST(t.humidity AS DOUBLE) WHEN ''rainfall'' THEN CAST(t.rainfall AS DOUBLE) WHEN ''windSpeed'' THEN CAST(t.windSpeed AS DOUBLE) END) END DESC NULLS LAST
          LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
     parameter topN: string
     parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
     returns Formula1Backend.Stg_LiveSession
     map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
           location as Location, countryName as CountryName, circuitName as CircuitName,

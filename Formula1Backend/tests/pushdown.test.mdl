@@ -149,3 +149,48 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/Seasons?$skip=drop%20table');
 /
+
+/**
+ * $orderby as a whitelisted name and a direction, for the resources that order
+ * by a bound CASE. FINDINGS §44.
+ *
+ * @test No $orderby leaves the query's own order alone
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons');
+/
+
+/**
+ * @test A whitelisted column comes back as its exposed name, which is what the CASE matches
+ * @expect $result = 'raceCount'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=raceCount desc');
+/
+
+/**
+ * @test A column outside the whitelist sorts by nothing rather than reaching the query
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=1;drop table asc');
+/
+
+/**
+ * @test Only the first term is honoured
+ * @expect $result = 'year'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=year asc,name desc');
+/
+
+/**
+ * @test Descending is read
+ * @expect $result = 'D'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortDirection(Uri = '/odata/f1-live/Seasons?$orderby=year DESC');
+/
+
+/**
+ * @test Anything else is ascending
+ * @expect $result = 'A'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortDirection(Uri = '/odata/f1-live/Seasons?$orderby=year');
+/

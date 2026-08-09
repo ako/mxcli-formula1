@@ -22,7 +22,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Season (
       Year = $Row/Year,
@@ -45,7 +45,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Circuit (
       CircuitId = $Row/CircuitId,
@@ -74,7 +74,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Constructor (
       ConstructorId = $Row/ConstructorId,
@@ -136,7 +136,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Circuit FROM Formula1Backend.Circuit WHERE CircuitId = $Row/CircuitId LIMIT 1;
@@ -212,7 +212,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Driver FROM Formula1Backend.Driver WHERE DriverId = $Row/DriverId LIMIT 1;
@@ -244,7 +244,7 @@ BEGIN
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
     (dataDir = @Formula1Backend.DataDir, keyFilter = '',
-     topN = '1000000', skipN = '0');
+     topN = '1000000', skipN = '0', sortCol = '', sortDir = 'A');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Constructor FROM Formula1Backend.Constructor

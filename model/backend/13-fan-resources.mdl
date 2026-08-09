@@ -72,6 +72,32 @@ return formula1backend.ODataQuery.skipValue(Uri);
 $$;
 
 /*
+ * $orderby, as a whitelisted column name and a direction.
+ *
+ * ODataOrderLimitSql returns a clause; these return the two values a bound CASE
+ * needs, because the resources in 02 and 15 keep their SQL in the connection.
+ * The name comes back exposed rather than translated, since that is what the
+ * CASE matches on. Only the first term — a datagrid emits one, and a second
+ * would need a second CASE in every query. FINDINGS §44.
+ */
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSortColumn(
+  Uri: String,
+  ColumnMap: String NOT NULL
+) RETURNS String
+EXPOSED AS 'Read the $orderby column, whitelisted' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.sortColumn(Uri, ColumnMap);
+$$;
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSortDirection(
+  Uri: String
+) RETURNS String
+EXPOSED AS 'Read the $orderby direction' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.sortDirection(Uri);
+$$;
+
+/*
  * The other half of "which one did you mean": a key in the path rather than a
  * term in $filter. A client resolving an object it already holds asks for
  * /Calendar('1036-c'), and a read that only looks at $filter answers with its

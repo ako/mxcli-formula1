@@ -269,6 +269,44 @@ public final class ODataQuery {
     }
 
     /**
+     * The first {@code $orderby} column, as its **exposed** name, or "" when the
+     * client did not ask for an order or asked for something not whitelisted.
+     *
+     * The exposed name rather than the SQL one, because this is compared against
+     * literals inside a bound CASE rather than spliced into the statement — the
+     * resources that use it keep their SQL in the connection and cannot take a
+     * clause. {@link #orderLimit} is the other half of this pair, for callers
+     * that do build their own statement.
+     *
+     * Only the first term. A multi-column sort would need one CASE per term in
+     * every query; a datagrid emits one.
+     */
+    public static String sortColumn(String uri, String columnMap) {
+        String ob = parseQuery(uri).get("$orderby");
+        if (ob == null || ob.trim().isEmpty()) {
+            return "";
+        }
+        String[] bits = ob.split(",")[0].trim().split("\\s+");
+        if (bits.length == 0 || bits[0].isEmpty()) {
+            return "";
+        }
+        String name = bits[0].trim();
+        // Whitelisted by the same map the SQL side uses, so an unknown name
+        // sorts by nothing rather than reaching the query.
+        return parseColumnMap(columnMap).containsKey(name.toLowerCase()) ? name : "";
+    }
+
+    /** "D" when the first {@code $orderby} term is descending, else "A". */
+    public static String sortDirection(String uri) {
+        String ob = parseQuery(uri).get("$orderby");
+        if (ob == null || ob.trim().isEmpty()) {
+            return "A";
+        }
+        String[] bits = ob.split(",")[0].trim().split("\\s+");
+        return bits.length > 1 && "desc".equalsIgnoreCase(bits[1]) ? "D" : "A";
+    }
+
+    /**
      * The value of {@code $top}, or {@code fallback} when the client did not ask
      * for a page.
      *

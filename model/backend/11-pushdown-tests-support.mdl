@@ -90,3 +90,25 @@ END;
 
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Top TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Skip TO Formula1Backend.DataAdmin;
+
+/*
+ * The $orderby readers, for the resources that order by a bound CASE rather
+ * than a spliced clause. FINDINGS §44.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortColumn ($Uri: String)
+  RETURNS String AS $Col
+BEGIN
+  $Col = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
+    Uri = $Uri, ColumnMap = 'name:name,year:year,raceCount:raceCount');
+  RETURN $Col;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortDirection ($Uri: String)
+  RETURNS String AS $Dir
+BEGIN
+  $Dir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Uri);
+  RETURN $Dir;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortColumn TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortDirection TO Formula1Backend.DataAdmin;

@@ -34,9 +34,25 @@ BEGIN
     Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
   $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
 
+  /*
+   * The sort. The query orders by a CASE over these same names, so this list is
+   * the only thing that decides what a client can sort by — an unknown name
+   * sorts by nothing and the query's own order stands.
+   */
+  DECLARE $Sortable String = 'entryKey:entryKey,sessionKey:sessionKey,driverNumber:driverNumber,'
+    + 'code:code,driverName:driverName,team:team,teamColour:teamColour,'
+    + 'position:position,gapToLeader:gapToLeader,interval:interval,'
+    + 'lapNumber:lapNumber,lastLapSeconds:lastLapSeconds,sector1:sector1,'
+    + 'sector2:sector2,sector3:sector3,speedTrap:speedTrap,compound:compound,'
+    + 'tyreAge:tyreAge,pitStops:pitStops';
+  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
+    Uri = $Request/Uri, ColumnMap = $Sortable);
+  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
     (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip));
+     topN = toString($Top), skipN = toString($Skip),
+     sortCol = $SortCol, sortDir = $SortDir);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
@@ -47,7 +63,8 @@ BEGIN
   IF $WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-       topN = '1000000', skipN = '0');
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);
     CHANGE $Response (Count = $Total);
   END IF;
@@ -73,9 +90,21 @@ BEGIN
     Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
   $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
 
+  /*
+   * The sort. The query orders by a CASE over these same names, so this list is
+   * the only thing that decides what a client can sort by — an unknown name
+   * sorts by nothing and the query's own order stands.
+   */
+  DECLARE $Sortable String = 'messageKey:messageKey,sessionKey:sessionKey,at:at,category:category,'
+    + 'flag:flag,scope:scope,lap:lap,message:message';
+  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
+    Uri = $Request/Uri, ColumnMap = $Sortable);
+  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
     (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip));
+     topN = toString($Top), skipN = toString($Skip),
+     sortCol = $SortCol, sortDir = $SortDir);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
@@ -86,7 +115,8 @@ BEGIN
   IF $WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-       topN = '1000000', skipN = '0');
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);
     CHANGE $Response (Count = $Total);
   END IF;
@@ -112,9 +142,25 @@ BEGIN
     Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
   $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
 
+  /*
+   * The sort. The query orders by a CASE over these same names, so this list is
+   * the only thing that decides what a client can sort by — an unknown name
+   * sorts by nothing and the query's own order stands.
+   */
+  DECLARE $Sortable String = 'sessionKey:sessionKey,sessionName:sessionName,sessionType:sessionType,'
+    + 'location:location,countryName:countryName,circuitName:circuitName,'
+    + 'dateStart:dateStart,year:year,driverCount:driverCount,leadLap:leadLap,'
+    + 'fetchedAt:fetchedAt,airTemperature:airTemperature,'
+    + 'trackTemperature:trackTemperature,humidity:humidity,rainfall:rainfall,'
+    + 'windSpeed:windSpeed';
+  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
+    Uri = $Request/Uri, ColumnMap = $Sortable);
+  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
     (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip));
+     topN = toString($Top), skipN = toString($Skip),
+     sortCol = $SortCol, sortDir = $SortDir);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
@@ -125,7 +171,8 @@ BEGIN
   IF $WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-       topN = '1000000', skipN = '0');
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);
     CHANGE $Response (Count = $Total);
   END IF;
