@@ -252,24 +252,23 @@ Mendix's, not the SQL's.
 `?$filter=driverId eq 'x'` on a resource with no `driverId` attribute is
 answered `400 Could not map 'driverId' to attribute or association`. A
 parameterised resource has to carry its own parameters as attributes and echo
-them back on every row.
+them back on every row — unless you reach it as an **action**, which takes
+parameters natively:
 
-Both are worked through end to end in `model/backend/16-ops-procedures.mdl`.
+```
+publish microflow Module.RecordPrediction as 'RecordPrediction'
+  expose ( DriverId as 'driverId', RaceId as 'raceId' );
+```
+
+Types are read off the microflow, not restated. An action's return type has to
+be an entity the same service publishes (CE7244). This needs mxcli `715bac5` or
+newer; before that MDL had no syntax for it and the invocation had to be shaped
+as an entity set with an insert microflow.
+
+All three are worked through end to end in
+`model/backend/16-ops-procedures.mdl`.
 
 ## Roadmap
-
-**Real OData actions.** A procedure that changes something wants to be an OData
-action — `POST /odata/x/RecordPrediction`, arguments in the body, an
-`ActionImport` in `$metadata`. Mendix supports it: the metamodel has
-`ODataPublish$PublishedMicroflow` and the model SDK has `NewPublishedMicroflow()`.
-**MDL cannot write one** — `create odata service` takes `publish entity` blocks
-and nothing else, and the writer never emits a `Microflows` collection. Until
-that lands, publish the invocation as an entity set whose `InsertMode` is a
-microflow: POST the arguments, the microflow runs the routine and writes the
-answer back onto the same object, and Mendix returns it in the 201. It is
-discoverable, it works from any client, and it costs you the operation's name
-and the parameters-as-attributes tax above. Swap it the day MDL grows the
-syntax — the microflow underneath does not change.
 
 **Everything Mendix emits, as Mendix grows.** The grammar here is a snapshot of
 one client version, captured empirically because there is nothing to read. When

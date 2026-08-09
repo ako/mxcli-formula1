@@ -35,8 +35,8 @@ another project and it works there unchanged; that is the point of it.
 | `10-live-pushdown.mdl` | The two **splice-style** reads — `Read_Drivers` and `Read_RaceResults`, which build their own SQL and concatenate `FilterSql` / `OrderBySql` into it. **Owns those two microflows**; `02` must not redefine them, and must run before this. |
 | `11-pushdown-tests-support.mdl` | Thin wrappers so `ODataPushdown` can be unit-tested directly, plus `Probe_DynamicSql`. |
 | `13-fan-resources.mdl` | The five derived views the fan pages are built on. Owns those microflows; **not** the service. |
-| `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Re-grants service access after it, which the modify still drops. |
-| `16-ops-procedures.mdl` | `F1OpsApi` — a Postgres database this app does not own, with its logic in **stored procedures**. A table function behind a read, and a procedure behind an insert, which is the nearest thing to an OData action MDL can declare. Needs `scripts/create-f1ops-db.sh` first. |
+| `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Grants service access after it — which used to be mandatory because the modify dropped it, and is now just where the grant lives. |
+| `16-ops-procedures.mdl` | `F1OpsApi` — a Postgres database this app does not own, with its logic in **stored procedures**. A table function behind a read, a procedure behind a real **OData action**, and the custom-authentication microflow all five services use. Needs `scripts/create-f1ops-db.sh` first. |
 | `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
 
 ## The folder layout

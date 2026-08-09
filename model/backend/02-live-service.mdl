@@ -55,13 +55,21 @@
  * question about it. Six resources × seven parses of the same string, and the
  * seven answers could disagree.
  *
- * These resources still advertise $top and $skip they do not apply, which
- * MDL-ODATA03 rightly flags. The declaration that would make them honest —
- * `TopSupported: No, SkipSupported: No` — cannot be used: the external-entity
- * generator hardcodes both capabilities to true regardless of the contract
- * (`cmd_contract.go:1214`), and Mendix then refuses the frontend with CE6630
- * "marked supports $top=False in the OData service, but True in the app".
- * Tried, reverted, filed. FINDINGS §42.
+ * These resources DO apply $top and $skip now (§43), so the contract they
+ * advertise is honest and MDL-ODATA03 is silent — the rule looks for the option
+ * names in the microflow body since `715bac5`, not merely for a
+ * System.HttpRequest parameter, so answering the KEY no longer silences the
+ * paging concern by accident.
+ *
+ * The escape hatch that keeps it quiet here is the call into
+ * ODataPushdown.Parse: mxcli cannot read a Java action, so it stops rather than
+ * guessing. That is the right stance and it does mean the rule is trusting this
+ * file. FINDINGS §48.
+ *
+ * Had they NOT applied paging, `TopSupported: No, SkipSupported: No` would now
+ * be usable — the external-entity generator honoured neither until `715bac5`
+ * and the consuming app failed CE6630. Verified fixed against F1OpsApi, whose
+ * DriverForm does declare both No. FINDINGS §42, §48.
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons (
@@ -306,7 +314,7 @@ create or modify odata service Formula1Backend.F1LiveApi (
   ODataVersion: OData4,
   namespace: 'Formula1Backend.Live'
 )
-authentication basic, session
+authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_Season as 'Seasons' (
     ReadMode: microflow Formula1Backend.Read_Seasons,
@@ -468,16 +476,13 @@ authentication basic, session
 };
 
 /*
- * Re-grant, because the statement above revoked it.
+ * The grants, once.
  *
- * `create or modify odata service` drops the service's role grants, so a file
- * that modifies a service has to put them back or the next build fails with
- * CE0307 "At least one allowed role must be selected". 06-security.mdl is where
- * this grant is declared, but 06 is not re-runnable — `create module role` has
- * no `or modify` form — so re-running it is not the recovery.
- *
- * mxcli `b4a825e` carries a fix for this (`28ce821`) in `sdk/mpr/writer_odata.go`;
- * the writer this project's path uses has no grant handling at all, so the
- * behaviour is unchanged here. Re-verified on `b4a825e`. FINDINGS §41.
+ * These used to be a re-grant with a paragraph explaining itself: `create or
+ * modify odata service` dropped the service's role grants, so every file that
+ * modified a service had to restore them or the next build failed CE0307 "At
+ * least one allowed role must be selected". mxcli `715bac5` fixed the modelsdk
+ * writer and a bare modify now keeps them — verified against this service.
+ * They stay because a service still needs granting the first time. FINDINGS §48.
  */
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveApi TO Formula1Backend.ApiUser;

@@ -1564,6 +1564,70 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
+1. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
+   (§48) — `27ea1da` fixed exactly this for `TopSupported`/`SkipSupported`; the
+   filter and sort terms have the same problem. `mdl/types/edmx.go:446` takes
+   `NonFilterableProperties` out of the record and ignores the record's own
+   `Filterable` property (`:452` the same for `Sortable`), so
+   `cmd_contract.go:672` computes `Filterable: !nonFilterable[p.Name]` = true for
+   every property. Mendix emits the whole-set form
+   (`<PropertyValue Bool="false" Property="Filterable"/>`, no collection) when
+   NO attribute of a resource is filterable, and the list form when some are —
+   both appear in one document. Generating external entities from this repo's
+   `F1OpsApi` gives 28 × CE6630. Reproduction in §48.
+2. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
+   fetch is in the create path only, so after a published service changes shape
+   the client keeps its cached contract, reports "Modified OData client", and
+   `create external entities` regenerates from stale metadata without saying so.
+   Recovery is drop-and-recreate, which cascades into every page and grant that
+   binds those entities.
+3. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
+   `$filter` and keys, re-implemented per resource, and every one of them a place
+   to forget a case. Declaring what is filterable already happens in `expose (…)`;
+   handing the microflow the parsed values rather than the raw request would
+   remove the class instead of the instance.
+4. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
+   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
+   help). This is why five rendering defects survived — a white chart under every
+   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
+   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
+   loopback exemption, an http-safe cookie under `--hub`), being able to render
+   the real app is the highest-leverage check missing here.
+5. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
+   is already in use"*. The guard is right; the diagnosis is misleading, because
+   the process it names is one you already killed. Reap the child on exit, or
+   print the offending pid so the fix is one command rather than three.
+6. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
+   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
+   default mark at least takes the brand colour.
+7. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
+   Stale guidance, no warning.
+   `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
+   here are still stamped two days earlier, so a rebuild alone does not carry it.
+8. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
+9. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+
+
+10. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+   naming a microflow that no longer exists throws on every startup and blocks
+   the next `--test-endpoint` injection, while `mx check` reports 0 errors and
+   the app serves normally. It got committed here and survived weeks. Resolvable
+   statically: `check`/`lint` can compare the name against the model.
+
+### Fixed upstream in `715bac5`
+Verified against the reproduction each was filed with; §48 records how.
+Four of them retired a workaround in this repo — the OData action, custom
+authentication (which deleted `BcryptCost = 8`), the menu icons (which
+deleted a CSS hack), and the service re-grants.
+
 1. **MDL cannot declare a published OData action** (§47) — `create odata service`
    admits `publish entity` blocks and nothing else, so a microflow cannot be
    published as an action or function import. Mendix supports it in full:
@@ -1583,18 +1647,12 @@ the scripts quietly stop being the source of truth.
    `TopSupported: No` then makes the consuming app unbuildable with CE6630, and
    MDL cannot correct it after the fact. This blocks the remedy MDL-ODATA03
    itself recommends.
-3. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
-   fetch is in the create path only, so after a published service changes shape
-   the client keeps its cached contract, reports "Modified OData client", and
-   `create external entities` regenerates from stale metadata without saying so.
-   Recovery is drop-and-recreate, which cascades into every page and grant that
-   binds those entities.
-4. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
+3. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
    `System.HttpRequest` parameter, so adding one for an unrelated reason (the
    key lookup) silences it while `?$top=5` still returns all 77 rows. Check for
    a use of the request, not its presence. (The nine now really do page, §43,
    but the rule would not have noticed either way.)
-5. **`authentication microflow` cannot name its microflow** (§40) — the type is
+4. **`authentication microflow` cannot name its microflow** (§40) — the type is
    accepted, the microflow is silently dropped, and the build then fails with
    CE0333 "Please select a microflow to use for authentication". Custom
    authentication is the one documented way off per-request password hashing,
@@ -1603,29 +1661,10 @@ the scripts quietly stop being the source of truth.
    field, the writer and the reader all exist — `visitor_odata.go:323` recognises
    the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
    `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
-6. **A published resource hand-rolls its whole query surface** (§20, §22) — five
-   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
-   `$filter` and keys, re-implemented per resource, and every one of them a place
-   to forget a case. Declaring what is filterable already happens in `expose (…)`;
-   handing the microflow the parsed values rather than the raw request would
-   remove the class instead of the instance.
-7. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
-   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
-   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
-   help). This is why five rendering defects survived — a white chart under every
-   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
-   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
-   loopback exemption, an http-safe cookie under `--hub`), being able to render
-   the real app is the highest-leverage check missing here.
-8. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
-   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
-   is already in use"*. The guard is right; the diagnosis is misleading, because
-   the process it names is one you already killed. Reap the child on exit, or
-   print the offending pid so the fix is one command rather than three.
-9. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+5. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
    icon rail, and a text-only menu renders "Constru" down the left edge of every
    page. There is no way to fix it in the navigation model.
-10. **`create or modify odata service` still drops role grants** (§34, §26) — the
+6. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
@@ -1633,27 +1672,7 @@ the scripts quietly stop being the source of truth.
    — and `mdl/backend/modelsdk/odata_write.go`, the writer this project's path
    uses, has no `AllowedModuleRoles` handling at all, so it still drops them.
    Reproduced twice on `b4a825e`. §41.
-11. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
-   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
-   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
-   default mark at least takes the brand colour.
-12. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
-   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
-   Stale guidance, no warning.
-   `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
-   here are still stamped two days earlier, so a rebuild alone does not carry it.
-13. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
-   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-14. **Design-property lint does not know the theme** (§29) — `check` green-lights
-   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
-   theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
-
-15. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
-   naming a microflow that no longer exists throws on every startup and blocks
-   the next `--test-endpoint` injection, while `mx check` reports 0 errors and
-   the app serves normally. It got committed here and survived weeks. Resolvable
-   statically: `check`/`lint` can compare the name against the model.
 ### Fixed upstream in `b4a825e`, verified against this project in §41
 
 Kept because the reasoning is the record of why each mattered. Two of them —
@@ -2979,4 +2998,157 @@ another §37: `Predictions` declares a KEY, so a client that has just POSTed wil
 re-read by it. The predictions are in a table, so the lookup is answerable, and
 `Read_Predictions` answers it. Dropping the KEY is not an alternative — Mendix
 requires one (CE6585).
+
+
+## 48. `715bac5`: six filed findings fixed, four workarounds deleted, one new bug
+
+Eleven commits on `ako/mxcli` main since `b4a825e`, six of them citing a section
+of this file by number. Verified each against the reproduction that was filed,
+then deleted what they retire.
+
+| Filed | Commit | Verified |
+|---|---|---|
+| §47.1 MDL cannot declare an OData action | `ededab1` `3509f2a` | **fixed** — and adopted |
+| §42 external entities ignore the contract's `$top`/`$skip` | `27ea1da` | **fixed** |
+| §42 MDL-ODATA03 false negative | `70a169b` | **fixed** |
+| §40 `authentication microflow` cannot name its microflow | `109a55c` | **fixed** — and adopted |
+| §41 the modelsdk writer drops `AllowedModuleRoles` | `dc780ec` | **fixed** |
+| #9 `MENU ITEM` cannot carry an icon | `10ba2e1` `9364d43` | **fixed** — and adopted |
+
+### The action, which was the top open issue
+
+`publish microflow` exists, and the design is better than what §47 proposed:
+parameter types and the return type are **not** restated in MDL, they are read
+off the microflow. There is one declaration, so the two cannot drift.
+
+```
+publish microflow Formula1Backend.RecordPrediction as 'RecordPrediction'
+  expose ( DriverId as 'driverId', RaceId as 'raceId', … );
+```
+
+`$metadata` grew what it was missing:
+
+```xml
+<Action Name="RecordPrediction">
+  <Parameter Name="driverId"    Nullable="false" Type="Edm.String"/>
+  <Parameter Name="raceId"      Nullable="false" Type="Edm.Int64"/>
+  …
+<EntityContainer Name="Entities">
+  <ActionImport Action="Formula1Backend.Ops.RecordPrediction" Name="RecordPrediction"/>
+```
+
+```
+POST /odata/f1-ops/RecordPrediction  {"driverId":"charles-leclerc", …}
+  200  {"predictionKey":"4", …, "accepted":true,  "message":"recorded"}
+POST … {"driverId":"nobody", …}
+  200  {"predictionKey":"",  …, "accepted":false, "message":"no such driver: nobody"}
+POST /odata/f1-ops/Predictions                                        405
+```
+
+The entity-set-with-an-insert-microflow workaround is deleted, the microflow
+underneath is unchanged — which is what it was written for — and `DESCRIBE`
+round-trips the block, so the service can be read back out of the `.mpr`.
+
+**One constraint worth knowing**: an action's return type must be an entity the
+same service publishes (CE7244). `Ops_Prediction` therefore keeps `accepted` and
+`message`, which read like properties of a submission rather than of a record —
+splitting them would mean inventing a second entity set to hold outcomes, which
+is the worse lie.
+
+### Custom authentication, which deletes a deliberate weakening
+
+`authentication microflow Module.X` now carries the name through, and
+`mxcli check` gained **MDL-ODATA04** for the unnamed form — confirmed both ways:
+the rule fires on `authentication microflow` alone, and the named form builds.
+
+This retires `BcryptCost = 8`. §31 measured BCrypt at 60–80% of a cached page
+turn and §40's answer was to drop the work factor from 12 to 8 — faster, and a
+deliberate weakening taken only because the real fix could not be written. Now
+all five services authenticate through a microflow that reads a key off the
+request headers, no password is presented per request, and the cost is back at
+the Mendix default.
+
+```
+                       basic   X-Api-Key
+/odata/f1-live/…        401       200
+/odata/f1/…             401       200
+/odata/f1-fan/…         401       200
+/odata/f1-now/…         401       200
+/odata/f1-ops/…         401       200
+```
+
+The frontend's four OData clients send the key with `HEADERS ('X-Api-Key': @Mod.ApiKey)`
+instead of `HttpUsername`/`HttpPassword` — a constant reference, so the key is
+not a literal in the model. 23/23 frontend tests pass, which is the real proof:
+they drive the clients.
+
+A shared key is the right shape for machine-to-machine here and the wrong shape
+for anything with human users. The point of the microflow is that *what* gets
+checked is now the app's decision.
+
+### Icons, which delete a CSS hack
+
+`MENU ITEM … ICON Atlas_Core.Atlas.home`, as a qualified name into an icon
+collection rather than a string — so it is a model reference `mx check`
+resolves, and `SHOW ICON COLLECTION` lists what is available.
+
+`theme/web/_f1-widget-dark.scss` carried `--navsidebar-width-closed: 0px`,
+collapsing Atlas's rail the whole way because MDL could not give the items
+icons and the rail rendered "Constru", "Race re", "Live rac" down every page.
+Deleted. The rail is back at Atlas's 48px with eight icons in it.
+
+### The two that needed no change here
+
+**`AllowedModuleRoles`** — `28ce821` fixed the `.mpr` writer and missed the
+modelsdk one, so `create or modify odata service` kept dropping grants and every
+file that modified a service had to re-grant. Tested directly: a bare modify
+with no grant statement, then `DESCRIBE` — the grant survives. The grants stay
+in the scripts because a fresh run still has to grant once; the paragraphs
+explaining why they were repeated are gone.
+
+**MDL-ODATA03** now looks for `$top`/`$skip` in the microflow *body* rather than
+for a `System.HttpRequest` parameter, so answering the KEY no longer silences the
+paging concern by accident. Clean across all six OData scripts here. Worth being
+honest about why: these microflows hand the request to a Java action, and the
+rule stops at a call it cannot read rather than guessing. That is the right
+stance, and it does mean the rule is trusting this app rather than checking it.
+
+### One new bug, the sibling of the one just fixed
+
+`27ea1da` fixed `TopSupported`/`SkipSupported` by teaching the parser that the
+capabilities vocabulary has **two annotation shapes** — a record, and a
+standalone boolean. Verified: `F1OpsApi/DriverForm` declares `TopSupported: No`,
+and the generated external entity now carries `TopSupported = false` where it
+used to be hardcoded true.
+
+`FilterRestrictions` and `SortRestrictions` have the same two-shape problem, and
+only one shape is read. `mdl/types/edmx.go:446` takes `NonFilterableProperties`
+out of the record and ignores the record's own `Filterable` property; the same
+at `:452` for `Sortable`. `cmd_contract.go:672` then computes
+`Filterable: !nonFilterable[p.Name]`, which is `true` for every property.
+
+Mendix publishes **both** shapes, in one document, decided by whether *some* or
+*no* attributes are filterable:
+
+```xml
+<!-- DriverForm: some are. mxcli reads this correctly. -->
+<Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions"><Record>
+  <PropertyValue Bool="true" Property="Filterable"/>
+  <PropertyValue Property="NonFilterableProperties"><Collection>
+    <PropertyPath>raceName</PropertyPath> …
+
+<!-- Predictions: none are. mxcli ignores this. -->
+<Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions"><Record>
+  <PropertyValue Bool="false" Property="Filterable"/>
+</Record></Annotation>
+```
+
+Generating external entities from `F1OpsApi` gives **28 × CE6630** — "'message'
+is marked Sortable=False in the OData service, but True in the app" — 20 on
+Sortable, 8 on Filterable. The publisher is right, the contract is right, only
+the generated consumer is wrong: exactly §42, one layer along.
+
+Reproduction: point an OData client at `/odata/f1-ops/` and
+`create external entities from` it. `Predictions` exposes only a KEY with no
+`Filterable`, which is what makes Mendix emit the whole-set form.
 

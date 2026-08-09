@@ -150,7 +150,7 @@ create or modify odata service Formula1Backend.F1LiveNowApi (
   ODataVersion: OData4,
   namespace: 'Formula1Backend.Now'
 )
-authentication basic, session
+authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_LiveEntry as 'Order' (
     ReadMode: microflow Formula1Backend.Read_LiveOrder,

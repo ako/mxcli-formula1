@@ -91,10 +91,15 @@ It also renders **stored routine** invocations — `SELECT * FROM f(…)`,
 `CALL p(…)`, `EXEC p @x = …`, `BEGIN p(…); END;` — as bound templates, for
 resources whose logic lives in the database rather than in a table. A fifth
 service, `F1OpsApi`, puts a real Postgres schema's table function and procedure
-behind OData to prove it (`scripts/create-f1ops-db.sh`). The one thing missing
-is a real OData action: Mendix's metamodel has one, MDL has no syntax for it, so
-the procedure is published as an entity set with an insert microflow. FINDINGS
-§47.
+behind OData to prove it (`scripts/create-f1ops-db.sh`). The procedure is a real
+**OData action** — an `ActionImport` in `$metadata`, `POST` the arguments, get
+the outcome back — which MDL could not declare until mxcli `715bac5` closed the
+gap this repo filed. FINDINGS §47, §48.
+
+All five services use **custom authentication**: a microflow reads a key off the
+request headers, so no password is hashed per request. That deleted
+`BcryptCost = 8`, a deliberate weakening taken when the proper fix could not be
+expressed. FINDINGS §40, §48.
 
 A datagrid showing rows 80–100 sorted by name:
 
@@ -364,9 +369,15 @@ OData → backend → DuckDB — with real durations. Steady-state, per page tur
 | connector overhead | 78 ms | — |
 | Postgres queries | — | 3.5 ms |
 
-The frontend's OData client uses basic auth and holds no session, so the backend
-runs a **full BCrypt password verification on every request**. A wrong password
-costs the same ~350 ms as a right one; no credentials at all costs 10 ms. That is
-the single biggest cost in the solution — bigger than reading a 4 MB CSV twice.
+The frontend's OData client used to send basic credentials and hold no session,
+so the backend ran a **full BCrypt password verification on every request**. A
+wrong password cost the same ~350 ms as a right one; no credentials at all cost
+10 ms. That was the single biggest cost in the solution — bigger than reading a
+4 MB CSV twice.
 
-FINDINGS §31 has the full trace and the method.
+It is gone. All five services use custom authentication: a microflow reads a key
+off the request headers, so there is no password to verify and no hash to
+compute. The interim fix — dropping the BCrypt work factor from 12 to 8, which
+is a deliberate weakening — has been reverted with it.
+
+FINDINGS §31 has the full trace and the method; §40 and §48 the fix.
