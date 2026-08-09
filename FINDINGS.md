@@ -1296,6 +1296,11 @@ So the live path really does cost more than the cached one — about 130 ms —
 but **both are dominated by authentication**. Optimising the SQL would be
 optimising 14% of the request.
 
+§40 is the follow-up: what can be done about it (the three documented options,
+and which of them a Mendix OData *client* can actually use), what was done —
+`BcryptCost 8`, taking the cached page turn to ~68 ms — and the mxcli gap that
+rules out the fix which removes the cost rather than shrinking it.
+
 ### Three smaller things the trace showed
 
 - **`$count=true` doubles the CSV work.** The count query scans the file again
@@ -1571,7 +1576,16 @@ the scripts quietly stop being the source of truth.
    request with the collection default and the client adopts the first row as the
    object's identity, silently and permanently. Warn when a read microflow never
    reads its resource's KEY out of the request, or generate the branch.
-3. **A read-microflow resource fails open: it answers a query option it cannot
+3. **`authentication microflow` cannot name its microflow** (§40) — the type is
+   accepted, the microflow is silently dropped, and the build then fails with
+   CE0333 "Please select a microflow to use for authentication". Custom
+   authentication is the one documented way off per-request password hashing,
+   which is 60–80% of every API call here (§31); without it the only lever is
+   `BcryptCost`, which shrinks the cost rather than removing it. The metamodel
+   field, the writer and the reader all exist — `visitor_odata.go:323` recognises
+   the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
+   `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
+4. **A read-microflow resource fails open: it answers a query option it cannot
    honour instead of refusing** (§37, §20, §22) — the flaw underneath both
    wrong-data bugs in this project. `Read_Calendar` could not parse
    `$filter=calendarKey eq '…'`, so it returned its collection default with a 200
@@ -1579,26 +1593,26 @@ the scripts quietly stop being the source of truth.
    is distinguishable from a real answer. A resource that drops a query option
    should 400, and mxcli knows which attributes it published as filterable, so it
    could generate that refusal. Both bugs would have been two-minute bugs.
-4. **Nothing shows what a published resource is being asked** (§37) — the
+5. **Nothing shows what a published resource is being asked** (§37) — the
    diagnosis took ten app restarts of theorising and then two once
    `LOG INFO 'URI=' + $Request/Uri` went into the microflow. The URI is only
    otherwise visible at TRACE on the whole runtime. An `mxcli odata trace`, or a
    log node per published service, turns this class of bug from an afternoon into
    a minute. (`mxcli debug` may already cover some of this — untried here.)
-5. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
+6. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
    never there** (§39) — a grid column's drill-down round-trips as
    `linkbutton btn (Caption: 'Weekend', Action: show_page Module.Page)` with no
    `(Race: $currentObject)`. The mapping is in the model and the build is green;
    only the description loses it. Cost three restart cycles here, replacing a
    button that was correct. Small bug, outsized cost, because `DESCRIBE` is the
    thing you reach for when you distrust the model.
-6. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+7. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
    to forget a case. Declaring what is filterable already happens in `expose (…)`;
    handing the microflow the parsed values rather than the raw request would
    remove the class instead of the instance.
-7. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+8. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
    sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
    never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
    help). This is why five rendering defects survived — a white chart under every
@@ -1606,45 +1620,45 @@ the scripts quietly stop being the source of truth.
    `check`, the build, the log or `curl` can see. Whatever the mechanism (a
    loopback exemption, an http-safe cookie under `--hub`), being able to render
    the real app is the highest-leverage check missing here.
-8. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+9. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
    next boot then refuses, correctly, on the previous run's corpse: *"port 6643
    is already in use"*. The guard is right; the diagnosis is misleading, because
    the process it names is one you already killed. Reap the child on exit, or
    print the offending pid so the fix is one command rather than three.
-9. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+10. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
    icon rail, and a text-only menu renders "Constru" down the left edge of every
    page. There is no way to fix it in the navigation model.
-10. **`create or modify odata service` still drops role grants** (§34, §26) — the
+11. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
-11. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+12. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
    MDL passes it through and the build fails with "Error(s) in expression". Either
    strip comments from expression text or reject them at check time.
-12. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+13. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
    constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
    reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
    entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
    tool insists on for the URL is the shape whose credentials it will not read.
-13. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+14. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
    document's folder, which closes half the gap; there is still no way to see a
    module's layout in one place, or to diff an intended layout against the real one,
    without reading the `.mpr` as SQLite.
-14. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+15. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-15. **The widget layer misses the filter-operator popover** (§33, §34) —
+16. **The widget layer misses the filter-operator popover** (§33, §34) —
    `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
    `.dropdown-list` or `.dropdown-content`, which still carry a baked
    `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
    fixed.
-16. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+17. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
-17. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+18. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-18. **Design-property lint does not know the theme** (§29) — `check` green-lights
+19. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
@@ -2028,3 +2042,121 @@ to it too.
 Reproduction is a one-liner against this repo: describe `Season_Summary`,
 `Drivers_Live`, `Seasons_Overview` or `Constructors_Overview` and compare the
 column's button against `model/frontend/04-pages.mdl` or `07-fan-pages.mdl`.
+
+## 40. Custom authentication is the fix for the BCrypt cost, and MDL cannot name the microflow
+
+§31 measured a page turn and found 60–80% of it was BCrypt: a consumed OData
+service authenticates with basic auth on every request and holds no session, so
+every call is a full login. This is the follow-up — what the options actually
+are, measured rather than reasoned about.
+
+### The three methods, and which one applies
+
+[The reference guide][1] lists exactly three for a published OData service:
+
+| Method | How | Usable here |
+|---|---|---|
+| Username and password | `Authorization: Basic …`, per request | yes — what we do, and what costs 300 ms |
+| Active session | existing session + `X-Csrf-Token` | **no** — documented as JavaScript within the same app |
+| Custom authentication | a microflow returning a User | yes, and it removes the cost entirely |
+
+[1]: https://docs.mendix.com/refguide/published-odata-services/#authentication-methods
+
+Active session is worth dwelling on, because the measurement invites the wrong
+conclusion. Logging in through `/xas/` and reusing the cookie *does* work and
+*is* fast:
+
+```
+GET /odata/f1/Drivers?$top=20
+  basic auth                              200   ~360 ms
+  wrong password                          401   ~346 ms   ← hashes either way
+  session cookie, no Authorization        200   ~19 ms
+  no credentials at all                   401   ~42 ms
+```
+
+19 ms against 360 ms looks like the answer. It is not: that path is only open to
+same-origin JavaScript, and the thing making these calls is Mendix's own OData
+*client*, which sends basic auth and keeps no cookie. The number is proof of
+where the time goes, not a route to avoiding it.
+
+### What custom authentication would buy
+
+A microflow taking the `HttpHeader` list, checking a shared secret and returning
+a User. No password hash anywhere, so the ~42 ms floor.
+
+The neat part is that **the client needs no change at all**. The microflow can
+read the `Authorization: Basic …` header itself and compare it against a
+constant; the frontend keeps its existing username/password configuration and
+the server simply stops calling BCrypt.
+
+### The gap
+
+MDL accepts the *type* and silently drops the *microflow*:
+
+```
+create or modify odata service Formula1Backend.ProbeApi ( … )
+authentication microflow Formula1Backend.Read_Seasons
+{ … };
+```
+
+`mxcli check` passes. `mxcli exec` reports `Created OData service`. Then:
+
+```
+$ mxcli -c "DESCRIBE ODATA SERVICE Formula1Backend.ProbeApi"
+authentication Microflow                      ← no microflow named
+
+$ mx check Formula1Backend.mpr
+[error] [CE0333] "Please select a microflow to use for authentication"
+```
+
+The plumbing exists at both ends and only the middle is missing:
+
+- `generated/metamodel/types.go` — `ODataPublishPublishedODataService2.AuthenticationMicroflow`
+- `mdl/backend/modelsdk/odata_write.go:233` — writes it from `svc.AuthMicroflow`
+- `mdl/backend/modelsdk/integration_read.go:115` — reads it back
+- `mdl/visitor/visitor_odata.go:323` — `parseODataAuthTypes` recognises `basic`,
+  `session`, `guest`, `microflow` … and captures no name for the last one
+- nothing anywhere assigns `svc.AuthMicroflow`
+
+So `svc.AuthMicroflow` is only ever populated by reading a model Studio Pro
+wrote. And `DESCRIBE` emits it as a **comment** (`-- Auth Microflow: …`,
+`cmd_odata.go:356`), so a custom-auth service cannot round-trip through MDL
+either — the same shape as §39.
+
+The grammar change is `authentication microflow <QualifiedName>`; the executor
+change is one assignment. Until then this needs Studio Pro, which for a project
+whose whole point is that the model is written as MDL means it does not get
+done.
+
+### What was done instead
+
+`BcryptCost` **is** reachable — `ALTER SETTINGS MODEL BcryptCost = 8` in
+`07-demo-users.mdl`. It shrinks the cost rather than removing it, and it is a
+judgement about these two accounts specifically: both are machine accounts with
+generated passwords, there is no human password in this database, and the
+setting is per app so the frontend keeps the default 12 for its one real user.
+
+Steady state after the change, three runs each:
+
+| Resource | before | after |
+|---|---|---|
+| `f1/Drivers` (cached) | ~360 ms | **~68 ms** |
+| `f1-live/Drivers` (DuckDB) | ~500 ms | **~165 ms** |
+| `f1-now/Order` | — | ~71 ms |
+| `f1-fan/Calendar` | — | ~857 ms |
+
+Each step down the cost halves, so 10 ≈ 145 ms and 6 ≈ 36 ms; 8 is where the
+hash stops dominating without becoming decorative.
+
+And the table earns its keep by what it exposes: **`Calendar` is now the slowest
+resource by an order of magnitude**, and that is its own SQL — two correlated
+subqueries per race to name the winner and the team. It was always that slow.
+While every request carried 300 ms of hashing, nobody could tell.
+
+### One more thing this file cannot do twice
+
+`07-demo-users.mdl` opens by explaining that 06 is not re-runnable because
+`create module role` has no `or modify` form. Neither has `CREATE DEMO USER`, so
+this file halts on "demo user already exists" too — which meant a setting added
+at the *end* of it never ran on an existing project. It is now the first
+statement, and the header says so.
