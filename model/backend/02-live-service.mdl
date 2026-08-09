@@ -60,10 +60,33 @@ BEGIN
     SET $Key = toString($KeyNumber);
   END IF;
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetSeasons
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -76,10 +99,33 @@ BEGIN
   $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
     Uri = $Request/Uri, Field = 'circuitId');
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetCircuits
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -92,10 +138,33 @@ BEGIN
   $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
     Uri = $Request/Uri, Field = 'constructorId');
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetConstructors
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -121,10 +190,33 @@ BEGIN
     SET $Key = toString($KeyNumber);
   END IF;
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetRaces
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -137,10 +229,33 @@ BEGIN
   $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
     Uri = $Request/Uri, Field = 'standingKey');
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -153,10 +268,33 @@ BEGIN
   $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
     Uri = $Request/Uri, Field = 'standingKey');
 
+  /*
+   * The page. Mendix applies no query options to a read microflow, so $top and
+   * $skip are only a page if this asks for them — and the fallback is the whole
+   * list, because that is what this resource returned before it could page.
+   */
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+     topN = toString($Top), skipN = toString($Skip));
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
+  IF $WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+       topN = '1000000', skipN = '0');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 

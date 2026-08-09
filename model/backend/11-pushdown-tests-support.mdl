@@ -67,3 +67,26 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Probe_DynamicSql TO Formula1Backend.D
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_OrderLimit TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Where TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO Formula1Backend.DataAdmin;
+
+/*
+ * $top and $skip as values rather than as a clause — the readers the resources
+ * in 02 and 15 use, which pass them to a bound LIMIT instead of splicing SQL.
+ * FINDINGS §43.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Top ($Uri: String)
+  RETURNS Long AS $Top
+BEGIN
+  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
+    Uri = $Uri, Fallback = 1000000, MaxTop = 500);
+  RETURN $Top;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Skip ($Uri: String)
+  RETURNS Long AS $Skip
+BEGIN
+  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Uri);
+  RETURN $Skip;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Top TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Skip TO Formula1Backend.DataAdmin;

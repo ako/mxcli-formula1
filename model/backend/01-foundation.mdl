@@ -525,9 +525,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.year AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.year AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC'
+         ORDER BY t.year DESC
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_Season
     map ( year as Year, championDriverName as ChampionDriverName,
           championConstructorName as ChampionConstructorName, raceCount as RaceCount );
@@ -540,9 +543,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.name'
+         ORDER BY t.name
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_Circuit
     map ( id as CircuitId, name as Name, fullName as FullName, placeName as PlaceName,
           countryId as Country, latitude as Latitude, longitude as Longitude,
@@ -556,9 +562,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.name'
+         ORDER BY t.name
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_Constructor
     map ( id as ConstructorId, name as Name, fullName as FullName, countryId as Country,
           totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
@@ -589,9 +598,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.round'
+         ORDER BY t.year DESC, t.round
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_Race
     map ( id as RaceId, year as Year, round as Round, date as RaceDate,
           officialName as OfficialName, grandPrixId as GrandPrixId,
@@ -645,9 +657,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.positionDisplayOrder'
+         ORDER BY t.year DESC, t.positionDisplayOrder
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_DriverStanding
     map ( standingKey as StandingKey, year as Year,
           positionDisplayOrder as PositionOrder,
@@ -666,9 +681,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.year DESC, t.positionDisplayOrder'
+         ORDER BY t.year DESC, t.positionDisplayOrder
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_ConstructorStanding
     map ( standingKey as StandingKey, year as Year,
           positionDisplayOrder as PositionOrder,
@@ -966,9 +984,12 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.entryKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.entryKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-         ORDER BY t.position'
+         ORDER BY t.position
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_LiveEntry
     map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
           code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
@@ -999,9 +1020,11 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.messageKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.messageKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-'
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_LiveMessage
     map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
           category as Category, flag as Flag, scope as Scope, lap as Lap,
@@ -1028,9 +1051,11 @@ begin
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.sessionKey AS VARCHAR) = {keyFilter}
                OR TRY_CAST(t.sessionKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
-'
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
     parameter dataDir: string
     parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
     returns Formula1Backend.Stg_LiveSession
     map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
           location as Location, countryName as CountryName, circuitName as CircuitName,

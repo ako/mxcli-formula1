@@ -42,6 +42,36 @@ return formula1backend.ODataQuery.filterLong(Uri, Field, Fallback);
 $$;
 
 /*
+ * $top and $skip, as values rather than as a SQL clause.
+ *
+ * ODataOrderLimitSql splices " ORDER BY … LIMIT n" into a statement the caller
+ * is building. The resources in 02 and 15 build no statement — their SQL lives
+ * in the connection and takes bound parameters — so they need the numbers, not
+ * the clause. FINDINGS §43.
+ *
+ * The fallback is "everything", not a page size: these resources returned their
+ * whole list before paging existed, and a caller that never asked for a page
+ * must keep getting one.
+ */
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataTop(
+  Uri: String,
+  Fallback: Long NOT NULL,
+  MaxTop: Long NOT NULL
+) RETURNS Long
+EXPOSED AS 'Read $top as a number' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.topValue(Uri, Fallback, MaxTop);
+$$;
+
+CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSkip(
+  Uri: String
+) RETURNS Long
+EXPOSED AS 'Read $skip as a number' IN 'F1 pushdown'
+AS $$
+return formula1backend.ODataQuery.skipValue(Uri);
+$$;
+
+/*
  * The other half of "which one did you mean": a key in the path rather than a
  * term in $filter. A client resolving an object it already holds asks for
  * /Calendar('1036-c'), and a read that only looks at $filter answers with its

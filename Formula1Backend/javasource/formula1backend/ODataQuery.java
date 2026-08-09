@@ -269,6 +269,50 @@ public final class ODataQuery {
     }
 
     /**
+     * The value of {@code $top}, or {@code fallback} when the client did not ask
+     * for a page.
+     *
+     * The companion to {@link #orderLimit}, for resources that build no SQL of
+     * their own: those pass the value to a bound LIMIT rather than splicing a
+     * clause. The fallback is "everything" rather than a page size, because
+     * these resources returned their whole list before paging existed and a
+     * caller that never asked for a page must keep getting one.
+     *
+     * Clamped to {@code maxTop} so a client cannot ask for more work than the
+     * resource is willing to do, and a negative or unparseable value falls back
+     * rather than reaching SQL.
+     */
+    public static long topValue(String uri, long fallback, long maxTop) {
+        String raw = parseQuery(uri).get("$top");
+        if (raw == null) {
+            return fallback;
+        }
+        try {
+            long v = Long.parseLong(raw.trim());
+            if (v < 0) {
+                return fallback;
+            }
+            return v > maxTop ? maxTop : v;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** The value of {@code $skip}; 0 when absent, negative or unparseable. */
+    public static long skipValue(String uri) {
+        String raw = parseQuery(uri).get("$skip");
+        if (raw == null) {
+            return 0;
+        }
+        try {
+            long v = Long.parseLong(raw.trim());
+            return v < 0 ? 0 : v;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
      * The key literal of a key-addressed request, or "" for a collection read.
      *
      * `/odata/f1-fan/Calendar('1036-c')` yields `1036-c`; `/Calendar(1036)`

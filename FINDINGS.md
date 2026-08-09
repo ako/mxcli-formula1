@@ -1580,7 +1580,8 @@ the scripts quietly stop being the source of truth.
 3. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
    `System.HttpRequest` parameter, so adding one for an unrelated reason (the
    key lookup) silences it while `?$top=5` still returns all 77 rows. Check for
-   a use of the request, not its presence.
+   a use of the request, not its presence. (The nine now really do page, §43,
+   but the rule would not have noticed either way.)
 4. **`authentication microflow` cannot name its microflow** (§40) — the type is
    accepted, the microflow is silently dropped, and the build then fails with
    CE0333 "Please select a microflow to use for authentication". Custom
@@ -2442,3 +2443,81 @@ silently omitting the new attribute.
 The recovery is to drop the client and its external entities and recreate them,
 which in this project also means re-running the pages and grants that bind them.
 Either modify should re-fetch, or it should say that it did not.
+
+## 43. Paging the nine, and why the count needs its own scan
+
+§42 closed the key half and left the other one open: the nine resources still
+advertised `$top` and `$skip` and applied neither, so a client asking for five
+seasons got seventy-seven and believed it had a page. `MDL-ODATA03` had stopped
+saying so, which made it worse rather than better.
+
+### Values, not a clause
+
+`ODataOrderLimitSql` splices `" ORDER BY … LIMIT n OFFSET m"` into a statement
+the caller is assembling. These resources assemble nothing — their SQL lives in
+the connection and takes bound parameters — so they need the *numbers*:
+
+```java
+public static long topValue(String uri, long fallback, long maxTop)
+public static long skipValue(String uri)
+```
+
+and the query gained a bound window beside its bound key:
+
+```sql
+ORDER BY t.year DESC
+LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)
+```
+
+Bound, so nothing a client sends reaches the SQL as text. `?$skip=drop%20table`
+is 0.
+
+**The fallback is the whole list, not a page size.** `orderLimit` defaults to
+`maxTop` because an unbounded read microflow is how the Drivers grid once
+returned 293 KB for twenty names. These nine are different: they returned
+everything before they could page, and every existing caller — the frontend's
+external entities, the refresh jobs, the health counts — expects that. A default
+page here would be a silent behaviour change dressed as a fix.
+
+### The count has to be the set, not the page
+
+A grid draws its scrollbar from `$count`, so once a read returns a page,
+`COUNT($Rows)` is the wrong answer — it reports the page size and the scrollbar
+says there are five seasons. The full-set count needs its own scan.
+
+The paged resources in `10-live-pushdown.mdl` keep a second named query for
+this (`GetDriverCount`). These nine don't need one: the same query, run with the
+window wide open, *is* the count. So the second scan is the same statement with
+`topN = '1000000', skipN = '0'` — no new queries, no new entities, and the count
+matches the filter by construction because it is the same WHERE.
+
+It runs only when `$count=true`, so an unpaged read still costs one scan. These
+are 77–1680 row tables; RaceResults, the one that would hurt, has had proper
+pushdown since §22.
+
+### Verified
+
+```
+GET /Seasons                      →  77 rows,  count absent
+GET /Seasons?$top=5               →   5 rows,  2026 … 2022
+GET /Seasons?$top=5&$skip=10      →   5 rows,  2016 … 2012
+GET /Seasons?$top=5&$count=true   →   5 rows,  count=77      ← the set, not the page
+GET /DriverStandings?$top=3&$count=true            →  3 rows, count=1680
+GET /DriverStandings?$filter=standingKey eq '…'    →  1 row,  count=1
+```
+
+Five tests cover the readers directly, including the clamp and the junk input.
+The published contract is byte-identical afterwards — capabilities were already
+`true` and are now honest — so no client, external entity or page needed
+regenerating. 26/26 backend, 23/23 frontend.
+
+### What this leaves
+
+`$orderby` is still not pushed down: these resources sort the way their query
+says, and a client that asks for a different order gets the default. Unlike
+paging, that cannot be done with a bound parameter — an ORDER BY is SQL text, so
+it needs either the whitelist-and-splice treatment from `10-live-pushdown.mdl`
+(which means duplicating each SELECT into its microflow) or a column whitelist
+bound into a `CASE`. Neither is free, and no consumer sorts these today.
+`MDL-ODATA03` does not cover `$orderby`, so nothing flags it — noted here so it
+is a decision rather than an oversight.

@@ -111,3 +111,41 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/oda
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=name eq ''a'' or name eq ''b''');
 /
+
+/**
+ * $top and $skip as values, for the resources that pass them to a bound LIMIT
+ * rather than building SQL. FINDINGS §43.
+ *
+ * @test No $top means the whole list, not a default page
+ * @expect $result = 1000000
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons');
+/
+
+/**
+ * @test $top is read and clamped to what the resource will serve
+ * @expect $result = 20
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons?$top=20');
+/
+
+/**
+ * @test An over-large $top is clamped rather than honoured
+ * @expect $result = 500
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons?$top=99999');
+/
+
+/**
+ * @test $skip is read
+ * @expect $result = 40
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/Seasons?$top=20&$skip=40');
+/
+
+/**
+ * @test A junk $skip is 0, not an error and not SQL
+ * @expect $result = 0
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/Seasons?$skip=drop%20table');
+/
