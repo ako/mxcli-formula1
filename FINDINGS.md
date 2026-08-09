@@ -3152,3 +3152,76 @@ Reproduction: point an OData client at `/odata/f1-ops/` and
 `create external entities from` it. `Predictions` exposes only a KEY with no
 `Filterable`, which is what makes Mendix emit the whole-set form.
 
+
+## 49. The rebuild, actually run
+
+§48 ended with a claim worth testing: every document in both apps is created by
+a script, so `model/` is the source of truth. A name-by-name audit said 146 of
+146, zero drift. That audit proves every document is *mentioned*. It does not
+prove the scripts rebuild the app.
+
+So both apps were dropped — all seven modules — and rebuilt from `model/`.
+
+### What "identical" can mean here
+
+Not a byte-identical `.mpr`. Mendix keys every document by UUID, so recreating a
+module mints a fresh id for every entity, attribute, microflow and page;
+`git diff mprcontents/` after a rebuild is thousands of files and proves nothing
+in either direction.
+
+`scripts/fingerprint.sh` compares meaning instead: every document round-tripped
+through `DESCRIBE` (which emits MDL, not ids), the security matrix, the
+settings, the navigation, and the published `$metadata` of all five services.
+13,000 lines per side.
+
+### The result
+
+**All five `$metadata` documents are byte-identical.** The contract a consumer
+binds to — entity types, keys, capabilities, the `ActionImport` — is exactly
+reproduced. 71/71 backend and 23/23 frontend tests pass against the rebuilt
+apps, `mx check` is clean on both, and the cached-service tests still assert
+917 drivers and 27533 results, so the startup job repopulated tables that did
+not exist ten minutes earlier.
+
+166 lines differ, in three classes:
+
+- **`@Position`** on entities the scripts do not place explicitly. Auto-placement
+  follows creation order, so the domain-model canvas differs. Cosmetic, and a
+  real if minor gap: an entity with no `@Position` does not round-trip its
+  layout.
+- **Listing order** in the inventory and security matrix — creation order again.
+- **Stale `User` grants**, below.
+
+### Three real defects, which is why the test was worth running
+
+**1. The set does not run in one pass.** Each file owns its documents *and* the
+grants on them, so grants are forward references across files: `02` grants to a
+module role `06` creates, `06` grants execute on a microflow `10` owns, `13`
+grants on a service `14` declares. `02 → 06 → 10 → 02` is a cycle, so no single
+ordering exists. Two passes converge; the frontend needs three, because its page
+scripts open each other's pages. The README claimed one pass. It now says two,
+and names the clean fix (split `06` into roles-then-grants).
+
+**2. `12-folders.mdl` referenced a microflow deleted in §48.** `Insert_Prediction`
+went when the OData action replaced it, and the folder move for it stayed. This
+never failed a build, because moving a document that does not exist is a no-op
+on a model that already has the layout — it only fails on a rebuild, where the
+error is the first sign the line is dead. Fixed, and `RecordPrediction` and
+`AuthenticateApiClient` now get their folder.
+
+**3. Grants in the `.mpr` that no script creates.** Seven pages and two
+microflows were granted to the default `User` module role — left from an early
+iteration, never written back. The rebuild dropped them. Nothing reachable
+changed: the `User` user role exists but no demo user holds it, and `fan` is
+`Enthusiast`. This is the §34 lesson recurring in the other direction. §34 found
+documents that lived only in the `.mpr`; this found *access rules* that did.
+A name audit cannot catch it — the documents were all present, only their grants
+differed — which is precisely why a rebuild is worth more than an inventory.
+
+### What it settles
+
+`model/` does rebuild both apps, and the published contracts come back
+identical. The residue outside MDL is unchanged and is what §48 listed: three
+hand-written Java classes, two SCSS files, the data and schema scripts, and the
+four cached `$metadata` contracts.
+

@@ -9,11 +9,59 @@ domain model had to be reshaped.
 scripts/create-f1ops-db.sh          # the Postgres database 16 reaches into
 cd Formula1Backend
 ./mxcli exec ../model/odatapushdown/module.mdl -p Formula1Backend.mpr
-for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; done
+for pass in 1 2; do                 # twice — see "Two passes", below
+  for f in ../model/backend/[0-9][0-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Backend.mpr; done
+done
+./mxcli exec ../model/backend/12-folders.mdl -p Formula1Backend.mpr   # last
 ./mxcli sync-java-deps -p Formula1Backend.mpr
 ./mxcli -p Formula1Backend.mpr -c \
   "alter settings model AfterStartupMicroflow = 'Formula1Backend.ASU_LoadCacheIfEmpty';"
 ```
+
+## Two passes, and why
+
+**The set converges in two passes, not one.** That is a property of how these
+files are split, not of MDL. Each file owns its documents *and* the grants on
+them, so grants are forward references across files:
+
+- `02` grants to `Formula1Backend.ApiUser`, a module role `06` creates;
+- `06` grants execute on `Read_Drivers`, a microflow `10` owns;
+- `13` grants on `F1FanApi`, which `14` declares.
+
+`02 → 06 → 10 → 02` is a genuine cycle, so no single ordering exists. Running
+the set twice resolves it: pass one creates every document, pass two lands every
+grant. `12-folders.mdl` still has to come last — glob order puts it before `13`
+and `14`, whose documents it moves.
+
+The clean fix is to split `06` into roles-then-grants so the cycle breaks and
+one pass suffices. Not done; the two-pass loop above is verified.
+
+The frontend has the same shape and needs three passes — its page scripts
+cross-reference each other's pages (`04` opens `Driver_Career` from `07`, which
+opens `Race_Weekend` from `08`).
+
+## Verified, not asserted
+
+`scripts/fingerprint.sh` dumps a semantic fingerprint of both apps — every
+document round-tripped through `DESCRIBE`, the security matrix, the settings,
+and the published `$metadata`. A rebuild cannot produce a byte-identical `.mpr`
+(Mendix keys documents by UUID, so every element gets a new id and
+`git diff mprcontents/` is thousands of files either way), but the fingerprint
+carries meaning rather than identity.
+
+Dropping all seven modules and rebuilding from these scripts, then diffing:
+
+- **all five published `$metadata` documents byte-identical** — the contract a
+  consumer binds to is exactly reproduced;
+- 71/71 backend and 23/23 frontend tests pass against the rebuilt apps;
+- `mx check` 0 errors on both;
+- 166 differing lines, all in three classes: `@Position` coordinates for
+  entities the scripts do not place explicitly, listing order, and a set of
+  stale `…User` role grants that live in the `.mpr` and no script creates.
+
+That last class is drift the rebuild *removed*: page and microflow grants to
+the default `User` module role, left over from an early iteration. No demo user
+holds that role — `fan` is `Enthusiast` — so nothing reachable changed.
 
 `model/odatapushdown/` is not part of this app. It is a standalone Mendix module
 — OData query options to SQL, for any resource backed by a read microflow over
@@ -37,7 +85,7 @@ another project and it works there unchanged; that is the point of it.
 | `13-fan-resources.mdl` | The five derived views the fan pages are built on. Owns those microflows; **not** the service. |
 | `14-weekend.mdl` | `RaceWeekend`, `RaceSessions`, `Calendar`, `WeekendShape`, `LapChart` — and the **whole** `F1FanApi` declaration, all ten resources, because `create or modify odata service` takes the entire surface. Grants service access after it — which used to be mandatory because the modify dropped it, and is now just where the grant lives. |
 | `16-ops-procedures.mdl` | `F1OpsApi` — a Postgres database this app does not own, with its logic in **stored procedures**. A table function behind a read, a procedure behind a real **OData action**, and the custom-authentication microflow all five services use. Needs `scripts/create-f1ops-db.sh` first. |
-| `12-folders.mdl` | Sorts the documents the scripts above created into folders. Runs last, and is the only place the layout is written down. |
+| `12-folders.mdl` | Sorts the documents the scripts above created into folders. **Runs last** — after `16`, despite the number — and is the only place the layout is written down. |
 
 ## The folder layout
 

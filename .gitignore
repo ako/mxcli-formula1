@@ -52,3 +52,7 @@
 /Formula1Frontend/userlib/*.jar
 /Formula1Backend/out.mda
 /Formula1Frontend/out.mda
+
+# Semantic fingerprints from scripts/fingerprint.sh — a local before/after
+# comparison, not an artefact worth versioning.
+/fingerprint/
