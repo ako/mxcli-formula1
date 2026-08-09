@@ -9,16 +9,14 @@
 // export-alert focus ring, feedback and take-picture buttons). FINDINGS §33
 // filed it; §34 records the fix. Everything it covers has been deleted here.
 //
-// Two things are left, both verified against the regenerated
-// deployment/web/theme.compiled.css:
+// `b4a825e` took the filter-operator popover too, so what is left here is what
+// no generated stylesheet can reach:
 //
-//   1. the filter-operator popover still casts a light-mode shadow — the
-//      generated layer handles `.column-selectors` but not `.filter-selectors`
-//      and the dropdown surfaces beside it;
+//   1. Plotly paints its own paper as inline style, and reads no token;
 //   2. the header mark is an <img>, which no stylesheet can recolour.
 //
 // Imported from main.scss outside the mxcli:theme fence, so `mxcli theme apply`
-// leaves it alone — it survived the c76d4b7 re-apply untouched.
+// leaves it alone — it has survived two re-applies untouched.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -93,17 +91,6 @@
 .layout-atlas-responsive,
 .layout-atlas-responsive-default,
 .layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
-
-// datawidgets/web/_datagrid-filters.scss:71,143,153,206 — box-shadow with a
-// baked rgba(5,15,129,.05). Console separates planes by lightness, not shadow,
-// so this reads as a smudge under the filter-operator list. `--mxt-shadow` is
-// the token the generated layer uses for the same job on `.column-selectors`.
-.filter-selectors,
-.dropdown-list,
-.dropdown-content {
-  box-shadow: var(--mxt-shadow);
-  border: 1px solid var(--mxt-line);
-}
 
 // ---------------------------------------------------------------------------
 // The header mark.

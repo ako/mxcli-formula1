@@ -1564,6 +1564,70 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
+1. **`authentication microflow` cannot name its microflow** (§40) — the type is
+   accepted, the microflow is silently dropped, and the build then fails with
+   CE0333 "Please select a microflow to use for authentication". Custom
+   authentication is the one documented way off per-request password hashing,
+   which is 60–80% of every API call here (§31); without it the only lever is
+   `BcryptCost`, which shrinks the cost rather than removing it. The metamodel
+   field, the writer and the reader all exist — `visitor_odata.go:323` recognises
+   the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
+   `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
+2. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
+   `$filter` and keys, re-implemented per resource, and every one of them a place
+   to forget a case. Declaring what is filterable already happens in `expose (…)`;
+   handing the microflow the parsed values rather than the raw request would
+   remove the class instead of the instance.
+3. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
+   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
+   help). This is why five rendering defects survived — a white chart under every
+   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
+   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
+   loopback exemption, an http-safe cookie under `--hub`), being able to render
+   the real app is the highest-leverage check missing here.
+4. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
+   is already in use"*. The guard is right; the diagnosis is misleading, because
+   the process it names is one you already killed. Reap the child on exit, or
+   print the offending pid so the fix is one command rather than three.
+5. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+   icon rail, and a text-only menu renders "Constru" down the left edge of every
+   page. There is no way to fix it in the navigation model.
+6. **`create or modify odata service` still drops role grants** (§34, §26) — the
+   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
+   service silently revokes its access and the build fails with "At least one
+   allowed role must be selected".
+   `b4a825e` carries `28ce821`, which fixes this in `sdk/mpr/writer_odata.go`
+   — and `mdl/backend/modelsdk/odata_write.go`, the writer this project's path
+   uses, has no `AllowedModuleRoles` handling at all, so it still drops them.
+   Reproduced twice on `b4a825e`. §41.
+7. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
+   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
+   default mark at least takes the brand colour.
+8. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
+   Stale guidance, no warning.
+   `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
+   here are still stamped two days earlier, so a rebuild alone does not carry it.
+9. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
+10. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+
+
+11. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+   naming a microflow that no longer exists throws on every startup and blocks
+   the next `--test-endpoint` injection, while `mx check` reports 0 errors and
+   the app serves normally. It got committed here and survived weeks. Resolvable
+   statically: `check`/`lint` can compare the name against the model.
+### Fixed upstream in `b4a825e`, verified against this project in §41
+
+Kept because the reasoning is the record of why each mattered. Two of them —
+the bundle and the popover — retired code in this repo when they landed.
 
 1. **`mxcli run --local` deletes the web client bundle it just built** (§35) — the
    Gradle `package` pass during boot repopulates `deployment/web` without `dist/`,
@@ -1576,16 +1640,7 @@ the scripts quietly stop being the source of truth.
    request with the collection default and the client adopts the first row as the
    object's identity, silently and permanently. Warn when a read microflow never
    reads its resource's KEY out of the request, or generate the branch.
-3. **`authentication microflow` cannot name its microflow** (§40) — the type is
-   accepted, the microflow is silently dropped, and the build then fails with
-   CE0333 "Please select a microflow to use for authentication". Custom
-   authentication is the one documented way off per-request password hashing,
-   which is 60–80% of every API call here (§31); without it the only lever is
-   `BcryptCost`, which shrinks the cost rather than removing it. The metamodel
-   field, the writer and the reader all exist — `visitor_odata.go:323` recognises
-   the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
-   `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
-4. **A read-microflow resource fails open: it answers a query option it cannot
+3. **A read-microflow resource fails open: it answers a query option it cannot
    honour instead of refusing** (§37, §20, §22) — the flaw underneath both
    wrong-data bugs in this project. `Read_Calendar` could not parse
    `$filter=calendarKey eq '…'`, so it returned its collection default with a 200
@@ -1593,75 +1648,37 @@ the scripts quietly stop being the source of truth.
    is distinguishable from a real answer. A resource that drops a query option
    should 400, and mxcli knows which attributes it published as filterable, so it
    could generate that refusal. Both bugs would have been two-minute bugs.
-5. **Nothing shows what a published resource is being asked** (§37) — the
+4. **Nothing shows what a published resource is being asked** (§37) — the
    diagnosis took ten app restarts of theorising and then two once
    `LOG INFO 'URI=' + $Request/Uri` went into the microflow. The URI is only
    otherwise visible at TRACE on the whole runtime. An `mxcli odata trace`, or a
    log node per published service, turns this class of bug from an afternoon into
    a minute. (`mxcli debug` may already cover some of this — untried here.)
-6. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
+5. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
    never there** (§39) — a grid column's drill-down round-trips as
    `linkbutton btn (Caption: 'Weekend', Action: show_page Module.Page)` with no
    `(Race: $currentObject)`. The mapping is in the model and the build is green;
    only the description loses it. Cost three restart cycles here, replacing a
    button that was correct. Small bug, outsized cost, because `DESCRIBE` is the
    thing you reach for when you distrust the model.
-7. **A published resource hand-rolls its whole query surface** (§20, §22) — five
-   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
-   `$filter` and keys, re-implemented per resource, and every one of them a place
-   to forget a case. Declaring what is filterable already happens in `expose (…)`;
-   handing the microflow the parsed values rather than the raw request would
-   remove the class instead of the instance.
-8. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
-   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
-   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
-   help). This is why five rendering defects survived — a white chart under every
-   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
-   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
-   loopback exemption, an http-safe cookie under `--hub`), being able to render
-   the real app is the highest-leverage check missing here.
-9. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
-   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
-   is already in use"*. The guard is right; the diagnosis is misleading, because
-   the process it names is one you already killed. Reap the child on exit, or
-   print the offending pid so the fix is one command rather than three.
-10. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
-   icon rail, and a text-only menu renders "Constru" down the left edge of every
-   page. There is no way to fix it in the navigation model.
-11. **`create or modify odata service` still drops role grants** (§34, §26) — the
-   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
-   service silently revokes its access and the build fails with "At least one
-   allowed role must be selected".
-12. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+6. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
    MDL passes it through and the build fails with "Error(s) in expression". Either
    strip comments from expression text or reject them at check time.
-13. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
-   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
-   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
-   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
-   tool insists on for the URL is the shape whose credentials it will not read.
-14. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
+7. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
    document's folder, which closes half the gap; there is still no way to see a
    module's layout in one place, or to diff an intended layout against the real one,
    without reading the `.mpr` as SQLite.
-15. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
-   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
-   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
-   default mark at least takes the brand colour.
-16. **The widget layer misses the filter-operator popover** (§33, §34) —
+8. **The widget layer misses the filter-operator popover** (§33, §34) —
    `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
    `.dropdown-list` or `.dropdown-content`, which still carry a baked
    `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
    fixed.
-17. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
-   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
-   Stale guidance, no warning.
-18. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
-   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-19. **Design-property lint does not know the theme** (§29) — `check` green-lights
-   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
-   theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
+9. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
+   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
+   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
+   tool insists on for the URL is the shape whose credentials it will not read.
 ### Fixed upstream in `c76d4b7`, re-verified in §34
 
 Kept because the reasoning is the record of why each mattered.
@@ -2160,3 +2177,131 @@ While every request carried 300 ms of hashing, nobody could tell.
 this file halts on "demo user already exists" too — which meant a setting added
 at the *end* of it never ran on an existing project. It is now the first
 statement, and the header says so.
+
+## 41. `b4a825e`: seven of nineteen, one that did not take, and a new check that finds nine real bugs here
+
+Verified against this project on 2026-08-09, not read off the changelog. Built
+with `MXCLI_FORCE=1 sh scripts/build-mxcli.sh` from `ako/mxcli` main.
+
+### Fixed, and confirmed here
+
+| # | Issue | Evidence |
+|---|---|---|
+| 1 | §35 the boot deletes the web client it just built | deleted `deployment/web/dist`, touched a Java file so Gradle had work, booted **plain** `mxcli run --local` on both apps: bundle present, boot log now bundles *after* packaging |
+| 5 | nothing shows what a resource is being asked | `mxcli log set "OData Publish" TRACE` |
+| 6 | §39 `DESCRIBE PAGE` drops a page-parameter mapping | `Action: show_page …Race_Weekend(Race: $currentObject)` is back |
+| 12 | a comment between two `+` operands | a microflow with one builds clean |
+| 16 | the filter-operator popover | four selectors now in the generated `_mxcli-widgets.scss` |
+| 14 | no way to see a module's layout | new `LIST FOLDERS [IN Module]`, which prints the tree `12-folders.mdl` writes |
+| 13 | `CREATE ODATA CLIENT` could not use constant credentials | a client with `HttpUsername: '@F1Live.ApiUser'` against the live `$metadata` now imports **8 entity types**; it used to 401 into an empty client |
+| — | `ALTER PAGE` could not reach a widget inside a `customContent` column | `SET Caption = … ON btnWeekend` now resolves |
+
+Two of those retire code here: `scripts/run-app.sh` (74 lines that re-ran
+mxcli's own bundler after every boot) and the `.filter-selectors` block in
+`_f1-widget-dark.scss`. Both deleted.
+
+The `log` one deserves a note out of proportion to its size. §37 took an
+afternoon and ten app restarts, and what finally located it was patching
+`LOG INFO 'URI=' + $Request/Uri` into a read microflow and rebooting. That is
+now:
+
+```
+$ mxcli log set "OData Publish" TRACE -p Formula1Backend.mpr
+$ curl -u … "…/Calendar?\$filter=calendarKey eq '1036-c'"
+TRACE - OData Publish: Incoming request from 127.0.0.1:
+  GET …/odata/f1-fan/Calendar?$filter=calendarKey%20eq%20%271036-c%27
+```
+
+One command, no model change, no restart.
+
+### The new check is the interesting one
+
+Issues 2 and 4 — a resource declaring a `KEY` its read microflow cannot answer,
+and a resource that fails open on a query option it cannot honour — are now
+`MDL-ODATA02` and `MDL-ODATA03` in `mxcli check`. Not a runtime fix; a check
+that would have caught §37 before it shipped. `MDL-ODATA02`'s remedy text is
+§37's own conclusion, down to the failure mode:
+
+> A client holding a row re-reads it by key on its own … With no branch for it
+> the request falls through to the collection default, the client adopts the
+> FIRST row as that object's identity, and there is no error: valid collection,
+> right count, 200.
+
+And it immediately earns its keep, because **it finds nine live instances in
+this project** — every one a §37 waiting to happen:
+
+```
+02-live-service.mdl   6   Seasons, Circuits, Constructors, Races, DriverStandings, ConstructorStandings
+15-live.mdl           3   Order, Messages, Session
+```
+
+`14-weekend.mdl` passes clean, which is the control: those are the microflows
+that were given `$Request` when §37 was fixed. Nobody has clicked through to a
+row of the other nine yet — the season page reaches its standings through
+`F1Cached`, not `F1Live` — so the bug is latent rather than absent. Fixing them
+is a separate piece of work; the point here is that a tool now says so out loud
+instead of a user reporting the wrong race two weeks later.
+
+### One that did not take
+
+**Issue 11 — `create or modify odata service` still drops role grants.**
+Upstream has `28ce821 fix(odata): stop deleting a published service's role
+grants on modify`, and the fix is real, and it does not apply on this project's
+path. Reproduced twice on a throwaway service:
+
+```
+grant, then mx check              → 0 errors
+create-or-modify, no grant clause → CE0307 "At least one allowed role must be selected"
+```
+
+The reason is that there are two writers, and the fix went into one of them:
+
+- `sdk/mpr/writer_odata.go` — carries `AllowedModuleRoles` through, as the
+  commit's test asserts;
+- `mdl/backend/modelsdk/odata_write.go` — **zero** references to
+  `AllowedModuleRoles`. It never writes the grants at all, so a modify through
+  this path drops them however carefully the other writer is fixed.
+
+So the trailing re-grants at the end of `13-fan-resources.mdl`,
+`14-weekend.mdl` and `15-live.mdl` stay. Worth checking whether the two writers
+have other divergences of this shape — a fix verified against one of them is
+only half a fix, and nothing in the test suite would notice.
+
+### Not addressed
+
+`.ai-context/skills/` is still stamped 2026-08-07 against a binary built
+2026-08-09 (issue 17). `01ef224` puts the sync in `init`, so it presumably needs
+an `init`/`add-tool` run rather than following a rebuild; not re-tested here.
+
+Untouched: the custom-authentication microflow (§40, issue 3 — filed after this
+batch was cut), the hand-rolled query surface (7), `--hub` headless
+verification (8, though `f1fa02b` moves the adjacent screenshot-login path),
+the serve port held by a killed run's child (9), menu icons (10), the header
+logo (15), and the two lint ideas (18, 19).
+
+### A stale test harness, committed
+
+Unrelated to `b4a825e`, found while re-running the suites on it. An interrupted
+`mxcli test --attach` had left the frontend with
+`AfterStartupMicroflow = 'MxTest.RegisterEndpoint'` pointing at a microflow that
+no longer existed, plus an empty `MxTest` module — and that state was committed,
+weeks ago, in `1d52a14` or thereabouts.
+
+It is a quiet kind of broken. `mx check` reports **0 errors**, and the app boots
+and serves every page, so nothing in the normal loop notices. What it does is
+throw on every startup (263 lines of `at MxTest.RegisterEndpoint` in the runtime
+log) and refuse the next `--test-endpoint` injection outright:
+
+```
+ERROR: could not remove the test endpoint — the project has been left modified:
+DROP MICROFLOW MxTest.RegisterEndpoint: exit status 1: microflow not found
+```
+
+mxcli's own message is the thing that named it, and it says exactly the right
+thing — *"Check the after-startup microflow and the MxTest module before
+committing"* — which is a warning I evidently did not act on at the time.
+Cleared the setting, dropped the module; 21/21 frontend tests pass again.
+
+Worth a rule: an `AfterStartupMicroflow` naming a microflow that does not exist
+is always wrong, and `mxcli check`/`lint` can see it without a runtime.
+

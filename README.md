@@ -297,9 +297,10 @@ cd Formula1Frontend && ./mxcli run --local -p Formula1Frontend.mpr \
     --app-port 8180 --admin-port 8190 --serve-port 6643
 ```
 
-Prefer `scripts/run-app.sh`, which does the same thing and then puts back the
-browser client the boot deletes — see FINDINGS §35, and note `mxcli test --local`
-deletes it too.
+That is all it takes again. Until mxcli `b4a825e` the boot deleted the browser
+client it had just built and every page came up black, so this repo carried a
+wrapper script to put it back; the boot now bundles after packaging and verifies
+it. FINDINGS §35, §41.
 
 **Regenerating the screenshots.** With both apps up:
 
