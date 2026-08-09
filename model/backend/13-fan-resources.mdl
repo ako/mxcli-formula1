@@ -8,110 +8,25 @@
  *
  * Why a third service rather than five more resources on F1LiveApi: 02 owns
  * F1LiveApi's definition, and a second file modifying the same service is the
- * split-ownership trap 10 already documents for two microflows. Here everything
- * — Java actions, read microflows, service, grants — lives in one file.
+ * split-ownership trap 10 already documents for two microflows. Here the read
+ * microflows, the service and the grants live in one file.
  *
  * Every resource is answered *for one thing*: a driver, a season, a team. The
  * id arrives as `$filter=driverId eq 'ayrton-senna'`, which the read microflow
  * lifts out of the URL and interpolates, because the value does not go into a
- * WHERE clause — it shapes the query. Interpolation is why the two Java actions
- * below whitelist rather than escape. Asking without a filter is not "give me
- * everything": DriverSeasons and DriverRaces return nothing, because a career
- * page with no driver is a bug, not a request for all 27533 results.
- */
-
-/* ---------------------------------------------------------------------- java */
-
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataFilterId(
-  Uri: String,
-  Field: String NOT NULL
-) RETURNS String
-EXPOSED AS 'Read an id out of $filter' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.filterIdentifier(Uri, Field);
-$$;
-
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataFilterYear(
-  Uri: String,
-  Field: String NOT NULL,
-  Fallback: Long NOT NULL
-) RETURNS Long
-EXPOSED AS 'Read a year out of $filter' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.filterLong(Uri, Field, Fallback);
-$$;
-
-/*
- * $top and $skip, as values rather than as a SQL clause.
+ * WHERE clause — it shapes the query. Interpolation is why the id comes back
+ * through ODataPushdown.Key, which whitelists the shape of a key rather than
+ * escaping it. Asking without a filter is not "give me everything":
+ * DriverSeasons and DriverRaces return nothing, because a career page with no
+ * driver is a bug, not a request for all 27533 results.
  *
- * ODataOrderLimitSql splices " ORDER BY … LIMIT n" into a statement the caller
- * is building. The resources in 02 and 15 build no statement — their SQL lives
- * in the connection and takes bound parameters — so they need the numbers, not
- * the clause. FINDINGS §43.
- *
- * The fallback is "everything", not a page size: these resources returned their
- * whole list before paging existed, and a caller that never asked for a page
- * must keep getting one.
+ * This file used to open with seven Java action declarations of its own —
+ * ODataFilterId, ODataFilterYear, ODataTop, ODataSkip, ODataSortColumn,
+ * ODataSortDirection, ODataEntityKeyId — each a thin wrapper over one method of
+ * one class in javasource/formula1backend. They are gone: all seven are now the
+ * ODataPushdown module (model/odatapushdown/), which is the same code with
+ * nothing about Formula 1 left in it.
  */
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataTop(
-  Uri: String,
-  Fallback: Long NOT NULL,
-  MaxTop: Long NOT NULL
-) RETURNS Long
-EXPOSED AS 'Read $top as a number' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.topValue(Uri, Fallback, MaxTop);
-$$;
-
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSkip(
-  Uri: String
-) RETURNS Long
-EXPOSED AS 'Read $skip as a number' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.skipValue(Uri);
-$$;
-
-/*
- * $orderby, as a whitelisted column name and a direction.
- *
- * ODataOrderLimitSql returns a clause; these return the two values a bound CASE
- * needs, because the resources in 02 and 15 keep their SQL in the connection.
- * The name comes back exposed rather than translated, since that is what the
- * CASE matches on. Only the first term — a datagrid emits one, and a second
- * would need a second CASE in every query. FINDINGS §44.
- */
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSortColumn(
-  Uri: String,
-  ColumnMap: String NOT NULL
-) RETURNS String
-EXPOSED AS 'Read the $orderby column, whitelisted' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.sortColumn(Uri, ColumnMap);
-$$;
-
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataSortDirection(
-  Uri: String
-) RETURNS String
-EXPOSED AS 'Read the $orderby direction' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.sortDirection(Uri);
-$$;
-
-/*
- * The other half of "which one did you mean": a key in the path rather than a
- * term in $filter. A client resolving an object it already holds asks for
- * /Calendar('1036-c'), and a read that only looks at $filter answers with its
- * collection default — so the client takes the first row and every drill-down
- * opens the same record. FINDINGS §37.
- */
-CREATE OR MODIFY JAVA ACTION Formula1Backend.ODataEntityKeyId(
-  Uri: String,
-  Fallback: Long NOT NULL
-) RETURNS Long
-EXPOSED AS 'Read the id out of a key-addressed path' IN 'F1 pushdown'
-AS $$
-return formula1backend.ODataQuery.entityKeyLong(Uri, Fallback);
-$$;
 
 /* ----------------------------------------------------------------- microflows */
 
@@ -125,8 +40,8 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverSeasons (
 )
   RETURNS List of Formula1Backend.Stg_DriverSeason AS $Rows
 BEGIN
-  $DriverId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'driverId');
+  $DriverId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'driverId');
 
   -- No driver, no career. 1=0 costs one scan of nothing rather than grouping
   -- every result the sport has ever recorded.
@@ -183,8 +98,8 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverRaces (
 )
   RETURNS List of Formula1Backend.Stg_DriverRace AS $Rows
 BEGIN
-  $DriverId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'driverId');
+  $DriverId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'driverId');
 
   DECLARE $Where String = ' WHERE 1=0';
   IF $DriverId != '' THEN
@@ -249,7 +164,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_SeasonProgress (
 BEGIN
   -- No year means the most recent season, so the page has something to draw
   -- before a user has chosen anything.
-  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'year', Fallback = 0);
 
   -- The target year is resolved in SQL rather than here, so "no filter" means
@@ -330,8 +245,8 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Retirements (
 )
   RETURNS List of Formula1Backend.Stg_Retirement AS $Rows
 BEGIN
-  $ConstructorId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'constructorId');
+  $ConstructorId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'constructorId');
 
   DECLARE $Where String = '';
   IF $ConstructorId != '' THEN
@@ -380,10 +295,10 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Facts (
 )
   RETURNS List of Formula1Backend.Stg_Fact AS $Rows
 BEGIN
-  $Scope = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'scope');
-  $EntityId = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'entityId');
+  $Scope = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'scope');
+  $EntityId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'entityId');
 
   DECLARE $Where String = '';
   IF $Scope != '' THEN

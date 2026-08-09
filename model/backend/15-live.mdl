@@ -14,6 +14,10 @@
  * No `$filter` plumbing here: a snapshot is one session, so each resource
  * returns the file. The session key travels as data so the page can show which
  * session it is looking at.
+ *
+ * All three reads call ODataPushdown.Parse once and hand the answer to their
+ * query — the module's bind style, the same as 02. See the header there for
+ * what `Columns`, the types and `RejectUnsupported` are doing.
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
@@ -22,47 +26,35 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
 )
   RETURNS List of Formula1Backend.Stg_LiveEntry AS $Rows
 BEGIN
-  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'entryKey');
-
-  /*
-   * The page. Mendix applies no query options to a read microflow, so $top and
-   * $skip are only a page if this asks for them — and the fallback is the whole
-   * list, because that is what this resource returned before it could page.
-   */
-  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
-    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
-  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
-
-  /*
-   * The sort. The query orders by a CASE over these same names, so this list is
-   * the only thing that decides what a client can sort by — an unknown name
-   * sorts by nothing and the query's own order stands.
-   */
-  DECLARE $Sortable String = 'entryKey:entryKey,sessionKey:sessionKey,driverNumber:driverNumber,'
-    + 'code:code,driverName:driverName,team:team,teamColour:teamColour,'
-    + 'position:position,gapToLeader:gapToLeader,interval:interval,'
-    + 'lapNumber:lapNumber,lastLapSeconds:lastLapSeconds,sector1:sector1,'
-    + 'sector2:sector2,sector3:sector3,speedTrap:speedTrap,compound:compound,'
-    + 'tyreAge:tyreAge,pitStops:pitStops';
-  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
-    Uri = $Request/Uri, ColumnMap = $Sortable);
-  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'entryKey:entryKey:text,sessionKey:sessionKey:text,'
+    + 'driverNumber:driverNumber:number,code:code:text,'
+    + 'driverName:driverName:text,team:team:text,'
+    + 'teamColour:teamColour:text,position:position:number,'
+    + 'gapToLeader:gapToLeader:text,interval:interval:text,'
+    + 'lapNumber:lapNumber:number,'
+    + 'lastLapSeconds:lastLapSeconds:number,sector1:sector1:number,'
+    + 'sector2:sector2:number,sector3:sector3:number,'
+    + 'speedTrap:speedTrap:number,compound:compound:text,'
+    + 'tyreAge:tyreAge:number,pitStops:pitStops:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'entryKey', RejectUnsupported = false);
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip),
-     sortCol = $SortCol, sortDir = $SortDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
    * draws its scrollbar from it. Only computed when the client asks, so an
    * unpaged read still costs one scan.
    */
-  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
-  IF $WantsCount = true THEN
+  IF $Q/WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
-      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);
@@ -78,43 +70,28 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
 )
   RETURNS List of Formula1Backend.Stg_LiveMessage AS $Rows
 BEGIN
-  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'messageKey');
-
-  /*
-   * The page. Mendix applies no query options to a read microflow, so $top and
-   * $skip are only a page if this asks for them — and the fallback is the whole
-   * list, because that is what this resource returned before it could page.
-   */
-  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
-    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
-  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
-
-  /*
-   * The sort. The query orders by a CASE over these same names, so this list is
-   * the only thing that decides what a client can sort by — an unknown name
-   * sorts by nothing and the query's own order stands.
-   */
-  DECLARE $Sortable String = 'messageKey:messageKey,sessionKey:sessionKey,at:at,category:category,'
-    + 'flag:flag,scope:scope,lap:lap,message:message';
-  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
-    Uri = $Request/Uri, ColumnMap = $Sortable);
-  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'messageKey:messageKey:text,sessionKey:sessionKey:text,'
+    + 'at:at:text,category:category:text,flag:flag:text,'
+    + 'scope:scope:text,lap:lap:number,message:message:text';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'messageKey', RejectUnsupported = false);
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip),
-     sortCol = $SortCol, sortDir = $SortDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
    * draws its scrollbar from it. Only computed when the client asks, so an
    * unpaged read still costs one scan.
    */
-  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
-  IF $WantsCount = true THEN
+  IF $Q/WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
-      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);
@@ -130,47 +107,34 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
 )
   RETURNS List of Formula1Backend.Stg_LiveSession AS $Rows
 BEGIN
-  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'sessionKey');
-
-  /*
-   * The page. Mendix applies no query options to a read microflow, so $top and
-   * $skip are only a page if this asks for them — and the fallback is the whole
-   * list, because that is what this resource returned before it could page.
-   */
-  $Top = CALL JAVA ACTION Formula1Backend.ODataTop(
-    Uri = $Request/Uri, Fallback = 1000000, MaxTop = 1000000);
-  $Skip = CALL JAVA ACTION Formula1Backend.ODataSkip(Uri = $Request/Uri);
-
-  /*
-   * The sort. The query orders by a CASE over these same names, so this list is
-   * the only thing that decides what a client can sort by — an unknown name
-   * sorts by nothing and the query's own order stands.
-   */
-  DECLARE $Sortable String = 'sessionKey:sessionKey,sessionName:sessionName,sessionType:sessionType,'
-    + 'location:location,countryName:countryName,circuitName:circuitName,'
-    + 'dateStart:dateStart,year:year,driverCount:driverCount,leadLap:leadLap,'
-    + 'fetchedAt:fetchedAt,airTemperature:airTemperature,'
-    + 'trackTemperature:trackTemperature,humidity:humidity,rainfall:rainfall,'
-    + 'windSpeed:windSpeed';
-  $SortCol = CALL JAVA ACTION Formula1Backend.ODataSortColumn(
-    Uri = $Request/Uri, ColumnMap = $Sortable);
-  $SortDir = CALL JAVA ACTION Formula1Backend.ODataSortDirection(Uri = $Request/Uri);
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'sessionKey:sessionKey:text,sessionName:sessionName:text,'
+    + 'sessionType:sessionType:text,location:location:text,'
+    + 'countryName:countryName:text,circuitName:circuitName:text,'
+    + 'dateStart:dateStart:text,year:year:number,'
+    + 'driverCount:driverCount:number,leadLap:leadLap:number,'
+    + 'fetchedAt:fetchedAt:text,airTemperature:airTemperature:number,'
+    + 'trackTemperature:trackTemperature:number,'
+    + 'humidity:humidity:number,rainfall:rainfall:number,'
+    + 'windSpeed:windSpeed:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'sessionKey', RejectUnsupported = false);
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
-    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
-     topN = toString($Top), skipN = toString($Skip),
-     sortCol = $SortCol, sortDir = $SortDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
 
   /*
    * $count is the size of the whole filtered set, not of the page — a grid
    * draws its scrollbar from it. Only computed when the client asks, so an
    * unpaged read still costs one scan.
    */
-  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
-  IF $WantsCount = true THEN
+  IF $Q/WantsCount = true THEN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
-      (dataDir = @Formula1Backend.DataDir, keyFilter = $Key,
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
     $Total = COUNT($AllRows);

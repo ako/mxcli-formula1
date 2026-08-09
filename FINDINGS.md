@@ -2592,3 +2592,214 @@ answers `400 "Could not map 'nonsense' to attribute or association."` before the
 read microflow runs. Worth knowing that the platform does that much — and worth
 keeping the whitelist anyway, since it is what stops an *exposed* column being
 sorted on when the query has no arm for it.
+
+## 45. What Mendix's OData client actually sends, since nothing says
+
+Three sections of pushdown work — §42 the key, §43 the page, §44 the order —
+were each built against a guess about what a client would ask for. Before
+turning any of it into a reusable component it was worth finding out.
+
+### There is nothing to read
+
+Mendix's [consumed OData service
+requirements](https://docs.mendix.com/refguide/consumed-odata-service-requirements/)
+is the page you would expect to answer this. It lists the system query options a
+service must support —
+
+> It should support queries on the OData feed, including: `$filter`,
+> `$orderby`, `$top`, `$skip`, `$expand`, `$count` (or `$inlinecount`)
+
+— the OData versions, and the EDM types allowed for a key. It names not one
+comparison operator, not one function, and says nothing about how `null` is
+compared or how a key is addressed. It closes with "The OData implementation in
+Mendix does not support all features of the OData specification" and a
+recommendation to test third-party APIs with a proof of concept, which is fair
+enough and also an admission that the set is not written down anywhere.
+
+The published side is no better: nothing documents the XPath → OData mapping a
+datagrid filter goes through. So it was captured instead.
+
+### How
+
+`b4a825e` added `mxcli log set`, which made this a five-minute job rather than a
+packet capture:
+
+```bash
+./mxcli log set "OData Publish" TRACE -p Formula1Backend.mpr
+```
+
+The node logs each incoming request URI. Then two passes:
+
+1. **Drive the real UI.** A Playwright script walked every page in the frontend
+   and worked every grid — sorted columns, paged, typed in filter boxes, opened
+   drill-downs. 81 requests.
+2. **Force the shapes the UI does not reach.** Fourteen probe microflows in the
+   *frontend*, each retrieving from an external entity with one XPath constraint
+   — `=`, `!=`, `>`, `>=`, `<`, `and`, `or`, `contains`, `starts-with`,
+   `ends-with`, `= empty`, a boolean, a decimal, and a mixed one — run through
+   `mxcli test --attach` so the trace shows what each XPath became on the wire.
+
+### The whole grammar, as emitted
+
+```
+name eq 'Ayrton Senna'              (raceWins gt 10) and (podiums gt 20)
+name ne 'Ayrton Senna'              (name eq 'a') or (name eq 'b')
+raceWins gt|ge|lt|le 40             contains(name,'Sen')
+points gt 100.5                     startswith(name,'Ayr')
+nationality eq null                 endswith(name,'nna')
+championshipWon eq true
+```
+
+Plus `$select` (on nearly every request), `$top`, `$skip`, `$count=true`,
+`$orderby` with **two** terms (`round asc,calendarKey asc` from a grid whose
+default sort is composite), and `$expand` — but only on persistent entities with
+navigation properties, never on the flat non-persistable rows this app publishes
+from DuckDB.
+
+Each XPath maps to exactly one OData term, with each term wrapped in its own
+parentheses when there is more than one. No arithmetic, no lambdas, no `$apply`,
+no date functions, no `any`/`all`. The set is small — which is the good news,
+because covering all of it is achievable, and covering all of it is what makes a
+widget over an external entity work rather than half-work.
+
+### The one that mattered
+
+`or`. The `where()` helper written in §21 split the filter on `and` and matched
+each piece with a regex; it could not express `or` **at all**, and rejected any
+request containing one. Mendix emits `or` the moment a datagrid filter has two
+values selected — the second click on a filter chip. So the pushdown resources
+had a defect that only appeared on the second interaction, and the honest
+rejection meant it surfaced as a 500 rather than as wrong data. Better than
+silent, still broken.
+
+That single finding is what turned "tidy these Java actions up" into §46.
+
+## 46. Extracting it: ten Java actions become one module
+
+By §44 there were ten Java actions doing OData pushdown in this app, all
+wrappers over one 469-line class in `javasource/formula1backend/`, and every
+line of it was about OData and SQL rather than about Formula 1. Any app putting
+an existing RDBMS or warehouse behind an OData surface needs the same thing.
+
+It is now `ODataPushdown` — a module, a package, and an MDL script that installs
+it into any project. See `model/odatapushdown/README.md`.
+
+### One parse, not nine
+
+The old shape had each action re-read the URI to answer one question about it:
+
+```
+$KeyText  = ODataFilterId(Uri, 'year');       $Top     = ODataTop(Uri, …);
+$KeyNum   = ODataFilterYear(Uri, 'year', 0);  $Skip    = ODataSkip(Uri);
+$SortCol  = ODataSortColumn(Uri, $Sortable);  $SortDir = ODataSortDirection(Uri);
+$WantsCnt = ODataWantsCount(Uri);
+```
+
+Seven parses of the same string per request, in six microflows, and nothing
+holding the seven answers to a single interpretation. Now:
+
+```
+$Q = CALL JAVA ACTION ODataPushdown.Parse(
+  Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+  MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+  KeyField = 'year', RejectUnsupported = false);
+```
+
+Ten actions became three: `Parse`, and the short forms `Key` and `FilterNumber`
+for resources whose whole contract is one value out of `$filter`.
+
+### What changed on the way out, and why
+
+**A real parser.** §45 found the old `where()` could not express `or`, so the
+filter is now recursive descent — `parseOr → parseAnd → parseUnary → parsePrimary
+→ parseTerm` — which gets precedence, `not` and nesting for free rather than
+approximating them. `name eq 'a' and (raceWins gt 1 or raceWins lt 0)` becomes
+`(name = 'a' AND ((totalRaceWins > 1 OR totalRaceWins < 0)))`.
+
+**Typed columns.** The map grew a third field: `exposed:sql:type`, with type one
+of text, number, bool, date. This closes a real hole. Mendix quotes a literal
+according to what the *widget* believes the attribute is, so the same numeric
+column arrives as `year eq 1957` from a grid header and `year eq '1957'` from a
+combo box; the old helper passed the quotes through and handed DuckDB
+`year = '1957'` against a BIGINT — zero rows, status 200. §42 patched that in SQL
+with a `TRY_CAST(… AS DOUBLE)` arm per query. The parser does it once, for
+everybody. An unrecognised type is a hard error, because a typo would otherwise
+turn a numeric column into a text one silently.
+
+**Dialects.** Five, differing in exactly two places: how a case-insensitive
+`LIKE` is spelled and how a page is. DuckDB and PostgreSQL have `ILIKE` and
+`LIMIT … OFFSET`; SQL Server and Oracle need `LOWER(…) LIKE LOWER(…)` and
+`OFFSET … ROWS FETCH NEXT … ROWS ONLY`; MySQL puts the page the other way round.
+Two tests run through SQL Server and MySQL precisely because nothing in this app
+does — "not DuckDB-shaped" is only provable from outside DuckDB.
+
+**Two sort terms.** §44 carried one and said a second "would need a second CASE
+in every query". §45 found Mendix does emit two. The parse now returns both;
+splice callers get both in `OrderBySql`. The nine bound queries still bind the
+first only — that is the second CASE, and it has not been written.
+
+**Rejection became a choice.** `RejectUnsupported`. Splice callers pass true: a
+filter they cannot translate means an empty `WHERE`, which is every row in the
+table under a 200. Bind callers pass false: they never look at `FilterSql`, so
+failing over a filter they were never going to apply trades one wrong answer for
+another.
+
+### Both styles, both proved
+
+The migration covers everything, which is the point — a component with one
+consumer proves nothing.
+
+| | resources | takes |
+|---|---|---|
+| splice | Drivers, RaceResults (`10`) | `FilterSql`, `OrderBySql` |
+| bind | the six in `02`, the three in `15` | `Key`, `Top`, `Skip`, `SortColumn1`, `SortDirection1` |
+| key only | five in `13`, five in `14` | `Key` / `FilterNumber` |
+
+`Key` reading the path as well as `$filter` deleted a branch outright: Calendar
+used to need `ODataFilterId` *and* `ODataEntityKeyId`, with a three-way `IF`
+underneath, because the second returned a number. One call now answers all three
+spellings — `?$filter=calendarKey eq '1036-c'`, `/Calendar('1036-c')` and
+`/Calendar(calendarKey='1036-c')` — all three verified against the running app.
+
+`09-query-pushdown.mdl` and `javasource/formula1backend/ODataQuery.java` are
+deleted. `13-fan-resources.mdl` lost the 90-line block of action declarations it
+opened with.
+
+### Tested
+
+The test-support wrappers were rewritten to go through the module, and the suite
+grew from 32 to 49: the whole §45 grammar term by term, both the quoted and bare
+spelling of a number, `eq null` both ways, precedence, `not`, the key in all
+three forms, a key that is not an identifier, the two other dialects, and four
+rejection cases. 57/57 backend overall.
+
+Over HTTP, on the running app:
+
+```
+/Seasons?$filter=year eq 1957                 1 row, Fangio        (bind, numeric key)
+/Seasons?$top=3&$orderby=year asc&$count=true 1950,1951,1952 of 77 (bind, page + sort)
+/Drivers?$filter=name eq 'Ayrton Senna' or name eq 'Alain Prost'
+                                              2 rows               (splice, or — new)
+/Drivers?$filter=contains(name,'Sen')&$top=3  3 of 7               (splice, page + count)
+/Calendar('1036-c')                           Bahrain 2021         (key in path)
+```
+
+### What is still owed
+
+The nine bound resources apply no `$filter` beyond their key, while their
+`expose` clauses declare every attribute `Filterable`. A grid filter on one of
+them is accepted and ignored — the same class of defect as §37, one layer along.
+Three ways out: bind a `{filterSql}`-shaped parameter (impossible — a bound
+parameter is a value), move the nine to splice style (loses the readable SQL
+that §44 went out of its way to keep), or stop declaring what is not applied
+(blocked by the same `cmd_contract.go:1214` hardcode that made `TopSupported: No`
+unusable in §42). Left as it was, filed rather than half-fixed.
+
+### Roadmap: stored procedures, as OData actions
+
+The bind style already reaches a procedure's *result set* — point a named query
+at `CALL sp_x(?)` and the module supplies the arguments. What it cannot do is
+expose the procedure as something a client can **invoke**: an OData action or
+function, `POST /odata/x/RunReport`. That is the other half of putting an
+existing RDBMS behind an OData surface, and the piece that turns this from a
+read-only projection into a two-way integration. Not started.
