@@ -75,9 +75,26 @@ team by `$filter`.
 
 Mendix applies **no** query options to a resource backed by a read microflow — it
 hands over the request and returns whatever comes back. `?$top=5` really did
-return all 917 drivers. So `Drivers` and `RaceResults` on the live service parse
-the options off the request and turn them into SQL themselves
-(`javasource/formula1backend/ODataQuery.java`).
+return all 917 drivers. So every read microflow parses the options off the
+request and answers them itself.
+
+The part of that which is not about Formula 1 is now a standalone module:
+[`ODataPushdown`](model/odatapushdown/) — one parse action turning `$filter`,
+`$orderby`, `$top`, `$skip`, `$count` and the key lookup into either SQL to
+splice or values to bind, across five SQL dialects. Copy two directories into
+another project and it works there. Its grammar is the one Mendix's own OData
+client emits, captured off the wire because
+[the requirements page](https://docs.mendix.com/refguide/consumed-odata-service-requirements/)
+names the query options and not one operator.
+
+It also renders **stored routine** invocations — `SELECT * FROM f(…)`,
+`CALL p(…)`, `EXEC p @x = …`, `BEGIN p(…); END;` — as bound templates, for
+resources whose logic lives in the database rather than in a table. A fifth
+service, `F1OpsApi`, puts a real Postgres schema's table function and procedure
+behind OData to prove it (`scripts/create-f1ops-db.sh`). The one thing missing
+is a real OData action: Mendix's metamodel has one, MDL has no syntax for it, so
+the procedure is published as an entity set with an insert microflow. FINDINGS
+§47.
 
 A datagrid showing rows 80–100 sorted by name:
 
@@ -94,10 +111,14 @@ now answer **41** for Senna's race wins — one counting rows in Postgres, the
 other scanning a 4 MB CSV per request.
 
 Column names from `$orderby` and `$filter` reach SQL, so each one is resolved
-through a per-resource whitelist. An unlisted name is ignored in a sort and
+through a per-resource whitelist that also declares each column's type — Mendix
+quotes a literal according to what the *widget* thinks the attribute is, so the
+same numeric column arrives as `year eq 1957` from a grid header and
+`year eq '1957'` from a combo box. An unlisted name is ignored in a sort and
 rejected in a filter — dropping a filter would quietly return more rows than the
-client asked for. `tests/pushdown.test.mdl` covers the translation, the clamping
-and the rejections.
+client asked for. `tests/pushdown.test.mdl` covers the grammar term by term, the
+clamping, the key in all three spellings it arrives in, and the rejections: 49
+tests, 57 across the backend.
 
 The remaining live resources (Seasons, Circuits, Constructors, Races, both
 standings) are small enough to return whole and still do; they follow the same
@@ -297,9 +318,10 @@ cd Formula1Frontend && ./mxcli run --local -p Formula1Frontend.mpr \
     --app-port 8180 --admin-port 8190 --serve-port 6643
 ```
 
-Prefer `scripts/run-app.sh`, which does the same thing and then puts back the
-browser client the boot deletes — see FINDINGS §35, and note `mxcli test --local`
-deletes it too.
+That is all it takes again. Until mxcli `b4a825e` the boot deleted the browser
+client it had just built and every page came up black, so this repo carried a
+wrapper script to put it back; the boot now bundles after packaging and verifies
+it. FINDINGS §35, §41.
 
 **Regenerating the screenshots.** With both apps up:
 

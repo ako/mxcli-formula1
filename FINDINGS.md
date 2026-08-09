@@ -1296,6 +1296,11 @@ So the live path really does cost more than the cached one — about 130 ms —
 but **both are dominated by authentication**. Optimising the SQL would be
 optimising 14% of the request.
 
+§40 is the follow-up: what can be done about it (the three documented options,
+and which of them a Mendix OData *client* can actually use), what was done —
+`BcryptCost 8`, taking the cached page turn to ~68 ms — and the mxcli gap that
+rules out the fix which removes the cost rather than shrinking it.
+
 ### Three smaller things the trace showed
 
 - **`$count=true` doubles the CSV work.** The count query scans the file again
@@ -1559,6 +1564,100 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
+1. **MDL cannot declare a published OData action** (§47) — `create odata service`
+   admits `publish entity` blocks and nothing else, so a microflow cannot be
+   published as an action or function import. Mendix supports it in full:
+   `ODataPublish$PublishedMicroflow` is in the metamodel,
+   `PublishedODataService2` carries a `Microflows` collection, and
+   `modelsdk/gen/odatapublish` already has `NewPublishedMicroflow()` and
+   `NewPublishedMicroflowParameter()` with every setter wired —
+   `mdl/backend/modelsdk/odata_write.go` simply never populates it. This is the
+   one thing standing between MDL and putting an existing RDBMS's stored
+   procedures behind an OData surface properly; the workaround (an entity set
+   with an insert microflow) costs the operation's name, turns parameters into
+   attributes, and returns 201 for a request the domain rejected.
+2. **The external-entity generator ignores the contract's `$top`/`$skip`
+   capabilities** (§42) — `cmd_contract.go:1214` stamps `SkipSupported` and
+   `TopSupported` true whatever the metadata says, while deriving Creatable and
+   Deletable from it two lines above. A service that honestly declares
+   `TopSupported: No` then makes the consuming app unbuildable with CE6630, and
+   MDL cannot correct it after the fact. This blocks the remedy MDL-ODATA03
+   itself recommends.
+3. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
+   fetch is in the create path only, so after a published service changes shape
+   the client keeps its cached contract, reports "Modified OData client", and
+   `create external entities` regenerates from stale metadata without saying so.
+   Recovery is drop-and-recreate, which cascades into every page and grant that
+   binds those entities.
+4. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
+   `System.HttpRequest` parameter, so adding one for an unrelated reason (the
+   key lookup) silences it while `?$top=5` still returns all 77 rows. Check for
+   a use of the request, not its presence. (The nine now really do page, §43,
+   but the rule would not have noticed either way.)
+5. **`authentication microflow` cannot name its microflow** (§40) — the type is
+   accepted, the microflow is silently dropped, and the build then fails with
+   CE0333 "Please select a microflow to use for authentication". Custom
+   authentication is the one documented way off per-request password hashing,
+   which is 60–80% of every API call here (§31); without it the only lever is
+   `BcryptCost`, which shrinks the cost rather than removing it. The metamodel
+   field, the writer and the reader all exist — `visitor_odata.go:323` recognises
+   the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
+   `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
+6. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+   Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
+   `$filter` and keys, re-implemented per resource, and every one of them a place
+   to forget a case. Declaring what is filterable already happens in `expose (…)`;
+   handing the microflow the parsed values rather than the raw request would
+   remove the class instead of the instance.
+7. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+   sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
+   never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
+   help). This is why five rendering defects survived — a white chart under every
+   panel, a clipped nav rail, a header reading `COLOPENWEEKEND` — none of which
+   `check`, the build, the log or `curl` can see. Whatever the mechanism (a
+   loopback exemption, an http-safe cookie under `--hub`), being able to render
+   the real app is the highest-leverage check missing here.
+8. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+   next boot then refuses, correctly, on the previous run's corpse: *"port 6643
+   is already in use"*. The guard is right; the diagnosis is misleading, because
+   the process it names is one you already killed. Reap the child on exit, or
+   print the offending pid so the fix is one command rather than three.
+9. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+   icon rail, and a text-only menu renders "Constru" down the left edge of every
+   page. There is no way to fix it in the navigation model.
+10. **`create or modify odata service` still drops role grants** (§34, §26) — the
+   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
+   service silently revokes its access and the build fails with "At least one
+   allowed role must be selected".
+   `b4a825e` carries `28ce821`, which fixes this in `sdk/mpr/writer_odata.go`
+   — and `mdl/backend/modelsdk/odata_write.go`, the writer this project's path
+   uses, has no `AllowedModuleRoles` handling at all, so it still drops them.
+   Reproduced twice on `b4a825e`. §41.
+11. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
+   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
+   default mark at least takes the brand colour.
+12. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
+   Stale guidance, no warning.
+   `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
+   here are still stamped two days earlier, so a rebuild alone does not carry it.
+13. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
+14. **Design-property lint does not know the theme** (§29) — `check` green-lights
+   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
+   theme. mxcli generates the theme, so it can read its `design-properties.json`.
+
+
+15. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+   naming a microflow that no longer exists throws on every startup and blocks
+   the next `--test-endpoint` injection, while `mx check` reports 0 errors and
+   the app serves normally. It got committed here and survived weeks. Resolvable
+   statically: `check`/`lint` can compare the name against the model.
+### Fixed upstream in `b4a825e`, verified against this project in §41
+
+Kept because the reasoning is the record of why each mattered. Two of them —
+the bundle and the popover — retired code in this repo when they landed.
 
 1. **`mxcli run --local` deletes the web client bundle it just built** (§35) — the
    Gradle `package` pass during boot repopulates `deployment/web` without `dist/`,
@@ -1571,43 +1670,45 @@ the scripts quietly stop being the source of truth.
    request with the collection default and the client adopts the first row as the
    object's identity, silently and permanently. Warn when a read microflow never
    reads its resource's KEY out of the request, or generate the branch.
-3. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
-   icon rail, and a text-only menu renders "Constru" down the left edge of every
-   page. There is no way to fix it in the navigation model.
-4. **`create or modify odata service` still drops role grants** (§34, §26) — the
-   published-member half was fixed in `c76d4b7`; this half was not. Recreating a
-   service silently revokes its access and the build fails with "At least one
-   allowed role must be selected".
-5. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
+3. **A read-microflow resource fails open: it answers a query option it cannot
+   honour instead of refusing** (§37, §20, §22) — the flaw underneath both
+   wrong-data bugs in this project. `Read_Calendar` could not parse
+   `$filter=calendarKey eq '…'`, so it returned its collection default with a 200
+   and a correct `$count`; the season standings did the same for `year`. Neither
+   is distinguishable from a real answer. A resource that drops a query option
+   should 400, and mxcli knows which attributes it published as filterable, so it
+   could generate that refusal. Both bugs would have been two-minute bugs.
+4. **Nothing shows what a published resource is being asked** (§37) — the
+   diagnosis took ten app restarts of theorising and then two once
+   `LOG INFO 'URI=' + $Request/Uri` went into the microflow. The URI is only
+   otherwise visible at TRACE on the whole runtime. An `mxcli odata trace`, or a
+   log node per published service, turns this class of bug from an afternoon into
+   a minute. (`mxcli debug` may already cover some of this — untried here.)
+5. **`DESCRIBE PAGE` drops a page-parameter mapping, and reads as though it were
+   never there** (§39) — a grid column's drill-down round-trips as
+   `linkbutton btn (Caption: 'Weekend', Action: show_page Module.Page)` with no
+   `(Race: $currentObject)`. The mapping is in the model and the build is green;
+   only the description loses it. Cost three restart cycles here, replacing a
+   button that was correct. Small bug, outsized cost, because `DESCRIBE` is the
+   thing you reach for when you distrust the model.
+6. **A comment between two `+` operands lands inside the Mendix expression** (§34) —
    MDL passes it through and the build fails with "Error(s) in expression". Either
    strip comments from expression text or reject them at check time.
-6. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
-   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
-   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
-   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
-   tool insists on for the URL is the shape whose credentials it will not read.
 7. **`SHOW STRUCTURE` does not group by folder** (§32, §34) — `DESCRIBE` now reports a
    document's folder, which closes half the gap; there is still no way to see a
    module's layout in one place, or to diff an intended layout against the real one,
    without reading the `.mpr` as SQLite.
-8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
-   is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
-   corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
-   default mark at least takes the brand colour.
-9. **The widget layer misses the filter-operator popover** (§33, §34) —
+8. **The widget layer misses the filter-operator popover** (§33, §34) —
    `_mxcli-widgets.scss` re-points `.column-selectors` but not `.filter-selectors`,
    `.dropdown-list` or `.dropdown-content`, which still carry a baked
    `rgba(5,15,129,.05)` shadow. Four selectors from the same file as the ones already
    fixed.
-10. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
-   on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
-   Stale guidance, no warning.
-11. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
-   a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-12. **Design-property lint does not know the theme** (§29) — `check` green-lights
-   `Row size` / `Hover style`, the build rejects them as unsupported by the applied
-   theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
+9. **`CREATE ODATA CLIENT` cannot authenticate `$metadata` with credentials given as
+   constants** (§23, §34) — literal `HttpUsername`/`HttpPassword` now work; a constant
+   reference (`'@Module.ApiUser'`) still gets 401 and the client is created with no
+   entity types. Same release made a constant `ServiceUrl` mandatory, so the shape the
+   tool insists on for the URL is the shape whose credentials it will not read.
 ### Fixed upstream in `c76d4b7`, re-verified in §34
 
 Kept because the reasoning is the record of why each mattered.
@@ -1943,3 +2044,939 @@ for reasons that have nothing to do with the code:
 ```bash
 sudo -u postgres psql -d formula1frontend -c 'delete from system$session;'
 ```
+
+## 39. `DESCRIBE PAGE` loses a page-parameter mapping, and the loss looks like a cause
+
+Small bug, and it cost three of the fifteen restart cycles §37 took, because it
+answered a question I was asking at exactly the wrong moment.
+
+Mid-diagnosis, suspecting the drill-down was never handed the row, I asked the
+model what it actually contained:
+
+```
+$ mxcli -p Formula1Frontend.mpr -c "DESCRIBE PAGE Formula1Frontend.Season_Summary"
+...
+column "Open" (Caption: 'Open', ShowContentAs: customContent) {
+  linkbutton btnWeekend (Caption: 'Weekend', Action: show_page Formula1Frontend.Race_Weekend)
+}
+```
+
+The source says:
+
+```
+linkbutton btnWeekend (Caption: 'Weekend',
+  Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
+```
+
+The argument is gone from the description. It is **not** gone from the model —
+`mx check` reports 0 errors, and an unmapped required page parameter is a
+consistency error, so a truly missing mapping could not have built. All four
+drill-downs in this app describe the same way, including the three that work.
+
+Read cold, that output is a diagnosis: *the mapping was dropped, that is why the
+page gets an empty object.* It is a plausible-looking, wrong answer arriving in
+the middle of a hunt, and I spent three cycles acting on it — replacing the link
+button with a microflow call, then a clickable container's `OnClick`, then a
+dataview bound to the grid's selection. All three behaved identically, because
+all three were fixing something that was never broken.
+
+The general shape is worth more than the instance: **`DESCRIBE` is what you
+reach for when you have stopped trusting the model, so a lossy `DESCRIBE` is
+costliest exactly when it is most used.** Round-tripping is the contract §32
+already leans on for navigation and settings; page action arguments should hold
+to it too.
+
+Reproduction is a one-liner against this repo: describe `Season_Summary`,
+`Drivers_Live`, `Seasons_Overview` or `Constructors_Overview` and compare the
+column's button against `model/frontend/04-pages.mdl` or `07-fan-pages.mdl`.
+
+## 40. Custom authentication is the fix for the BCrypt cost, and MDL cannot name the microflow
+
+§31 measured a page turn and found 60–80% of it was BCrypt: a consumed OData
+service authenticates with basic auth on every request and holds no session, so
+every call is a full login. This is the follow-up — what the options actually
+are, measured rather than reasoned about.
+
+### The three methods, and which one applies
+
+[The reference guide][1] lists exactly three for a published OData service:
+
+| Method | How | Usable here |
+|---|---|---|
+| Username and password | `Authorization: Basic …`, per request | yes — what we do, and what costs 300 ms |
+| Active session | existing session + `X-Csrf-Token` | **no** — documented as JavaScript within the same app |
+| Custom authentication | a microflow returning a User | yes, and it removes the cost entirely |
+
+[1]: https://docs.mendix.com/refguide/published-odata-services/#authentication-methods
+
+Active session is worth dwelling on, because the measurement invites the wrong
+conclusion. Logging in through `/xas/` and reusing the cookie *does* work and
+*is* fast:
+
+```
+GET /odata/f1/Drivers?$top=20
+  basic auth                              200   ~360 ms
+  wrong password                          401   ~346 ms   ← hashes either way
+  session cookie, no Authorization        200   ~19 ms
+  no credentials at all                   401   ~42 ms
+```
+
+19 ms against 360 ms looks like the answer. It is not: that path is only open to
+same-origin JavaScript, and the thing making these calls is Mendix's own OData
+*client*, which sends basic auth and keeps no cookie. The number is proof of
+where the time goes, not a route to avoiding it.
+
+### What custom authentication would buy
+
+A microflow taking the `HttpHeader` list, checking a shared secret and returning
+a User. No password hash anywhere, so the ~42 ms floor.
+
+The neat part is that **the client needs no change at all**. The microflow can
+read the `Authorization: Basic …` header itself and compare it against a
+constant; the frontend keeps its existing username/password configuration and
+the server simply stops calling BCrypt.
+
+### The gap
+
+MDL accepts the *type* and silently drops the *microflow*:
+
+```
+create or modify odata service Formula1Backend.ProbeApi ( … )
+authentication microflow Formula1Backend.Read_Seasons
+{ … };
+```
+
+`mxcli check` passes. `mxcli exec` reports `Created OData service`. Then:
+
+```
+$ mxcli -c "DESCRIBE ODATA SERVICE Formula1Backend.ProbeApi"
+authentication Microflow                      ← no microflow named
+
+$ mx check Formula1Backend.mpr
+[error] [CE0333] "Please select a microflow to use for authentication"
+```
+
+The plumbing exists at both ends and only the middle is missing:
+
+- `generated/metamodel/types.go` — `ODataPublishPublishedODataService2.AuthenticationMicroflow`
+- `mdl/backend/modelsdk/odata_write.go:233` — writes it from `svc.AuthMicroflow`
+- `mdl/backend/modelsdk/integration_read.go:115` — reads it back
+- `mdl/visitor/visitor_odata.go:323` — `parseODataAuthTypes` recognises `basic`,
+  `session`, `guest`, `microflow` … and captures no name for the last one
+- nothing anywhere assigns `svc.AuthMicroflow`
+
+So `svc.AuthMicroflow` is only ever populated by reading a model Studio Pro
+wrote. And `DESCRIBE` emits it as a **comment** (`-- Auth Microflow: …`,
+`cmd_odata.go:356`), so a custom-auth service cannot round-trip through MDL
+either — the same shape as §39.
+
+The grammar change is `authentication microflow <QualifiedName>`; the executor
+change is one assignment. Until then this needs Studio Pro, which for a project
+whose whole point is that the model is written as MDL means it does not get
+done.
+
+### What was done instead
+
+`BcryptCost` **is** reachable — `ALTER SETTINGS MODEL BcryptCost = 8` in
+`07-demo-users.mdl`. It shrinks the cost rather than removing it, and it is a
+judgement about these two accounts specifically: both are machine accounts with
+generated passwords, there is no human password in this database, and the
+setting is per app so the frontend keeps the default 12 for its one real user.
+
+Steady state after the change, three runs each:
+
+| Resource | before | after |
+|---|---|---|
+| `f1/Drivers` (cached) | ~360 ms | **~68 ms** |
+| `f1-live/Drivers` (DuckDB) | ~500 ms | **~165 ms** |
+| `f1-now/Order` | — | ~71 ms |
+| `f1-fan/Calendar` | — | ~857 ms |
+
+Each step down the cost halves, so 10 ≈ 145 ms and 6 ≈ 36 ms; 8 is where the
+hash stops dominating without becoming decorative.
+
+And the table earns its keep by what it exposes: **`Calendar` is now the slowest
+resource by an order of magnitude**, and that is its own SQL — two correlated
+subqueries per race to name the winner and the team. It was always that slow.
+While every request carried 300 ms of hashing, nobody could tell.
+
+### One more thing this file cannot do twice
+
+`07-demo-users.mdl` opens by explaining that 06 is not re-runnable because
+`create module role` has no `or modify` form. Neither has `CREATE DEMO USER`, so
+this file halts on "demo user already exists" too — which meant a setting added
+at the *end* of it never ran on an existing project. It is now the first
+statement, and the header says so.
+
+## 41. `b4a825e`: seven of nineteen, one that did not take, and a new check that finds nine real bugs here
+
+Verified against this project on 2026-08-09, not read off the changelog. Built
+with `MXCLI_FORCE=1 sh scripts/build-mxcli.sh` from `ako/mxcli` main.
+
+### Fixed, and confirmed here
+
+| # | Issue | Evidence |
+|---|---|---|
+| 1 | §35 the boot deletes the web client it just built | deleted `deployment/web/dist`, touched a Java file so Gradle had work, booted **plain** `mxcli run --local` on both apps: bundle present, boot log now bundles *after* packaging |
+| 5 | nothing shows what a resource is being asked | `mxcli log set "OData Publish" TRACE` |
+| 6 | §39 `DESCRIBE PAGE` drops a page-parameter mapping | `Action: show_page …Race_Weekend(Race: $currentObject)` is back |
+| 12 | a comment between two `+` operands | a microflow with one builds clean |
+| 16 | the filter-operator popover | four selectors now in the generated `_mxcli-widgets.scss` |
+| 14 | no way to see a module's layout | new `LIST FOLDERS [IN Module]`, which prints the tree `12-folders.mdl` writes |
+| 13 | `CREATE ODATA CLIENT` could not use constant credentials | a client with `HttpUsername: '@F1Live.ApiUser'` against the live `$metadata` now imports **8 entity types**; it used to 401 into an empty client |
+| — | `ALTER PAGE` could not reach a widget inside a `customContent` column | `SET Caption = … ON btnWeekend` now resolves |
+
+Two of those retire code here: `scripts/run-app.sh` (74 lines that re-ran
+mxcli's own bundler after every boot) and the `.filter-selectors` block in
+`_f1-widget-dark.scss`. Both deleted.
+
+The `log` one deserves a note out of proportion to its size. §37 took an
+afternoon and ten app restarts, and what finally located it was patching
+`LOG INFO 'URI=' + $Request/Uri` into a read microflow and rebooting. That is
+now:
+
+```
+$ mxcli log set "OData Publish" TRACE -p Formula1Backend.mpr
+$ curl -u … "…/Calendar?\$filter=calendarKey eq '1036-c'"
+TRACE - OData Publish: Incoming request from 127.0.0.1:
+  GET …/odata/f1-fan/Calendar?$filter=calendarKey%20eq%20%271036-c%27
+```
+
+One command, no model change, no restart.
+
+### The new check is the interesting one
+
+Issues 2 and 4 — a resource declaring a `KEY` its read microflow cannot answer,
+and a resource that fails open on a query option it cannot honour — are now
+`MDL-ODATA02` and `MDL-ODATA03` in `mxcli check`. Not a runtime fix; a check
+that would have caught §37 before it shipped. `MDL-ODATA02`'s remedy text is
+§37's own conclusion, down to the failure mode:
+
+> A client holding a row re-reads it by key on its own … With no branch for it
+> the request falls through to the collection default, the client adopts the
+> FIRST row as that object's identity, and there is no error: valid collection,
+> right count, 200.
+
+And it immediately earns its keep, because **it finds nine live instances in
+this project** — every one a §37 waiting to happen:
+
+```
+02-live-service.mdl   6   Seasons, Circuits, Constructors, Races, DriverStandings, ConstructorStandings
+15-live.mdl           3   Order, Messages, Session
+```
+
+`14-weekend.mdl` passes clean, which is the control: those are the microflows
+that were given `$Request` when §37 was fixed. Nobody has clicked through to a
+row of the other nine yet — the season page reaches its standings through
+`F1Cached`, not `F1Live` — so the bug is latent rather than absent. Fixing them
+is a separate piece of work; the point here is that a tool now says so out loud
+instead of a user reporting the wrong race two weeks later.
+
+### One that did not take
+
+**Issue 11 — `create or modify odata service` still drops role grants.**
+Upstream has `28ce821 fix(odata): stop deleting a published service's role
+grants on modify`, and the fix is real, and it does not apply on this project's
+path. Reproduced twice on a throwaway service:
+
+```
+grant, then mx check              → 0 errors
+create-or-modify, no grant clause → CE0307 "At least one allowed role must be selected"
+```
+
+The reason is that there are two writers, and the fix went into one of them:
+
+- `sdk/mpr/writer_odata.go` — carries `AllowedModuleRoles` through, as the
+  commit's test asserts;
+- `mdl/backend/modelsdk/odata_write.go` — **zero** references to
+  `AllowedModuleRoles`. It never writes the grants at all, so a modify through
+  this path drops them however carefully the other writer is fixed.
+
+So the trailing re-grants at the end of `13-fan-resources.mdl`,
+`14-weekend.mdl` and `15-live.mdl` stay. Worth checking whether the two writers
+have other divergences of this shape — a fix verified against one of them is
+only half a fix, and nothing in the test suite would notice.
+
+### Not addressed
+
+`.ai-context/skills/` is still stamped 2026-08-07 against a binary built
+2026-08-09 (issue 17). `01ef224` puts the sync in `init`, so it presumably needs
+an `init`/`add-tool` run rather than following a rebuild; not re-tested here.
+
+Untouched: the custom-authentication microflow (§40, issue 3 — filed after this
+batch was cut), the hand-rolled query surface (7), `--hub` headless
+verification (8, though `f1fa02b` moves the adjacent screenshot-login path),
+the serve port held by a killed run's child (9), menu icons (10), the header
+logo (15), and the two lint ideas (18, 19).
+
+### A stale test harness, committed
+
+Unrelated to `b4a825e`, found while re-running the suites on it. An interrupted
+`mxcli test --attach` had left the frontend with
+`AfterStartupMicroflow = 'MxTest.RegisterEndpoint'` pointing at a microflow that
+no longer existed, plus an empty `MxTest` module — and that state was committed,
+weeks ago, in `1d52a14` or thereabouts.
+
+It is a quiet kind of broken. `mx check` reports **0 errors**, and the app boots
+and serves every page, so nothing in the normal loop notices. What it does is
+throw on every startup (263 lines of `at MxTest.RegisterEndpoint` in the runtime
+log) and refuse the next `--test-endpoint` injection outright:
+
+```
+ERROR: could not remove the test endpoint — the project has been left modified:
+DROP MICROFLOW MxTest.RegisterEndpoint: exit status 1: microflow not found
+```
+
+mxcli's own message is the thing that named it, and it says exactly the right
+thing — *"Check the after-startup microflow and the MxTest module before
+committing"* — which is a warning I evidently did not act on at the time.
+Cleared the setting, dropped the module; 21/21 frontend tests pass again.
+
+Worth a rule: an `AfterStartupMicroflow` naming a microflow that does not exist
+is always wrong, and `mxcli check`/`lint` can see it without a runtime.
+
+
+## 42. Fixing the nine: what the key lookup actually needed, and three things found on the way
+
+§41 found nine resources whose read microflow could not answer a lookup by the
+key the service declares — six on `F1LiveApi`, three on `F1LiveNowApi`, each a
+latent §37. This is the fix.
+
+### The shape
+
+Each read microflow now takes `System.HttpRequest`, lifts the key out of
+`$filter`, and passes it to its query as a **bound** parameter. The guard lives
+in the query rather than the microflow, so the SQL stays in one place:
+
+```sql
+SELECT * FROM ( <the query as it was> ) t
+WHERE {keyFilter} = '' OR CAST(t.<key> AS VARCHAR) = {keyFilter}
+      OR TRY_CAST(t.<key> AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+```
+
+Empty means "the collection", anything else means "that row" — one query for
+both callers, no dynamic SQL, no duplicated SELECT drifting from the original.
+Verified per resource against the running service: every one returns the whole
+collection unfiltered and exactly one row for a key.
+
+| | collection | by key |
+|---|---|---|
+| Seasons | 77 | 1 (`year eq 1957`) |
+| Circuits | 78 | 1 (`circuitId eq 'monza'`) |
+| Constructors | 187 | 1 (`ferrari`) |
+| Races | 1171 | 1 (`raceId eq 1036`) |
+| DriverStandings | 1680 | 1 (`1957-juan-manuel-fangio`) |
+| ConstructorStandings | — | 1 (`1979-ferrari`) |
+| Order / Messages / Session | 22 / 80 / 1 | 1 each |
+
+### Three things the fix needed that were not obvious
+
+**A numeric key arrives unquoted.** `ODataFilterId` matches `field eq 'value'`;
+Mendix sends `year eq 1957` for an `Edm.Int64` key, with no quotes, so the
+identifier reader returns "" and the request falls straight back through to the
+collection — the exact failure being fixed. Seasons and Races read the key both
+ways and take whichever the client sent.
+
+**The comparison has to survive the column's inferred type.** `CAST(t.year AS
+VARCHAR) = '1957'` returned nothing where the same shape worked for a text id,
+so the guard compares as text *and* as a number. Cheap insurance against
+whatever `read_csv` decided a column was.
+
+**The standings' key was not unique.** `driverId` identifies up to 77 rows — one
+per season — so even a lookup that reached the backend could only return the
+newest. A key matching many rows is worse than none: it is the §37 failure with
+extra steps. Both standings now carry `<year>-<driverId>`, which is the pair
+that actually identifies a standing.
+
+Also: the six queries have other callers — the refresh jobs in `04-refresh.mdl`
+and the counts in `08-health.mdl` — which now pass `keyFilter = ''`. And
+modifying `F1LiveApi` dropped its role grant again (§41's unfixed item), so
+`02-live-service.mdl` re-grants at the end like 13/14/15 already do.
+
+### MDL-ODATA03 went quiet without the behaviour changing
+
+Both rules now report zero. Only one of them should.
+
+`MDL-ODATA03` fires when a resource advertises `$top`/`$skip` and its read
+microflow "never sees the request (no `System.HttpRequest` parameter)". Giving
+the microflow that parameter — for the *key*, which is a different concern —
+satisfies the rule. But the paging is still not applied:
+
+```
+GET /odata/f1-live/Seasons?$top=5   →   77 rows
+```
+
+The rule can see whether a microflow *could* read the request, not whether it
+does, so it has a false negative exactly where a resource has been half-fixed.
+Worth tightening to look for a use of the parameter, not its presence.
+
+### And the remedy it suggests cannot be used here
+
+`MDL-ODATA03` offers the honest alternative: "declare `TopSupported: No,
+SkipSupported: No`". Tried it on all nine. The backend accepts it, the contract
+correctly says `Bool="false"` — and the **frontend then cannot build**:
+
+```
+[error] [CE6630] "'Seasons' is marked supports $top=False in the OData service,
+                  but True in the app." at Entity 'F1Live.Seasons'
+```
+
+Because the external-entity generator hardcodes both:
+
+```go
+// mdl/executor/cmd_contract.go:1211
+ent.Creatable    = entitySet.Insertable != nil && *entitySet.Insertable
+ent.Deletable    = entitySet.Deletable  != nil && *entitySet.Deletable
+ent.Updatable    = false
+ent.SkipSupported = true      // ← ignores the contract
+ent.TopSupported  = true      // ← ignores the contract
+```
+
+Creatable and Deletable are derived from the annotations; Skip and Top are
+stamped true regardless. The comment directly above even explains that the app
+must match the service "or mx check reports CE6630". MDL cannot correct it
+afterwards either — `skipsupported`/`topsupported` exist only on the *published*
+side (`visitor_odata.go:381`), not on an external entity.
+
+So the declaration was reverted and the nine still advertise paging they do not
+do. This is §24's family: the generator defaults a capability rather than
+reading it, and the mismatch surfaces as a build error in the *other* app.
+
+### One more, found while regenerating
+
+**`create or modify odata client` does not re-fetch `$metadata`.** The fetch
+lives in the create path (`cmd_odata.go:1131`); modify leaves the cached
+contract alone. So after changing what a service publishes, re-running the
+client script reports "Modified OData client" and imports nothing new — the
+model keeps the old shape, and `create or modify external entities` then
+faithfully regenerates from stale metadata. It reported "8 updated" while
+silently omitting the new attribute.
+
+The recovery is to drop the client and its external entities and recreate them,
+which in this project also means re-running the pages and grants that bind them.
+Either modify should re-fetch, or it should say that it did not.
+
+## 43. Paging the nine, and why the count needs its own scan
+
+§42 closed the key half and left the other one open: the nine resources still
+advertised `$top` and `$skip` and applied neither, so a client asking for five
+seasons got seventy-seven and believed it had a page. `MDL-ODATA03` had stopped
+saying so, which made it worse rather than better.
+
+### Values, not a clause
+
+`ODataOrderLimitSql` splices `" ORDER BY … LIMIT n OFFSET m"` into a statement
+the caller is assembling. These resources assemble nothing — their SQL lives in
+the connection and takes bound parameters — so they need the *numbers*:
+
+```java
+public static long topValue(String uri, long fallback, long maxTop)
+public static long skipValue(String uri)
+```
+
+and the query gained a bound window beside its bound key:
+
+```sql
+ORDER BY t.year DESC
+LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)
+```
+
+Bound, so nothing a client sends reaches the SQL as text. `?$skip=drop%20table`
+is 0.
+
+**The fallback is the whole list, not a page size.** `orderLimit` defaults to
+`maxTop` because an unbounded read microflow is how the Drivers grid once
+returned 293 KB for twenty names. These nine are different: they returned
+everything before they could page, and every existing caller — the frontend's
+external entities, the refresh jobs, the health counts — expects that. A default
+page here would be a silent behaviour change dressed as a fix.
+
+### The count has to be the set, not the page
+
+A grid draws its scrollbar from `$count`, so once a read returns a page,
+`COUNT($Rows)` is the wrong answer — it reports the page size and the scrollbar
+says there are five seasons. The full-set count needs its own scan.
+
+The paged resources in `10-live-pushdown.mdl` keep a second named query for
+this (`GetDriverCount`). These nine don't need one: the same query, run with the
+window wide open, *is* the count. So the second scan is the same statement with
+`topN = '1000000', skipN = '0'` — no new queries, no new entities, and the count
+matches the filter by construction because it is the same WHERE.
+
+It runs only when `$count=true`, so an unpaged read still costs one scan. These
+are 77–1680 row tables; RaceResults, the one that would hurt, has had proper
+pushdown since §22.
+
+### Verified
+
+```
+GET /Seasons                      →  77 rows,  count absent
+GET /Seasons?$top=5               →   5 rows,  2026 … 2022
+GET /Seasons?$top=5&$skip=10      →   5 rows,  2016 … 2012
+GET /Seasons?$top=5&$count=true   →   5 rows,  count=77      ← the set, not the page
+GET /DriverStandings?$top=3&$count=true            →  3 rows, count=1680
+GET /DriverStandings?$filter=standingKey eq '…'    →  1 row,  count=1
+```
+
+Five tests cover the readers directly, including the clamp and the junk input.
+The published contract is byte-identical afterwards — capabilities were already
+`true` and are now honest — so no client, external entity or page needed
+regenerating. 26/26 backend, 23/23 frontend.
+
+### What this left
+
+`$orderby`, which §44 then closed — by the second of the two routes sketched
+here, a column whitelist bound into a `CASE`.
+
+## 44. Ordering by a bound CASE, so the SQL can stay where it is
+
+The last of the three query options. `$filter`'s key half landed in §42 and
+paging in §43, both as bound parameters. `$orderby` cannot be one: an ORDER BY
+is SQL text, and a bound parameter is a value.
+
+### Why not the obvious route
+
+`10-live-pushdown.mdl` already solves this for Drivers and RaceResults — build
+the statement in the microflow, splice in a whitelisted clause. Doing the same
+here would mean lifting nine SELECTs out of the connection and into microflow
+string concatenation, and three of them are the live snapshots whose `read_csv`
+carries a full column-type spec:
+
+```
+columns = {'sessionKey': 'VARCHAR', 'driverNumber': 'BIGINT', 'code': 'VARCHAR', …}
+```
+
+Eighteen of those, as `+ '…'` fragments, duplicated from a query that still has
+to exist for its mapping. That is the drift §42 was written to avoid.
+
+### What was done instead
+
+The order is chosen *inside* the query, by a CASE over the exposed names, with
+the name and direction arriving as bound parameters:
+
+```sql
+ORDER BY
+  CASE WHEN {sortDir} = 'A' THEN (CASE {sortCol}
+       WHEN 'championDriver' THEN t.championDriverName … END) END ASC  NULLS LAST,
+  CASE WHEN {sortDir} = 'D' THEN (CASE {sortCol} … END)               END DESC NULLS LAST,
+  CASE WHEN {sortDir} = 'A' THEN (CASE {sortCol}
+       WHEN 'year' THEN CAST(t.year AS DOUBLE) … END) END ASC  NULLS LAST,
+  CASE WHEN {sortDir} = 'D' THEN (CASE {sortCol} … END)               END DESC NULLS LAST,
+  t.year DESC                                        -- the query's own order
+```
+
+When `{sortCol}` is empty every CASE is NULL, every row ties, and the query's
+own ORDER BY decides — so a caller that asks for nothing gets exactly what it
+got before. Four terms rather than one because a direction cannot be bound
+either, and because a CASE has a single type: text and numeric columns need
+their own arms. Dates go in the text arm as `CAST(… AS VARCHAR)`, which sorts
+correctly precisely because DuckDB renders them ISO; booleans go in the numeric
+arm as 0/1.
+
+96 sortable columns across the nine, so the blocks were generated from the
+`expose` clauses and the entity types rather than typed out.
+
+The two readers return values, not a clause, and the whitelist they check is
+the same list of names the CASE matches on — one place to add a column, one
+place to forget one.
+
+### Verified
+
+```
+/Seasons?$top=4                              2026 | 2025 | 2024 | 2023   (default)
+/Seasons?$top=4&$orderby=year asc            1950 | 1951 | 1952 | 1953
+/Seasons?$top=4&$orderby=raceCount desc        24 | 24 | 22 | 22
+/Circuits?$top=4&$orderby=length desc      25.579 | 8.36 | 8.302 | 8.3
+/Seasons?$orderby=raceCount asc,year desc   7/1955 | 7/1950 | 8/1961      (first term)
+/DriverStandings?$orderby=points desc&$top=3&$count=true
+                                            575 | 454 | 437,  count=1680
+```
+
+Composes with the key and the page, and the published contract is unchanged —
+these are query parameters, not model — so again nothing downstream needed
+regenerating. Six tests on the readers; 32/32 backend, 23/23 frontend.
+
+### A defence that turned out to be a second line
+
+The whitelist exists so an unknown name cannot reach the SQL. It never gets the
+chance: Mendix validates `$orderby` against the published entity first and
+answers `400 "Could not map 'nonsense' to attribute or association."` before the
+read microflow runs. Worth knowing that the platform does that much — and worth
+keeping the whitelist anyway, since it is what stops an *exposed* column being
+sorted on when the query has no arm for it.
+
+## 45. What Mendix's OData client actually sends, since nothing says
+
+Three sections of pushdown work — §42 the key, §43 the page, §44 the order —
+were each built against a guess about what a client would ask for. Before
+turning any of it into a reusable component it was worth finding out.
+
+### There is nothing to read
+
+Mendix's [consumed OData service
+requirements](https://docs.mendix.com/refguide/consumed-odata-service-requirements/)
+is the page you would expect to answer this. It lists the system query options a
+service must support —
+
+> It should support queries on the OData feed, including: `$filter`,
+> `$orderby`, `$top`, `$skip`, `$expand`, `$count` (or `$inlinecount`)
+
+— the OData versions, and the EDM types allowed for a key. It names not one
+comparison operator, not one function, and says nothing about how `null` is
+compared or how a key is addressed. It closes with "The OData implementation in
+Mendix does not support all features of the OData specification" and a
+recommendation to test third-party APIs with a proof of concept, which is fair
+enough and also an admission that the set is not written down anywhere.
+
+The published side is no better: nothing documents the XPath → OData mapping a
+datagrid filter goes through. So it was captured instead.
+
+### How
+
+`b4a825e` added `mxcli log set`, which made this a five-minute job rather than a
+packet capture:
+
+```bash
+./mxcli log set "OData Publish" TRACE -p Formula1Backend.mpr
+```
+
+The node logs each incoming request URI. Then two passes:
+
+1. **Drive the real UI.** A Playwright script walked every page in the frontend
+   and worked every grid — sorted columns, paged, typed in filter boxes, opened
+   drill-downs. 81 requests.
+2. **Force the shapes the UI does not reach.** Fourteen probe microflows in the
+   *frontend*, each retrieving from an external entity with one XPath constraint
+   — `=`, `!=`, `>`, `>=`, `<`, `and`, `or`, `contains`, `starts-with`,
+   `ends-with`, `= empty`, a boolean, a decimal, and a mixed one — run through
+   `mxcli test --attach` so the trace shows what each XPath became on the wire.
+
+### The whole grammar, as emitted
+
+```
+name eq 'Ayrton Senna'              (raceWins gt 10) and (podiums gt 20)
+name ne 'Ayrton Senna'              (name eq 'a') or (name eq 'b')
+raceWins gt|ge|lt|le 40             contains(name,'Sen')
+points gt 100.5                     startswith(name,'Ayr')
+nationality eq null                 endswith(name,'nna')
+championshipWon eq true
+```
+
+Plus `$select` (on nearly every request), `$top`, `$skip`, `$count=true`,
+`$orderby` with **two** terms (`round asc,calendarKey asc` from a grid whose
+default sort is composite), and `$expand` — but only on persistent entities with
+navigation properties, never on the flat non-persistable rows this app publishes
+from DuckDB.
+
+Each XPath maps to exactly one OData term, with each term wrapped in its own
+parentheses when there is more than one. No arithmetic, no lambdas, no `$apply`,
+no date functions, no `any`/`all`. The set is small — which is the good news,
+because covering all of it is achievable, and covering all of it is what makes a
+widget over an external entity work rather than half-work.
+
+### The one that mattered
+
+`or`. The `where()` helper written in §21 split the filter on `and` and matched
+each piece with a regex; it could not express `or` **at all**, and rejected any
+request containing one. Mendix emits `or` the moment a datagrid filter has two
+values selected — the second click on a filter chip. So the pushdown resources
+had a defect that only appeared on the second interaction, and the honest
+rejection meant it surfaced as a 500 rather than as wrong data. Better than
+silent, still broken.
+
+That single finding is what turned "tidy these Java actions up" into §46.
+
+## 46. Extracting it: ten Java actions become one module
+
+By §44 there were ten Java actions doing OData pushdown in this app, all
+wrappers over one 469-line class in `javasource/formula1backend/`, and every
+line of it was about OData and SQL rather than about Formula 1. Any app putting
+an existing RDBMS or warehouse behind an OData surface needs the same thing.
+
+It is now `ODataPushdown` — a module, a package, and an MDL script that installs
+it into any project. See `model/odatapushdown/README.md`.
+
+### One parse, not nine
+
+The old shape had each action re-read the URI to answer one question about it:
+
+```
+$KeyText  = ODataFilterId(Uri, 'year');       $Top     = ODataTop(Uri, …);
+$KeyNum   = ODataFilterYear(Uri, 'year', 0);  $Skip    = ODataSkip(Uri);
+$SortCol  = ODataSortColumn(Uri, $Sortable);  $SortDir = ODataSortDirection(Uri);
+$WantsCnt = ODataWantsCount(Uri);
+```
+
+Seven parses of the same string per request, in six microflows, and nothing
+holding the seven answers to a single interpretation. Now:
+
+```
+$Q = CALL JAVA ACTION ODataPushdown.Parse(
+  Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+  MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+  KeyField = 'year', RejectUnsupported = false);
+```
+
+Ten actions became three: `Parse`, and the short forms `Key` and `FilterNumber`
+for resources whose whole contract is one value out of `$filter`.
+
+### What changed on the way out, and why
+
+**A real parser.** §45 found the old `where()` could not express `or`, so the
+filter is now recursive descent — `parseOr → parseAnd → parseUnary → parsePrimary
+→ parseTerm` — which gets precedence, `not` and nesting for free rather than
+approximating them. `name eq 'a' and (raceWins gt 1 or raceWins lt 0)` becomes
+`(name = 'a' AND ((totalRaceWins > 1 OR totalRaceWins < 0)))`.
+
+**Typed columns.** The map grew a third field: `exposed:sql:type`, with type one
+of text, number, bool, date. This closes a real hole. Mendix quotes a literal
+according to what the *widget* believes the attribute is, so the same numeric
+column arrives as `year eq 1957` from a grid header and `year eq '1957'` from a
+combo box; the old helper passed the quotes through and handed DuckDB
+`year = '1957'` against a BIGINT — zero rows, status 200. §42 patched that in SQL
+with a `TRY_CAST(… AS DOUBLE)` arm per query. The parser does it once, for
+everybody. An unrecognised type is a hard error, because a typo would otherwise
+turn a numeric column into a text one silently.
+
+**Dialects.** Five, differing in exactly two places: how a case-insensitive
+`LIKE` is spelled and how a page is. DuckDB and PostgreSQL have `ILIKE` and
+`LIMIT … OFFSET`; SQL Server and Oracle need `LOWER(…) LIKE LOWER(…)` and
+`OFFSET … ROWS FETCH NEXT … ROWS ONLY`; MySQL puts the page the other way round.
+Two tests run through SQL Server and MySQL precisely because nothing in this app
+does — "not DuckDB-shaped" is only provable from outside DuckDB.
+
+**Two sort terms.** §44 carried one and said a second "would need a second CASE
+in every query". §45 found Mendix does emit two. The parse now returns both;
+splice callers get both in `OrderBySql`. The nine bound queries still bind the
+first only — that is the second CASE, and it has not been written.
+
+**Rejection became a choice.** `RejectUnsupported`. Splice callers pass true: a
+filter they cannot translate means an empty `WHERE`, which is every row in the
+table under a 200. Bind callers pass false: they never look at `FilterSql`, so
+failing over a filter they were never going to apply trades one wrong answer for
+another.
+
+### Both styles, both proved
+
+The migration covers everything, which is the point — a component with one
+consumer proves nothing.
+
+| | resources | takes |
+|---|---|---|
+| splice | Drivers, RaceResults (`10`) | `FilterSql`, `OrderBySql` |
+| bind | the six in `02`, the three in `15` | `Key`, `Top`, `Skip`, `SortColumn1`, `SortDirection1` |
+| key only | five in `13`, five in `14` | `Key` / `FilterNumber` |
+
+`Key` reading the path as well as `$filter` deleted a branch outright: Calendar
+used to need `ODataFilterId` *and* `ODataEntityKeyId`, with a three-way `IF`
+underneath, because the second returned a number. One call now answers all three
+spellings — `?$filter=calendarKey eq '1036-c'`, `/Calendar('1036-c')` and
+`/Calendar(calendarKey='1036-c')` — all three verified against the running app.
+
+`09-query-pushdown.mdl` and `javasource/formula1backend/ODataQuery.java` are
+deleted. `13-fan-resources.mdl` lost the 90-line block of action declarations it
+opened with.
+
+### Tested
+
+The test-support wrappers were rewritten to go through the module, and the suite
+grew from 32 to 49: the whole §45 grammar term by term, both the quoted and bare
+spelling of a number, `eq null` both ways, precedence, `not`, the key in all
+three forms, a key that is not an identifier, the two other dialects, and four
+rejection cases. 57/57 backend overall.
+
+Over HTTP, on the running app:
+
+```
+/Seasons?$filter=year eq 1957                 1 row, Fangio        (bind, numeric key)
+/Seasons?$top=3&$orderby=year asc&$count=true 1950,1951,1952 of 77 (bind, page + sort)
+/Drivers?$filter=name eq 'Ayrton Senna' or name eq 'Alain Prost'
+                                              2 rows               (splice, or — new)
+/Drivers?$filter=contains(name,'Sen')&$top=3  3 of 7               (splice, page + count)
+/Calendar('1036-c')                           Bahrain 2021         (key in path)
+```
+
+### What is still owed
+
+The nine bound resources apply no `$filter` beyond their key, while their
+`expose` clauses declare every attribute `Filterable`. A grid filter on one of
+them is accepted and ignored — the same class of defect as §37, one layer along.
+Three ways out: bind a `{filterSql}`-shaped parameter (impossible — a bound
+parameter is a value), move the nine to splice style (loses the readable SQL
+that §44 went out of its way to keep), or stop declaring what is not applied
+(blocked by the same `cmd_contract.go:1214` hardcode that made `TopSupported: No`
+unusable in §42). Left as it was, filed rather than half-fixed.
+
+### Roadmap: stored procedures, as OData actions
+
+The bind style already reaches a procedure's *result set* — point a named query
+at `CALL sp_x(?)` and the module supplies the arguments. What it cannot do is
+expose the procedure as something a client can **invoke**: an OData action or
+function, `POST /odata/x/RunReport`. That is the other half of putting an
+existing RDBMS behind an OData surface, and the piece that turns this from a
+read-only projection into a two-way integration. Not started.
+
+## 47. Stored procedures over OData: everything except the action
+
+§46 left stored procedures as roadmap. This is what happened when they were
+built, which is: the database half works, the publishing half is one missing
+piece of MDL, and four things bite on the way that nothing documents.
+
+### The setup, so the finding is not a toy
+
+`scripts/create-f1ops-db.sh` builds `f1ops`, a real Postgres database holding
+the F1 data and two routines of deliberately different kinds:
+
+- `f1ops.driver_form(p_driver_id, p_last_n)` — a **table-valued function**.
+  plpgsql, with a loop and a running average, so it is procedural rather than a
+  view in a hat.
+- `f1ops.record_prediction(...)` — a **procedure** with INOUT parameters. It
+  validates and then writes, because that is the other reason logic sits in a
+  database: the rule lives next to the data and every caller gets it.
+
+`model/backend/16-ops-procedures.mdl` puts both behind `F1OpsApi`
+(`/odata/f1-ops/`). Nothing in this app owns that schema, which is the point.
+
+### The module gained one action
+
+`ODataPushdown.CallStatement(Routine, Kind, Parameters, Dialect)` renders the
+invocation for the engine you are on. Five engines, three kinds, almost no two
+agreeing:
+
+```
+             table                            procedure
+pg/duckdb    SELECT * FROM f(a,b)             CALL p(a,b)      (duckdb: none)
+sqlserver    SELECT * FROM f(a,b)             EXEC p @x=a, @y=b
+oracle       SELECT * FROM TABLE(f(a,b))      BEGIN p(a,b); END;
+mysql        none                             CALL p(a,b)
+```
+
+`Parameters` is a list of Mendix parameter **names**, never values, so it emits
+`SELECT * FROM f1ops.driver_form({driverId}, {lastN})` — a template for
+`execute database query` to bind. That is a stronger position than the `$filter`
+translation can take: a `WHERE` clause has to be built as text because its shape
+comes from the client, but a routine call's shape is fixed by the routine and
+only its values vary. The only text emitted is the routine name, and that is
+checked against an identifier pattern rather than escaped. Fourteen tests.
+
+### Four things that bite
+
+**1. MDL cannot declare an OData action.** This is the finding.
+
+A procedure that changes something wants to be an action:
+`POST /odata/f1-ops/RecordPrediction`, arguments in the body, an `ActionImport`
+in `$metadata`. Mendix supports it — `ODataPublish$PublishedMicroflow` is in the
+metamodel, `PublishedODataService2` has a `Microflows` collection, and
+`modelsdk/gen/odatapublish` has `NewPublishedMicroflow()` and
+`NewPublishedMicroflowParameter()` with every setter wired.
+
+MDL has no syntax for it. `createODataServiceStatement` in `MDLService.g4`
+admits `publishEntityBlock*` and nothing else; `publish microflow …`,
+`publish action …` and every variant tried is a parse error at `missing ENTITY`.
+And `mdl/backend/modelsdk/odata_write.go` has zero references to
+`PublishedMicroflow`, so even the SDK path never populates the collection. The
+`$metadata` this app publishes has an `EntityContainer` with two `EntitySet`
+elements and no `ActionImport` — that is the gap, visible from outside.
+
+Everything else in the metamodel is one grammar rule away:
+
+```
+publishMicroflowBlock
+    : PUBLISH MICROFLOW qualifiedName (AS STRING_LITERAL)?
+      (LPAREN publishedParam (COMMA publishedParam)* RPAREN)?
+      (RETURNS dataType)?
+      SEMICOLON?
+```
+
+**2. A returning procedure cannot be called at all.** The obvious statement,
+
+```sql
+CALL f1ops.record_prediction({driverId}, ..., NULL, NULL, NULL)
+```
+
+is correct Postgres and is exactly what `CallStatement` renders. Mendix will not
+run it. The External Database Connector inspects the statement and dispatches a
+`CALL` as an update —
+`QueryDispatcher:153 -> JdbcConnector.executeStatement:118 -> executeUpdate` —
+and PgJDBC then refuses, because a `CALL` with INOUT parameters answers with a
+row: *"A result was returned when none was expected"*. There is no
+`execute database statement` activity to reach for; the only door is
+`execute database query`, and it wants a `SELECT`.
+
+The workaround is a one-line function in the database that `CALL`s the procedure
+and returns its row, so the invocation begins with `SELECT`. Every Mendix app
+that needs a returning procedure will write it. The procedure is untouched and
+is still what runs.
+
+**3. A routine's arguments are not columns of its result.** Mendix validates
+`$filter` against the published metadata *before* the read microflow runs, so
+`?$filter=driverId eq 'ayrton-senna'` against a resource whose entity has no
+`driverId` attribute is answered
+
+```
+400  Could not map 'driverId' to attribute or association.
+```
+
+and the microflow never sees it. A parameterised resource therefore has to carry
+its own parameters as attributes and echo them back on every row —
+`SELECT f.*, {driverId} AS driver_id, … FROM f1ops.driver_form(…) f`.
+
+An OData action would take them as parameters and need none of this. It is the
+sharpest single cost of finding 1: every parameterised resource pays it.
+
+**4. The Postgres driver has to be declared and shipped, twice over.** Mendix
+runs on Postgres, so a `type 'PostgreSQL'` connection looked like it needed
+nothing. It needs both:
+
+- **build**: without a module jar dependency, mxbuild fails CE5278 "The
+  PostgreSQL JDBC driver (org.postgresql:postgresql) is missing from the module
+  settings";
+- **run**: declared but `included = false`, the build is green and the first
+  request dies with *"No JDBC driver found in app for URL: jdbc:postgresql://…"*
+  — the Connector resolves drivers from the app's classpath, not the runtime's.
+
+So `included = true` and `mxcli sync-java-deps`, exactly as for DuckDB. Being
+the same database Mendix itself runs on buys nothing.
+
+### What shipped instead of an action
+
+The procedure is published as an entity set whose `InsertMode` is a microflow —
+the OData-v2-era idiom for an action. A client POSTs the arguments, the
+microflow calls the routine and writes the answer back onto the same object, and
+Mendix returns it in the 201. Note the insert microflow must return **Nothing**
+(CE6588); Mendix serialises the parameter object itself, which is what lets the
+answer come back.
+
+```
+POST /odata/f1-ops/Predictions  {"driverId":"max-verstappen","raceId":551,
+                                 "position":1,"submittedBy":"fan"}
+  201  {"predictionKey":"2", …, "accepted":true,  "message":"recorded"}
+
+POST … {"driverId":"nobody-here", …}
+  201  {"predictionKey":"",  …, "accepted":false, "message":"no such driver: nobody-here"}
+
+POST … {"position":99, …}
+  201  {"predictionKey":"",  …, "accepted":false, "message":"position must be between 1 and 20"}
+
+GET  /odata/f1-ops/Predictions('2')
+       {"predictionKey":"2","driverId":"max-verstappen","position":1, …}
+
+GET  /odata/f1-ops/DriverForm?$filter=driverId eq 'ayrton-senna' and lastN eq 3
+       three rows, rollingAvg 30.00 each  (1994: three DNFs)
+```
+
+The refusals come back as `accepted=false` with the database's own message
+rather than as a 500, because they are answers and not failures: the procedure
+validated the request and said no. A 500 would lose the reason.
+
+What it costs against a real action: the operation is named `Predictions` rather
+than `RecordPrediction`, the arguments are attributes rather than parameters,
+and a POST that the domain rejects is still a 201. Swap it the day MDL grows the
+syntax — the microflow underneath does not change.
+
+`mxcli check` (MDL-ODATA02) caught the one thing that would have made this
+another §37: `Predictions` declares a KEY, so a client that has just POSTed will
+re-read by it. The predictions are in a table, so the lookup is answerable, and
+`Read_Predictions` answers it. Dropping the KEY is not an alternative — Mendix
+requires one (CE6585).
+

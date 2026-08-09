@@ -1,0 +1,403 @@
+/*
+ * Service 5 of 5 — F1OpsApi: an existing database's stored procedures, over OData.
+ *
+ * Everything else in this app reads flat files. This one exists to answer a
+ * different question: you have been handed a database with the logic already
+ * inside it — procedures, functions, packages — and asked to put an OData
+ * surface on it without touching any of that. It is the case ODataPushdown's
+ * bind style was built for, and it cannot be demonstrated against a CSV.
+ *
+ * The database is `f1ops`, a real Postgres schema created by
+ * scripts/create-f1ops-db.sh, holding the same F1 data plus two routines of
+ * deliberately different kinds:
+ *
+ *   f1ops.driver_form(p_driver_id, p_last_n)     a table-valued FUNCTION.
+ *     Read-only, returns rows, reached with SELECT * FROM. plpgsql with a loop
+ *     and a running average, so it is procedural rather than a view in a hat —
+ *     the sort of thing that is in the warehouse because it was awkward to
+ *     express any other way, which is exactly the sort you cannot lift out.
+ *
+ *   f1ops.record_prediction(...)                 a PROCEDURE with INOUT
+ *     parameters. It writes, and it validates before it writes, because that
+ *     is the other reason logic sits in a database: the rule lives next to the
+ *     data and every caller gets it. Reached with CALL, which in Postgres
+ *     answers with one row carrying the INOUT values.
+ *
+ *
+ * WHY THE SECOND ONE IS SHAPED LIKE AN ENTITY SET
+ *
+ * A procedure that changes something wants to be an OData **action** —
+ * `POST /odata/f1-ops/RecordPrediction` with the arguments in the body,
+ * declared as a function import in $metadata. Mendix supports exactly that:
+ * the metamodel has ODataPublish$PublishedMicroflow, and the model SDK has a
+ * constructor for it.
+ *
+ * MDL cannot write one. `create odata service` takes `publish entity` blocks
+ * and nothing else — there is no `publish microflow` — and the writer never
+ * emits a Microflows collection. Verified against b4a825e; filed. FINDINGS §47.
+ *
+ * So the procedure is published the way MDL *can* express an invocation with
+ * side effects: as an entity set whose InsertMode is a microflow. A client
+ * POSTs a Prediction with the arguments filled in, the microflow CALLs the
+ * procedure, writes the answer back onto the same object, and Mendix returns
+ * it as the response body. That is the OData-v2-era idiom for an action; it is
+ * discoverable in $metadata, it works from any client, and the only thing it
+ * costs is that the operation is named `Predictions` rather than
+ * `RecordPrediction`. Swap it for a real action the day MDL grows one — the
+ * microflow underneath does not change.
+ */
+
+-- ---------------------------------------------------------------- the database
+
+create or modify constant Formula1Backend.OpsDbUrl type string
+  default 'jdbc:postgresql://127.0.0.1:5432/f1ops'
+  comment 'The existing RDBMS this app does not own. scripts/create-f1ops-db.sh builds it.';
+
+create or modify constant Formula1Backend.OpsDbUser type string default 'mendix';
+create or modify constant Formula1Backend.OpsDbPassword type string default 'mendix' PRIVATE;
+
+/*
+ * Type PostgreSQL rather than BYOD: Mendix ships the Postgres driver, so unlike
+ * DuckDB there is no jar to declare and no vendorlib entry to sync.
+ *
+ * Both queries are written with bound parameters and NO string building, which
+ * is the whole argument for putting a routine behind a resource this way. A
+ * WHERE clause has to be assembled as text because its shape comes from the
+ * client; a routine call's shape is fixed by the routine, so every value can be
+ * bound and none of it can carry SQL. ODataPushdown.CallStatement renders the
+ * same two statements for whichever engine you are on — see the tests in
+ * tests/pushdown.test.mdl; here they are written out so the mapping can be read
+ * next to them.
+ */
+create or modify database connection Formula1Backend.F1Ops
+type 'PostgreSQL'
+connection string @Formula1Backend.OpsDbUrl
+username @Formula1Backend.OpsDbUser
+password @Formula1Backend.OpsDbPassword
+begin
+  /*
+   * The table function. Both arguments bound; the cast is there because every
+   * Mendix query parameter is a string and the routine's second argument is an
+   * integer.
+   *
+   * Paging and ordering are NOT pushed into this one. A routine decides its own
+   * result — `p_last_n` is the page — so wrapping it in a LIMIT would be asking
+   * the same question twice. That is a real difference from the CSV resources,
+   * and it is why this resource declares its own contract below.
+   */
+  query CallDriverForm
+    sql 'SELECT f.*, {driverId} AS driver_id, CAST({lastN} AS INTEGER) AS last_n
+         FROM f1ops.driver_form({driverId}, CAST({lastN} AS INTEGER)) f'
+    parameter driverId: string
+    parameter lastN: string
+    returns Formula1Backend.Stg_DriverForm
+    map ( form_key as FormKey, driver_id as DriverId, last_n as LastN,
+          race_id as RaceId, year as Year, round as Round,
+          race_name as RaceName, finish_position as FinishPosition,
+          position_text as PositionText, grid_position as GridPosition,
+          points as Points, places_gained as PlacesGained,
+          rolling_avg as RollingAvg );
+
+  /*
+   * The procedure — reached through a one-line wrapper function, and that
+   * indirection is not a style choice.
+   *
+   * The call this wants to be is
+   *
+   *   CALL f1ops.record_prediction({driverId}, ..., NULL, NULL, NULL)
+   *
+   * with the three trailing NULLs standing in for the INOUT slots, which
+   * Postgres fills on the way out and returns as one row. It is correct SQL and
+   * `ODataPushdown.CallStatement(..., 'procedure', ..., 'postgresql')` renders
+   * exactly it. Mendix cannot run it: the External Database Connector inspects
+   * the statement, sends a CALL down JDBC executeUpdate
+   * (QueryDispatcher:153 -> JdbcConnector.executeStatement:118), and the driver
+   * then refuses with "A result was returned when none was expected". There is
+   * no `execute database statement` activity to reach for instead — the only
+   * door is `execute database query`, and it wants a SELECT.
+   *
+   * So the database also exposes `record_prediction_fn`, which does nothing but
+   * CALL the procedure and return its row. The procedure is untouched and is
+   * still what runs; the wrapper only makes the invocation start with SELECT.
+   * FINDINGS §47.
+   */
+  query CallRecordPrediction
+    sql 'SELECT * FROM f1ops.record_prediction_fn({driverId},
+                                                  CAST({raceId} AS INTEGER),
+                                                  CAST({position} AS INTEGER),
+                                                  {submittedBy})'
+    parameter driverId: string
+    parameter raceId: string
+    parameter position: string
+    parameter submittedBy: string
+    returns Formula1Backend.Stg_ProcedureResult
+    map ( prediction_id as PredictionId, accepted as Accepted,
+          message as Message );
+
+  /*
+   * Reading back what the procedure wrote.
+   *
+   * A resource you can POST to is a resource a client will then re-read by key,
+   * and a key lookup that cannot be answered is the failure in FINDINGS §37 —
+   * `mxcli check` (MDL-ODATA02) flags exactly this shape. The predictions are
+   * in a table, so the lookup is answerable; the empty key means "the whole
+   * list", which for this resource is the caller's own submissions.
+   */
+  query GetPredictions
+    sql 'SELECT CAST(p.id AS VARCHAR)    AS prediction_key,
+                p.driver_id              AS driver_id,
+                p.race_id                AS race_id,
+                p.finish_position        AS finish_position,
+                p.submitted_by           AS submitted_by,
+                true                     AS accepted,
+                ''stored''               AS message
+         FROM   f1ops.prediction p
+         WHERE  ({keyFilter} = '''' OR CAST(p.id AS VARCHAR) = {keyFilter})
+         ORDER  BY p.id DESC
+         LIMIT  200'
+    parameter keyFilter: string
+    returns Formula1Backend.Ops_Prediction
+    map ( prediction_key as PredictionKey, driver_id as DriverId,
+          race_id as RaceId, finish_position as Position,
+          submitted_by as SubmittedBy, accepted as Accepted,
+          message as Message );
+end;
+
+-- ---------------------------------------------------------------- row shapes
+
+/*
+ * The function's result set, one row per race — plus the two arguments it was
+ * called with, echoed back on every row.
+ *
+ * That echo is not decoration, and it is the sharpest thing this file has to
+ * say about the missing OData action. A routine's ARGUMENTS are not columns of
+ * its RESULT, but Mendix validates $filter against the published metadata
+ * before the read microflow runs: `?$filter=driverId eq 'ayrton-senna'` on a
+ * resource with no `driverId` attribute is answered `400 Could not map
+ * 'driverId' to attribute or association`, and the microflow never sees it.
+ *
+ * So a parameterised resource has to carry its own parameters as attributes.
+ * An OData action would take them as parameters and need none of this. Every
+ * one of these resources pays the same tax. FINDINGS §47.
+ */
+@Position(100, 1400)
+create or modify non-persistent entity Formula1Backend.Stg_DriverForm (
+  FormKey: string(80),
+  DriverId: string(60),
+  LastN: long,
+  RaceId: long,
+  Year: long,
+  Round: long,
+  RaceName: string(200),
+  FinishPosition: long,
+  PositionText: string(20),
+  GridPosition: long,
+  Points: decimal,
+  PlacesGained: long,
+  RollingAvg: decimal
+);
+
+/*
+ * The procedure's INOUT row. Separate from the entity a client posts, because
+ * the two are different things: this is what the database said, that is what
+ * the caller asked for.
+ */
+@Position(400, 1400)
+create or modify non-persistent entity Formula1Backend.Stg_ProcedureResult (
+  PredictionId: long,
+  Accepted: boolean default false,
+  Message: string(500)
+);
+
+/*
+ * The action, as an entity. Request fields the client fills in; result fields
+ * the microflow fills in and Mendix sends back in the 201.
+ *
+ * PredictionKey is the OData key. A published entity needs one, and a client
+ * that has just POSTed will re-read the thing it created by that key — so it
+ * has to be something the resource can answer for, which is why the microflow
+ * sets it from the id the procedure returned. FINDINGS §37 is what happens when
+ * it cannot.
+ */
+@Position(700, 1400)
+create or modify non-persistent entity Formula1Backend.Ops_Prediction (
+  PredictionKey: string(40),
+  DriverId: string(60),
+  RaceId: long,
+  Position: long,
+  SubmittedBy: string(60),
+  Accepted: boolean default false,
+  Message: string(500)
+);
+
+-- ---------------------------------------------------------------- microflows
+
+/*
+ * The function, behind a read.
+ *
+ * Its two arguments come off `$filter` — `driverId eq 'ayrton-senna'` and
+ * `lastN eq 5` — which is the module's Key and FilterNumber, the same two
+ * readers the fan resources use. No driver, no rows: a form chart with no
+ * driver is a bug, not a request for all 917.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverForm (
+  $Request: System.HttpRequest
+)
+  RETURNS List of Formula1Backend.Stg_DriverForm AS $Rows
+BEGIN
+  $DriverId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'driverId');
+  $LastN = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'lastN', Fallback = 5);
+
+  -- The routine caps its own page, so this only stops a caller asking for the
+  -- whole career and calling it a form guide.
+  DECLARE $N Long = $LastN;
+  IF $N < 1 OR $N > 50 THEN
+    SET $N = 5;
+  END IF;
+
+  $Rows = execute database query Formula1Backend.F1Ops.CallDriverForm
+    (driverId = $DriverId, lastN = toString($N));
+
+  RETURN $Rows;
+END;
+
+/*
+ * The procedure, behind an insert — the nearest thing to an OData action that
+ * MDL can declare (see the header).
+ *
+ * $Object is what the client POSTed, deserialised by Mendix. The microflow
+ * calls the procedure with it and writes the answer back onto the same object.
+ * It returns nothing — Mendix requires that (CE6588 "The insert microflow must
+ * return Nothing") and serialises the parameter object itself, so `accepted`,
+ * `message` and the key still reach the caller in the 201.
+ *
+ * Rejections come back as accepted=false with the database's own message
+ * rather than as an exception, because they are answers, not failures — the
+ * procedure validated the request and said no. A 500 would lose the reason.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Insert_Prediction (
+  $Object: Formula1Backend.Ops_Prediction
+)
+BEGIN
+  $Result = execute database query Formula1Backend.F1Ops.CallRecordPrediction
+    (driverId = $Object/DriverId,
+     raceId = toString($Object/RaceId),
+     position = toString($Object/Position),
+     submittedBy = $Object/SubmittedBy);
+
+  $Row = HEAD($Result);
+  IF $Row != empty THEN
+    CHANGE $Object (
+      Accepted = $Row/Accepted,
+      Message = $Row/Message,
+      PredictionKey = toString($Row/PredictionId)
+    );
+  ELSE
+    CHANGE $Object (
+      Accepted = false,
+      Message = 'the procedure returned no row'
+    );
+  END IF;
+END;
+
+-- ---------------------------------------------------------------- the service
+
+/*
+ * Two resources, and their contracts differ in a way worth reading.
+ *
+ * DriverForm declares TopSupported and SkipSupported No, and it means it: a
+ * routine decides its own result set, `p_last_n` is the page, and paging on top
+ * of that would be asking the same question twice. Countable is No for the same
+ * reason — there is no total to count that is not the answer itself.
+ *
+ * That declaration is usable here and was not on the live service (FINDINGS
+ * §42), because nothing generates external entities from this one. The moment
+ * something does, `cmd_contract.go:1214` hardcodes both back to true and Mendix
+ * refuses the consumer with CE6630.
+ *
+ * Predictions is POST-and-read-back. The read exists because a resource a
+ * client can create in is a resource that client will then re-read by key, and
+ * a key lookup that cannot be answered is FINDINGS §37 — `mxcli check` flags
+ * exactly this shape (MDL-ODATA02), correctly, and the fix is to answer it
+ * rather than to drop the KEY, which Mendix requires anyway (CE6585).
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Predictions (
+  $Request: System.HttpRequest
+)
+  RETURNS List of Formula1Backend.Ops_Prediction AS $Rows
+BEGIN
+  $Key = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'predictionKey');
+
+  -- The query returns the published shape directly. Mapping it through a second
+  -- entity would need a loop that appends to a list, and MDL has no list append
+  -- (CE7247: a list is not a primitive, so SET cannot build one) — but the
+  -- mapping was never needed: `accepted` and `message` are the answer to a
+  -- submission, so for a stored row the SQL supplies the constants.
+  $Rows = execute database query Formula1Backend.F1Ops.GetPredictions
+    (keyFilter = $Key);
+
+  RETURN $Rows;
+END;
+
+create or modify odata service Formula1Backend.F1OpsApi (
+  path: 'odata/f1-ops/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Ops'
+)
+authentication basic, session
+{
+  publish entity Formula1Backend.Stg_DriverForm as 'DriverForm' (
+    ReadMode: microflow Formula1Backend.Read_DriverForm,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No, TopSupported: No, SkipSupported: No
+  )
+  expose (
+    FormKey as 'formKey' (KEY, Filterable),
+    DriverId as 'driverId' (Filterable),
+    LastN as 'lastN' (Filterable),
+    RaceId as 'raceId' (Filterable),
+    Year as 'year' (Filterable),
+    Round as 'round' (Filterable),
+    RaceName as 'raceName',
+    FinishPosition as 'finishPosition',
+    PositionText as 'positionText',
+    GridPosition as 'gridPosition',
+    Points as 'points',
+    PlacesGained as 'placesGained',
+    RollingAvg as 'rollingAvg'
+  );
+
+  publish entity Formula1Backend.Ops_Prediction as 'Predictions' (
+    ReadMode: microflow Formula1Backend.Read_Predictions,
+    InsertMode: microflow Formula1Backend.Insert_Prediction,
+    UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: No, TopSupported: No, SkipSupported: No
+  )
+  expose (
+    PredictionKey as 'predictionKey' (KEY),
+    DriverId as 'driverId',
+    RaceId as 'raceId',
+    Position as 'position',
+    SubmittedBy as 'submittedBy',
+    Accepted as 'accepted',
+    Message as 'message'
+  );
+};
+
+/*
+ * Re-granted after the service, because `create or modify odata service` still
+ * drops AllowedModuleRoles — 28ce821 fixed the .mpr writer, not the modelsdk
+ * one. FINDINGS §41.
+ */
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1OpsApi TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverForm  TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Predictions TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Insert_Prediction TO Formula1Backend.ApiUser;
+
+GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_DriverForm      (read *);
+GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_ProcedureResult (read *);
+GRANT Formula1Backend.ApiUser ON Formula1Backend.Ops_Prediction      (create, read *, write *);

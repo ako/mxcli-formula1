@@ -1,13 +1,22 @@
 /*
- * Unit tests for the OData -> SQL translation.
+ * Unit tests for ODataPushdown — the OData -> SQL translation.
  *
- * These call the Java actions directly rather than going over HTTP, because
- * Mendix validates field names against the published metadata before a read
- * microflow ever runs. Going through the service would only ever exercise the
- * happy path; the whitelist and the rejection behaviour need testing here.
+ * These call the module through thin wrappers (11-pushdown-tests-support.mdl)
+ * rather than going over HTTP, because Mendix validates field names against the
+ * published metadata before a read microflow ever runs. Going through the
+ * service would only ever exercise the happy path; the whitelist and the
+ * rejection behaviour need testing here.
+ *
+ * The filter grammar below is not invented. It is what Mendix's own OData
+ * client emits, captured off the wire from this app's frontend driving real
+ * datagrids — the official requirements page names the query options a consumed
+ * service must support but not one operator or function, so there was nothing
+ * to read. FINDINGS §45.
  *
  * Runs under `--local` — nothing here needs a loaded cache.
  */
+
+/* -------------------------------------------------- $orderby / $top / $skip */
 
 /**
  * @test No query options: default order, bounded by MaxTop
@@ -50,13 +59,17 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1
 
 /**
  * A sort on a column outside the whitelist is dropped, not injected — the
- * request still succeeds, just in the default order.
+ * request still succeeds, just in the default order. This is the one place the
+ * module drops rather than rejects, because a wrong order is cosmetic and a
+ * wrong row count is not.
  *
  * @test A non-whitelisted sort column falls back to the default order
  * @expect $result = ' ORDER BY name ASC LIMIT 500'
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_OrderLimit(Uri = '/odata/f1-live/Drivers?$orderby=id;DROP TABLE x--');
 /
+
+/* --------------------------------------------------------------- $filter */
 
 /**
  * @test No $filter yields no WHERE clause
@@ -73,6 +86,20 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live
 /
 
 /**
+ * @test startswith() anchors the pattern at the front
+ * @expect $result = ' WHERE name ILIKE ''Ver%'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=startswith(name,''Ver'')');
+/
+
+/**
+ * @test endswith() anchors it at the back
+ * @expect $result = ' WHERE name ILIKE ''%pen'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=endswith(name,''pen'')');
+/
+
+/**
  * @test A numeric comparison maps to the real column
  * @expect $result = ' WHERE totalRaceWins > 50'
  */
@@ -80,10 +107,89 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live
 /
 
 /**
+ * @test ne, ge and le round out the comparisons Mendix emits
+ * @expect $result = ' WHERE name <> ''Senna'''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=name ne ''Senna''');
+/
+
+/**
+ * @test A decimal literal is passed through as written
+ * @expect $result = ' WHERE totalRaceWins >= 100.5'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=raceWins ge 100.5');
+/
+
+/**
+ * The quoting a combo box produces on a numeric column. Mendix quotes the
+ * literal according to what the WIDGET thinks the attribute is, so the same
+ * column arrives both ways; passing the quotes through would give DuckDB
+ * `totalRaceWins > '40'` against a BIGINT, which is zero rows and a 200.
+ *
+ * @test A quoted number on a numeric column is unquoted, not compared as text
+ * @expect $result = ' WHERE totalRaceWins > 40'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=raceWins gt ''40''');
+/
+
+/**
+ * @test eq null becomes IS NULL rather than a comparison to the text 'null'
+ * @expect $result = ' WHERE name IS NULL'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=name eq null');
+/
+
+/**
+ * @test ne null becomes IS NOT NULL
+ * @expect $result = ' WHERE name IS NOT NULL'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=name ne null');
+/
+
+/**
  * @test Two terms joined by and
- * @expect $result = ' WHERE totalRaceWins > 50 AND name ILIKE ''Ver%'''
+ * @expect $result = ' WHERE (totalRaceWins > 50 AND name ILIKE ''Ver%'')'
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=raceWins gt 50 and startswith(name,''Ver'')');
+/
+
+/**
+ * `or` is what the old regex-and-split helper could not express at all, and
+ * Mendix emits it the moment a datagrid filter has two values selected. Until
+ * the recursive-descent parser landed, this request was rejected — which meant
+ * a working-looking widget that failed on its second click. FINDINGS §45.
+ *
+ * @test Two terms joined by or
+ * @expect $result = ' WHERE (name = ''a'' OR name = ''b'')'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=name eq ''a'' or name eq ''b''');
+/
+
+/**
+ * The shape Mendix actually sends for a two-condition filter: each term in its
+ * own parentheses.
+ *
+ * @test Parenthesised terms keep their grouping
+ * @expect $result = ' WHERE ((totalRaceWins > 10) AND (name ILIKE ''%Sen%''))'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=(raceWins gt 10) and (contains(name,''Sen''))');
+/
+
+/**
+ * and binds tighter than or, and a parenthesised group overrides it. A split-on-
+ * "and" implementation gets this wrong silently.
+ *
+ * @test Precedence: a group inside an and is preserved
+ * @expect $result = ' WHERE (name = ''a'' AND ((totalRaceWins > 1 OR totalRaceWins < 0)))'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=name eq ''a'' and (raceWins gt 1 or raceWins lt 0)');
+/
+
+/**
+ * @test not negates the term it applies to
+ * @expect $result = ' WHERE (NOT (totalRaceWins > 1))'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=not (raceWins gt 1)');
 /
 
 /**
@@ -94,6 +200,8 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live
  */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_Where(Uri = '/odata/f1-live/Drivers?$filter=contains(name,''O''''Brien'')');
 /
+
+/* ------------------------------------------------------------- rejection */
 
 /**
  * Unlike $orderby, an unknown FILTER column must fail loudly — silently
@@ -106,8 +214,333 @@ $result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/oda
 /
 
 /**
+ * Arithmetic is valid OData that no Mendix client emits, so it is outside the
+ * grammar — and outside the grammar means rejected, not approximated.
+ *
  * @test A filter shape we cannot translate is rejected rather than dropped
  * @expect $result = true
  */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=raceWins add 1 eq 41');
+/
+
+/**
+ * @test Text compared against a numeric column is rejected rather than quoted in
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=raceWins gt ''many''');
+/
+
+/**
+ * @test A filter within the grammar is not rejected
+ * @expect $result = false
+ */
 $result = CALL MICROFLOW Formula1Backend.TestSupport_WhereIsRejected(Uri = '/odata/f1-live/Drivers?$filter=name eq ''a'' or name eq ''b''');
+/
+
+/* --------------------------------------------- $top / $skip as bound values */
+
+/**
+ * $top and $skip as values, for the resources that pass them to a bound LIMIT
+ * rather than building SQL. FINDINGS §43.
+ *
+ * @test No $top means the whole list, not a default page
+ * @expect $result = 1000000
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons');
+/
+
+/**
+ * @test $top is read and clamped to what the resource will serve
+ * @expect $result = 20
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons?$top=20');
+/
+
+/**
+ * @test An over-large $top is clamped rather than honoured
+ * @expect $result = 500
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Top(Uri = '/odata/f1-live/Seasons?$top=99999');
+/
+
+/**
+ * @test $skip is read
+ * @expect $result = 40
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/Seasons?$top=20&$skip=40');
+/
+
+/**
+ * @test A junk $skip is 0, not an error and not SQL
+ * @expect $result = 0
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Skip(Uri = '/odata/f1-live/Seasons?$skip=drop%20table');
+/
+
+/* ------------------------------------------- $orderby as bound sort terms */
+
+/**
+ * $orderby as a whitelisted name and a direction, for the resources that order
+ * by a bound CASE. FINDINGS §44.
+ *
+ * @test No $orderby leaves the query's own order alone
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons');
+/
+
+/**
+ * @test A whitelisted column comes back as its exposed name, which is what the CASE matches
+ * @expect $result = 'raceCount'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=raceCount desc');
+/
+
+/**
+ * @test A column outside the whitelist sorts by nothing rather than reaching the query
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=1;drop table asc');
+/
+
+/**
+ * @test The first of two terms
+ * @expect $result = 'year'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn(Uri = '/odata/f1-live/Seasons?$orderby=year asc,raceCount desc');
+/
+
+/**
+ * Mendix sends two terms whenever a grid's default sort is composite — the
+ * calendar grid emits `round asc,calendarKey asc`. The old readers returned
+ * only the first. FINDINGS §45.
+ *
+ * @test The second term is carried too
+ * @expect $result = 'raceCount'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn2(Uri = '/odata/f1-live/Seasons?$orderby=year asc,raceCount desc');
+/
+
+/**
+ * @test One term leaves the second empty
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortColumn2(Uri = '/odata/f1-live/Seasons?$orderby=year asc');
+/
+
+/**
+ * @test Descending is read
+ * @expect $result = 'D'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortDirection(Uri = '/odata/f1-live/Seasons?$orderby=year DESC');
+/
+
+/**
+ * @test Anything else is ascending
+ * @expect $result = 'A'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_SortDirection(Uri = '/odata/f1-live/Seasons?$orderby=year');
+/
+
+/* -------------------------------------------------------------- the key */
+
+/**
+ * The lookup that shipped a bug. A client holding a row re-reads it by key on
+ * its own initiative; a read that ignores the request answers with the
+ * collection default, and the client then adopts the first row of the answer as
+ * that object's identity — permanently, under a 200. FINDINGS §37.
+ *
+ * @test The key as a $filter term
+ * @expect $result = 'ayrton-senna'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Key(Uri = '/odata/f1-live/Drivers?$filter=driverId eq ''ayrton-senna''');
+/
+
+/**
+ * @test The key in the path, bare
+ * @expect $result = 'ayrton-senna'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Key(Uri = '/odata/f1-live/Drivers(''ayrton-senna'')');
+/
+
+/**
+ * @test The key in the path, named
+ * @expect $result = 'ayrton-senna'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Key(Uri = '/odata/f1-live/Drivers(driverId=''ayrton-senna'')');
+/
+
+/**
+ * @test A collection request has no key
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Key(Uri = '/odata/f1-live/Drivers?$top=20');
+/
+
+/**
+ * The key is interpolated by the resources that use it, so its shape is
+ * whitelisted rather than escaped.
+ *
+ * @test A key that is not an identifier is refused
+ * @expect $result = ''
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Key(Uri = '/odata/f1-live/Drivers(''a'''' or 1=1--'')');
+/
+
+/**
+ * @test A number out of $filter, bare
+ * @expect $result = 1957
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_FilterNumber(Uri = '/odata/f1-fan/Calendar?$filter=year eq 1957');
+/
+
+/**
+ * @test A number out of $filter, quoted by a combo box
+ * @expect $result = 1957
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_FilterNumber(Uri = '/odata/f1-fan/Calendar?$filter=year eq ''1957''');
+/
+
+/**
+ * FilterNumber must not fall back to the path the way Key does: reading 1036
+ * out of /Calendar('1036-c') as if it were a year answers a question nobody
+ * asked.
+ *
+ * @test A path key is not mistaken for a filter value
+ * @expect $result = 0
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_FilterNumber(Uri = '/odata/f1-fan/Calendar(''1036-c'')');
+/
+
+/* ------------------------------------------------------------- dialects */
+
+/**
+ * Nothing in this app runs on SQL Server. The point of these two is that the
+ * module is not DuckDB-shaped, which is only provable from outside DuckDB.
+ *
+ * @test SQL Server: LOWER/LIKE for case-insensitivity, OFFSET/FETCH for the page
+ * @expect $result = ' WHERE LOWER(name) LIKE LOWER(''%Sen%'') ORDER BY name ASC OFFSET 0 ROWS FETCH NEXT 500 ROWS ONLY'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Dialect(Uri = '/odata/f1-live/Drivers?$filter=contains(name,''Sen'')', Dialect = 'sqlserver');
+/
+
+/**
+ * @test MySQL spells the page LIMIT skip, top
+ * @expect $result = ' ORDER BY name ASC LIMIT 5, 10'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_Dialect(Uri = '/odata/f1-live/Drivers?$top=10&$skip=5', Dialect = 'mysql');
+/
+
+/* ------------------------------------------------- stored routines */
+
+/**
+ * A table-valued function, in the four engines that have them. The statement
+ * comes back full of {placeholders} — this renderer never emits a value, so
+ * there is nothing here that could carry SQL. FINDINGS §47.
+ *
+ * @test Postgres: SELECT * FROM f(...)
+ * @expect $result = 'SELECT * FROM f1ops.driver_form({driverId}, {lastN})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'postgresql');
+/
+
+/**
+ * @test DuckDB spells a table macro the same way
+ * @expect $result = 'SELECT * FROM f1ops.driver_form({driverId}, {lastN})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'duckdb');
+/
+
+/**
+ * @test Oracle needs TABLE() around a pipelined function
+ * @expect $result = 'SELECT * FROM TABLE(f1ops.driver_form({driverId}, {lastN}))'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'oracle');
+/
+
+/**
+ * MySQL has no table-valued functions at all. Emitting something that parses
+ * and returns one scalar column would be worse than saying so.
+ *
+ * @test MySQL refuses a table function rather than approximating one
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.driver_form', Kind = 'table', Parameters = 'driverId,lastN', Dialect = 'mysql');
+/
+
+/**
+ * The procedure, with its three INOUT slots. They have to be present in the
+ * call and there is nothing to bind into them, so `null` passes through as a
+ * literal and Postgres fills them on the way out.
+ *
+ * @test Postgres: CALL with the INOUT slots as literal NULLs
+ * @expect $result = 'CALL f1ops.record_prediction({driverId}, {raceId}, {position}, {submittedBy}, NULL, NULL, NULL)'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId,position,submittedBy,null,null,null', Dialect = 'postgresql');
+/
+
+/**
+ * @test SQL Server: EXEC with named arguments, OUTPUT slots omitted
+ * @expect $result = 'EXEC f1ops.record_prediction @driverId = {driverId}, @raceId = {raceId}'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId,null', Dialect = 'sqlserver');
+/
+
+/**
+ * @test Oracle wraps a procedure call in an anonymous block
+ * @expect $result = 'BEGIN f1ops.record_prediction({driverId}, {raceId}); END;'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId', Dialect = 'oracle');
+/
+
+/**
+ * @test MySQL: CALL, positional
+ * @expect $result = 'CALL f1ops.record_prediction({driverId}, {raceId})'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.record_prediction', Kind = 'procedure', Parameters = 'driverId,raceId', Dialect = 'mysql');
+/
+
+/**
+ * @test DuckDB refuses a procedure — it has macros, not procedures
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'anything', Kind = 'procedure', Parameters = '', Dialect = 'duckdb');
+/
+
+/**
+ * @test A scalar function
+ * @expect $result = 'SELECT f1ops.points_for({position}) AS result'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.points_for', Kind = 'scalar', Parameters = 'position', Dialect = 'postgresql');
+/
+
+/**
+ * @test No arguments is a call with empty parentheses, not a syntax error
+ * @expect $result = 'CALL f1ops.rebuild()'
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallStatement(Routine = 'f1ops.rebuild', Kind = 'procedure', Parameters = '', Dialect = 'postgresql');
+/
+
+/**
+ * The routine name is the only text this emits, so it is the only thing that
+ * could carry SQL — and it is checked rather than escaped.
+ *
+ * @test A routine name that is not an identifier is refused
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.x(); DROP TABLE prediction; --', Kind = 'procedure', Parameters = '', Dialect = 'postgresql');
+/
+
+/**
+ * @test A parameter name that is not an identifier is refused
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.rebuild', Kind = 'procedure', Parameters = 'id) OR 1=1 --', Dialect = 'postgresql');
+/
+
+/**
+ * @test An unknown routine kind is refused rather than guessed at
+ * @expect $result = true
+ */
+$result = CALL MICROFLOW Formula1Backend.TestSupport_CallIsRejected(Routine = 'f1ops.rebuild', Kind = 'stored', Parameters = '', Dialect = 'postgresql');
 /

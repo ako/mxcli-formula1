@@ -255,3 +255,35 @@ BEGIN
   DECLARE $Name String = $Weekend/circuitName;
   RETURN $Name;
 END;
+
+/*
+ * The regression for FINDINGS §42 — the same shape as §37, on the resources
+ * that had it latent.
+ *
+ * Six F1Live resources and three F1Now ones declared a KEY their read microflow
+ * never saw, so a lookup by key fell through to the collection and the client
+ * took the first row. 1957 is the assertion because the wrong answer is the
+ * newest season: before the fix this returned 2026.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveSeasonByKey ()
+  RETURNS Long AS $Year
+BEGIN
+  RETRIEVE $Season FROM F1Live.Seasons WHERE year = 1957 LIMIT 1;
+  DECLARE $Year Long = $Season/year;
+  RETURN $Year;
+END;
+
+/*
+ * And the standings, which had the subtler version: the key was `driverId`,
+ * which is not unique — one driver has up to 77 standings — so even a lookup
+ * that reached the backend could only return the newest. The key is now
+ * `<year>-<driverId>`.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveStandingByKey ()
+  RETURNS Long AS $Year
+BEGIN
+  RETRIEVE $Standing FROM F1Live.DriverStandings
+    WHERE standingKey = '1957-juan-manuel-fangio' LIMIT 1;
+  DECLARE $Year Long = $Standing/year;
+  RETURN $Year;
+END;

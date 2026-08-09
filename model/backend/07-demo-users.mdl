@@ -1,8 +1,48 @@
 /*
  * Demo users, split out of 06 because that script is not re-runnable —
  * `create module role` has no `or modify` form, so re-executing 06 stops at the
- * first existing role. This file is safe to run on its own.
+ * first existing role.
+ *
+ * This file is no better on a second run: `CREATE DEMO USER` has no `or modify`
+ * form either, so it halts on "demo user already exists". Which is why the
+ * setting below comes first — a statement after the users would never run on an
+ * existing project. Re-run with `--continue-on-error` to get past them.
  */
+
+/*
+ * The cost of hashing those two passwords, which is most of what this service
+ * spends its time on.
+ *
+ * A consumed OData service authenticates with basic auth on every request and
+ * holds no session, so each call is a full login — and BCrypt is deliberately
+ * slow. Measured against this backend, one `GET /odata/f1/Drivers?$top=20`:
+ *
+ *   cost 12 (Mendix default)        ~360 ms      the hash is 88% of the request
+ *   cost 12, *wrong* password       ~346 ms      same cost; it hashes either way
+ *   cost 8                           ~73 ms
+ *   no credentials at all            ~42 ms      the floor, no hash computed
+ *
+ * §31 traced the same thing from the other end: 303 ms of a 500 ms page turn on
+ * the live service, 301 ms of a 370 ms page turn on the cached one. Optimising
+ * the SQL underneath would be optimising 14%.
+ *
+ * Cost 8 rather than 12 is a judgement about *these* accounts, not about
+ * password hashing in general. Both are machine accounts with generated
+ * 20-character passwords, reachable only from the frontend app; there is no
+ * human password in this database and no login page in front of it. The human
+ * user lives in Formula1Frontend, which keeps the default 12 — the setting is
+ * per app, so the two do not have to agree.
+ *
+ * The cost is baked into each stored hash, so this only applies to passwords
+ * hashed after it changes. It takes effect here because the demo users below
+ * are recreated at startup; on a real deployment existing users keep their old
+ * cost until their next password change.
+ *
+ * This shrinks the cost rather than removing it. The fix that removes it is a
+ * custom authentication microflow — no password hash at all, ~40 ms — which
+ * mxcli cannot currently express. FINDINGS §40.
+ */
+ALTER SETTINGS MODEL BcryptCost = 8;
 
 /* A demo user per role, so both services can be exercised without a login page. */
 CREATE DEMO USER 'f1api' PASSWORD 'F1apiConsumer!2345' (ApiConsumer);

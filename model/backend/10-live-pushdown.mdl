@@ -24,18 +24,29 @@ BEGIN
    * OData property to the CSV column behind it. `name` and `raceWins` differ
    * from the column names, which is exactly why the mapping has to exist.
    */
-  DECLARE $Cols String = 'driverId:id,name:name,fullName:fullName,'
-    + 'abbreviation:abbreviation,permanentNumber:permanentNumber,'
-    + 'dateOfBirth:dateOfBirth,placeOfBirth:placeOfBirth,'
-    + 'nationality:nationalityCountryId,championshipWins:totalChampionshipWins,'
-    + 'raceStarts:totalRaceStarts,raceWins:totalRaceWins,podiums:totalPodiums,'
-    + 'points:totalPoints,polePositions:totalPolePositions';
+  DECLARE $Cols String = 'driverId:id:text,name:name:text,fullName:fullName:text,'
+    + 'abbreviation:abbreviation:text,permanentNumber:permanentNumber:text,'
+    + 'dateOfBirth:dateOfBirth:date,placeOfBirth:placeOfBirth:text,'
+    + 'nationality:nationalityCountryId:text,'
+    + 'championshipWins:totalChampionshipWins:number,'
+    + 'raceStarts:totalRaceStarts:number,raceWins:totalRaceWins:number,'
+    + 'podiums:totalPodiums:number,points:totalPoints:number,'
+    + 'polePositions:totalPolePositions:number';
 
-  $Where = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
-    Uri = $Request/Uri, ColumnMap = $Cols);
+  /*
+   * One parse, spliced. RejectUnsupported is true here and false on the bound
+   * resources, and the difference is not a preference: this WHERE comes from
+   * the parse, so a filter that could not be translated means no WHERE at all —
+   * all 917 rows, under a 200, in answer to a request for a handful. Better a
+   * 500 naming the term it could not read.
+   */
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 500, DefaultTop = 500, DefaultOrderBy = 'name ASC',
+    KeyField = 'driverId', RejectUnsupported = true);
 
-  $OrderLimit = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
-    Uri = $Request/Uri, ColumnMap = $Cols, DefaultOrderBy = 'name ASC', MaxTop = 500);
+  DECLARE $Where String = $Q/FilterSql;
+  DECLARE $OrderLimit String = $Q/OrderBySql;
 
   DECLARE $Select String = 'SELECT id, name, fullName, abbreviation, permanentNumber,'
     + ' dateOfBirth, placeOfBirth, nationalityCountryId, totalChampionshipWins,'
@@ -58,8 +69,7 @@ BEGIN
    * $count must be the size of the whole filtered set, not of the page, so it
    * needs its own query with the same WHERE and no LIMIT.
    */
-  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
-  IF $WantsCount = true THEN
+  IF $Q/WantsCount = true THEN
     DECLARE $CountSql String = 'SELECT count(*) AS total FROM read_csv('''
       + @Formula1Backend.DataDir + '/f1db-drivers.csv'')' + $Where;
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetDriverCount
@@ -90,26 +100,30 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceResults (
 )
   RETURNS List of Formula1Backend.Stg_RaceResult AS $Rows
 BEGIN
-  DECLARE $Cols String = 'positionOrder:rr.positionDisplayOrder,raceId:rr.raceId,'
-    + 'year:rr.year,round:rr.round,position:rr.positionNumber,'
-    + 'positionText:rr.positionText,driverId:rr.driverId,driverName:d.name,'
-    + 'constructorId:rr.constructorId,constructorName:c.name,'
-    + 'driverNumber:rr.driverNumber,laps:rr.laps,points:rr.points,'
-    + 'gridPosition:rr.gridPositionNumber,positionsGained:rr.positionsGained,'
-    + 'fastestLap:rr.fastestLap,polePosition:rr.polePosition';
+  DECLARE $Cols String = 'positionOrder:rr.positionDisplayOrder:number,'
+    + 'raceId:rr.raceId:number,year:rr.year:number,round:rr.round:number,'
+    + 'position:rr.positionNumber:number,positionText:rr.positionText:text,'
+    + 'driverId:rr.driverId:text,driverName:d.name:text,'
+    + 'constructorId:rr.constructorId:text,constructorName:c.name:text,'
+    + 'driverNumber:rr.driverNumber:text,laps:rr.laps:number,'
+    + 'points:rr.points:number,gridPosition:rr.gridPositionNumber:number,'
+    + 'positionsGained:rr.positionsGained:number,'
+    + 'fastestLap:rr.fastestLap:bool,polePosition:rr.polePosition:bool';
 
   DECLARE $From String = ' FROM read_csv(''' + @Formula1Backend.DataDir
     + '/f1db-races-race-results.csv'') rr'
     + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-drivers.csv'') d ON d.id = rr.driverId'
     + ' LEFT JOIN read_csv(''' + @Formula1Backend.DataDir + '/f1db-constructors.csv'') c ON c.id = rr.constructorId';
 
-  $Where = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
-    Uri = $Request/Uri, ColumnMap = $Cols);
-
-  $OrderLimit = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
-    Uri = $Request/Uri, ColumnMap = $Cols,
+  /* One parse, spliced — see Read_Drivers above for why this one rejects. */
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 500, DefaultTop = 500,
     DefaultOrderBy = 'rr.year DESC, rr.round ASC, rr.positionDisplayOrder ASC',
-    MaxTop = 500);
+    KeyField = 'positionOrder', RejectUnsupported = true);
+
+  DECLARE $Where String = $Q/FilterSql;
+  DECLARE $OrderLimit String = $Q/OrderBySql;
 
   DECLARE $Select String = 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder,'
     + ' rr.positionNumber, rr.positionText, rr.driverId, d.name AS driverName,'
@@ -123,8 +137,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $WantsCount = CALL JAVA ACTION Formula1Backend.ODataWantsCount(Uri = $Request/Uri);
-  IF $WantsCount = true THEN
+  IF $Q/WantsCount = true THEN
     DECLARE $CountSql String = 'SELECT count(*) AS total' + $From + $Where;
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetRaceResultCount
       dynamic $CountSql

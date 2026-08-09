@@ -22,65 +22,279 @@
  * microflows translate the query options into SQL themselves — see
  * 10-live-pushdown.mdl, which OWNS those two microflows; do not redefine them
  * here. Everything else in this file still returns its whole list.
+ *
+ * Every read below now takes System.HttpRequest, for one reason: a client that
+ * is holding one of these rows re-reads it by key on its own, and a read that
+ * ignores the request answers with the whole collection — whereupon the client
+ * adopts the first row as that object's identity and keeps it. That is §37,
+ * which shipped, and `mxcli check` (MDL-ODATA02) now names it. FINDINGS §42.
+ *
+ *
+ * HOW EACH READ ANSWERS THE REQUEST
+ *
+ * All six call ODataPushdown.Parse once and hand the answer to the query. This
+ * is the module's BIND style: the SQL lives on the connection in 01, where it
+ * can be read and changed as SQL, so what crosses into it are values — the key,
+ * the page, the sort — never a clause. Nothing derived from the request text
+ * reaches the parser on the far side.
+ *
+ * `Columns` maps each exposed name to itself, because the sort travels as a
+ * bound name that the query's own CASE matches on. The types are still declared,
+ * and they earn their place: they are what makes `year eq '1957'` from a combo
+ * box and `year eq 1957` from a grid header mean the same thing. FINDINGS §42.
+ *
+ * `RejectUnsupported` is false throughout. These resources apply no $filter
+ * beyond their key, so failing a request over a filter they were never going to
+ * honour trades one wrong answer for another. The two resources that DO apply
+ * $filter — Drivers and RaceResults, in 10 — pass true, because for them an
+ * untranslated filter means an empty WHERE and every row in the table.
+ * FINDINGS §46 records what is still owed here.
+ *
+ * Before the module there were seven Java action calls at the top of each of
+ * these microflows, each re-reading and re-splitting the same URI to answer one
+ * question about it. Six resources × seven parses of the same string, and the
+ * seven answers could disagree.
+ *
+ * These resources still advertise $top and $skip they do not apply, which
+ * MDL-ODATA03 rightly flags. The declaration that would make them honest —
+ * `TopSupported: No, SkipSupported: No` — cannot be used: the external-entity
+ * generator hardcodes both capabilities to true regardless of the contract
+ * (`cmd_contract.go:1214`), and Mendix then refuses the frontend with CE6630
+ * "marked supports $top=False in the OData service, but True in the app".
+ * Tried, reverted, filed. FINDINGS §42.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_Season AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'year:year:number,championDriver:championDriver:text,'
+    + 'championConstructor:championConstructor:text,'
+    + 'raceCount:raceCount:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'year', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetSeasons
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_Circuit AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'circuitId:circuitId:text,name:name:text,'
+    + 'fullName:fullName:text,placeName:placeName:text,'
+    + 'country:country:text,latitude:latitude:number,'
+    + 'longitude:longitude:number,length:length:number,'
+    + 'turns:turns:number,racesHeld:racesHeld:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'circuitId', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetCircuits
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_Constructor AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'constructorId:constructorId:text,name:name:text,'
+    + 'fullName:fullName:text,country:country:text,'
+    + 'championshipWins:championshipWins:number,'
+    + 'raceStarts:raceStarts:number,raceWins:raceWins:number,'
+    + 'podiums:podiums:number,points:points:number,'
+    + 'polePositions:polePositions:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'constructorId', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetConstructors
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_Race AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'raceId:raceId:number,year:year:number,round:round:number,'
+    + 'raceDate:raceDate:date,officialName:officialName:text,'
+    + 'grandPrixId:grandPrixId:text,circuitId:circuitId:text,'
+    + 'circuitName:circuitName:text,laps:laps:number,'
+    + 'distance:distance:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'raceId', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetRaces
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_DriverStanding AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'standingKey:standingKey:text,driverId:driverId:text,'
+    + 'year:year:number,positionOrder:positionOrder:number,'
+    + 'position:position:number,positionText:positionText:text,'
+    + 'driverName:driverName:text,points:points:number,'
+    + 'championshipWon:championshipWon:bool';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'standingKey', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings ($Response: System.ODataResponse)
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
   RETURNS List of Formula1Backend.Stg_ConstructorStanding AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'standingKey:standingKey:text,constructorId:constructorId:text,'
+    + 'year:year:number,positionOrder:positionOrder:number,'
+    + 'position:position:number,positionText:positionText:text,'
+    + 'constructorName:constructorName:text,'
+    + 'engineManufacturer:engineManufacturer:text,'
+    + 'points:points:number,championshipWon:championshipWon:bool';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'standingKey', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
@@ -223,7 +437,8 @@ authentication basic, session
     Countable: Yes
   )
   expose (
-    DriverId as 'driverId' (KEY, Filterable, Sortable),
+    StandingKey as 'standingKey' (KEY, Filterable, Sortable),
+    DriverId as 'driverId' (Filterable, Sortable),
     Year as 'year' (Filterable, Sortable),
     PositionOrder as 'positionOrder' (Filterable, Sortable),
     PositionNumber as 'position' (Filterable, Sortable),
@@ -239,7 +454,8 @@ authentication basic, session
     Countable: Yes
   )
   expose (
-    ConstructorId as 'constructorId' (KEY, Filterable, Sortable),
+    StandingKey as 'standingKey' (KEY, Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
     Year as 'year' (Filterable, Sortable),
     PositionOrder as 'positionOrder' (Filterable, Sortable),
     PositionNumber as 'position' (Filterable, Sortable),
@@ -250,3 +466,18 @@ authentication basic, session
     ChampionshipWon as 'championshipWon' (Filterable, Sortable)
   );
 };
+
+/*
+ * Re-grant, because the statement above revoked it.
+ *
+ * `create or modify odata service` drops the service's role grants, so a file
+ * that modifies a service has to put them back or the next build fails with
+ * CE0307 "At least one allowed role must be selected". 06-security.mdl is where
+ * this grant is declared, but 06 is not re-runnable — `create module role` has
+ * no `or modify` form — so re-running it is not the recovery.
+ *
+ * mxcli `b4a825e` carries a fix for this (`28ce821`) in `sdk/mpr/writer_odata.go`;
+ * the writer this project's path uses has no grant handling at all, so the
+ * behaviour is unchanged here. Re-verified on `b4a825e`. FINDINGS §41.
+ */
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveApi TO Formula1Backend.ApiUser;

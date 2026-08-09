@@ -1,44 +1,56 @@
 /*
- * Thin microflow wrappers so the pushdown Java actions can be unit-tested.
+ * Thin microflow wrappers so ODataPushdown can be unit-tested.
  *
- * Testing them through HTTP only proves the happy path, because Mendix
- * validates $filter and $orderby field names against the published metadata
- * *before* the read microflow runs — an unknown field never reaches our code
- * (verified: `$filter=secretColumn eq 'x'` returns 400 "Could not map
- * 'secretColumn' to attribute or association"). That is welcome defence in
- * depth, but it means the whitelist has to be tested directly.
+ * Testing it through HTTP only proves the happy path, because Mendix validates
+ * $filter and $orderby field names against the published metadata *before* the
+ * read microflow runs — an unknown field never reaches our code (verified:
+ * `$filter=secretColumn eq 'x'` returns 400 "Could not map 'secretColumn' to
+ * attribute or association"). That is welcome defence in depth, but it means
+ * the whitelist has to be tested directly.
+ *
+ * Every wrapper is one ODataPushdown.Parse over the same two-column map and
+ * returns one field of the answer, so the assertions in
+ * tests/pushdown.test.mdl read as "this URI, that SQL". There used to be one
+ * wrapper per Java action, back when there were seven actions; the module has
+ * one parse, so these differ only in which field they return.
  */
+
+/* The whitelist under test. Two columns, one of each type, because the type is
+ * what decides whether `raceWins gt 40` and `raceWins gt '40'` agree. */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_OrderLimit ($Uri: String)
   RETURNS String AS $Sql
 BEGIN
-  $Sql = CALL JAVA ACTION Formula1Backend.ODataOrderLimitSql(
-    Uri = $Uri,
-    ColumnMap = 'name:name,raceWins:totalRaceWins',
-    DefaultOrderBy = 'name ASC',
-    MaxTop = 500);
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,raceWins:totalRaceWins:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 500,
+    DefaultOrderBy = 'name ASC', KeyField = 'driverId',
+    RejectUnsupported = false);
+  DECLARE $Sql String = $Q/OrderBySql;
   RETURN $Sql;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Where ($Uri: String)
   RETURNS String AS $Sql
 BEGIN
-  $Sql = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
-    Uri = $Uri,
-    ColumnMap = 'name:name,raceWins:totalRaceWins');
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,raceWins:totalRaceWins:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 500,
+    DefaultOrderBy = 'name ASC', KeyField = 'driverId',
+    RejectUnsupported = false);
+  DECLARE $Sql String = $Q/FilterSql;
   RETURN $Sql;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_WhereIsRejected ($Uri: String)
   RETURNS Boolean AS $Rejected
 BEGIN
-  DECLARE $Rejected Boolean = false;
-  $Sql = CALL JAVA ACTION Formula1Backend.ODataWhereSql(
-    Uri = $Uri,
-    ColumnMap = 'name:name,raceWins:totalRaceWins')
-  ON ERROR {
-    SET $Rejected = true;
-  };
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,raceWins:totalRaceWins:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 500,
+    DefaultOrderBy = 'name ASC', KeyField = 'driverId',
+    RejectUnsupported = false);
+  DECLARE $Rejected Boolean = $Q/Rejected;
   RETURN $Rejected;
 END;
 
@@ -63,7 +75,165 @@ BEGIN
   RETURN $N;
 END;
 
-GRANT EXECUTE ON MICROFLOW Formula1Backend.Probe_DynamicSql TO Formula1Backend.DataAdmin;
-GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_OrderLimit TO Formula1Backend.DataAdmin;
-GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Where TO Formula1Backend.DataAdmin;
-GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_WhereIsRejected TO Formula1Backend.DataAdmin;
+/*
+ * $top and $skip as values rather than as a clause — what the bind-style
+ * resources in 02 and 15 pass to a bound LIMIT. FINDINGS §43.
+ *
+ * MaxTop is 500 and DefaultTop is 1000000, which looks odd until you remember
+ * what those resources do: they returned their whole list before paging
+ * existed, so a caller that asks for no page must keep getting one — but a
+ * caller that asks for a page cannot use it to ask for everything.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Top ($Uri: String)
+  RETURNS Long AS $Top
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,year:year:number,raceCount:raceCount:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 1000000,
+    DefaultOrderBy = '', KeyField = 'year', RejectUnsupported = false);
+  DECLARE $Top Long = $Q/Top;
+  RETURN $Top;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Skip ($Uri: String)
+  RETURNS Long AS $Skip
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,year:year:number,raceCount:raceCount:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 1000000,
+    DefaultOrderBy = '', KeyField = 'year', RejectUnsupported = false);
+  DECLARE $Skip Long = $Q/Skip;
+  RETURN $Skip;
+END;
+
+/*
+ * $orderby as whitelisted names and directions, for the resources that order by
+ * a bound CASE. Two terms, because Mendix emits two: a grid whose default sort
+ * is composite sends `round asc,calendarKey asc`. FINDINGS §44, §45.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortColumn ($Uri: String)
+  RETURNS String AS $Col
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,year:year:number,raceCount:raceCount:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 1000000,
+    DefaultOrderBy = '', KeyField = 'year', RejectUnsupported = false);
+  DECLARE $Col String = $Q/SortColumn1;
+  RETURN $Col;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortColumn2 ($Uri: String)
+  RETURNS String AS $Col
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,year:year:number,raceCount:raceCount:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 1000000,
+    DefaultOrderBy = '', KeyField = 'year', RejectUnsupported = false);
+  DECLARE $Col String = $Q/SortColumn2;
+  RETURN $Col;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortDirection ($Uri: String)
+  RETURNS String AS $Dir
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,year:year:number,raceCount:raceCount:number',
+    Dialect = 'duckdb', MaxTop = 500, DefaultTop = 1000000,
+    DefaultOrderBy = '', KeyField = 'year', RejectUnsupported = false);
+  DECLARE $Dir String = $Q/SortDirection1;
+  RETURN $Dir;
+END;
+
+/*
+ * The key, in each of the three spellings a client sends it — the one that
+ * shipped a bug (FINDINGS §37) and the reason every read microflow in this app
+ * now takes System.HttpRequest.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Key ($Uri: String)
+  RETURNS String AS $Key
+BEGIN
+  $Key = CALL JAVA ACTION ODataPushdown.Key(Uri = $Uri, KeyField = 'driverId');
+  RETURN $Key;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_FilterNumber ($Uri: String)
+  RETURNS Long AS $N
+BEGIN
+  $N = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Uri, Field = 'year', Fallback = 0);
+  RETURN $N;
+END;
+
+/*
+ * The other dialects, on the two things that differ: how a case-insensitive
+ * LIKE is spelled, and how a page is. Nothing in this app runs on SQL Server —
+ * the point is that the module is not DuckDB-shaped, which is only provable
+ * from outside DuckDB.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Dialect (
+  $Uri: String,
+  $Dialect: String
+)
+  RETURNS String AS $Sql
+BEGIN
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Uri, Columns = 'name:name:text,raceWins:totalRaceWins:number',
+    Dialect = $Dialect, MaxTop = 500, DefaultTop = 500,
+    DefaultOrderBy = 'name ASC', KeyField = 'driverId',
+    RejectUnsupported = false);
+  DECLARE $Sql String = $Q/FilterSql + $Q/OrderBySql;
+  RETURN $Sql;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Probe_DynamicSql             TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_OrderLimit       TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Where            TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_WhereIsRejected  TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Top              TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Skip             TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortColumn       TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortColumn2      TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_SortDirection    TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Key              TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_FilterNumber     TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Dialect          TO Formula1Backend.DataAdmin;
+
+/*
+ * The stored-routine call renderer, across all five engines.
+ *
+ * It emits placeholders and never values, so unlike the $filter tests there is
+ * nothing here about escaping — only about which of the five spellings each
+ * engine wants, which is the part that costs an afternoon per engine.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallStatement (
+  $Routine: String,
+  $Kind: String,
+  $Parameters: String,
+  $Dialect: String
+)
+  RETURNS String AS $Sql
+BEGIN
+  $Sql = CALL JAVA ACTION ODataPushdown.CallStatement(
+    Routine = $Routine, Kind = $Kind, Parameters = $Parameters, Dialect = $Dialect);
+  RETURN $Sql;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallIsRejected (
+  $Routine: String,
+  $Kind: String,
+  $Parameters: String,
+  $Dialect: String
+)
+  RETURNS Boolean AS $Rejected
+BEGIN
+  DECLARE $Rejected Boolean = false;
+  $Sql = CALL JAVA ACTION ODataPushdown.CallStatement(
+    Routine = $Routine, Kind = $Kind, Parameters = $Parameters, Dialect = $Dialect)
+  ON ERROR {
+    SET $Rejected = true;
+  };
+  RETURN $Rejected;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_CallStatement   TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_CallIsRejected  TO Formula1Backend.DataAdmin;

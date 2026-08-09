@@ -31,7 +31,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceWeekend (
 )
   RETURNS List of Formula1Backend.Stg_RaceWeekend AS $Rows
 BEGIN
-  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $RaceId = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
 
   DECLARE $Dir String = @Formula1Backend.DataDir;
@@ -118,7 +118,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceSessions (
 )
   RETURNS List of Formula1Backend.Stg_RaceSession AS $Rows
 BEGIN
-  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $RaceId = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
 
   DECLARE $Dir String = @Formula1Backend.DataDir;
@@ -202,7 +202,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Calendar (
 )
   RETURNS List of Formula1Backend.Stg_Calendar AS $Rows
 BEGIN
-  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'year', Fallback = 0);
 
   /*
@@ -225,14 +225,15 @@ BEGIN
    *
    * The key is `<raceId>-c`, and it has been through the identifier whitelist,
    * so it can be compared as the string it is.
+   *
+   * One call now covers all three spellings the key arrives in — the $filter
+   * term above, /Calendar('1036-c'), and /Calendar(calendarKey='1036-c'). It
+   * used to take two, because the old helpers read the filter and the path
+   * separately and the second returned a number, so the path form landed in its
+   * own branch below.
    */
-  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
-    Uri = $Request/Uri, Field = 'calendarKey');
-
-  -- And the same lookup with the key in the path, which is the other form OData
-  -- allows for it: /Calendar('1036-c') or /Calendar(calendarKey='1036-c').
-  $KeyRaceId = CALL JAVA ACTION Formula1Backend.ODataEntityKeyId(
-    Uri = $Request/Uri, Fallback = 0);
+  $Key = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'calendarKey');
 
   DECLARE $Dir String = @Formula1Backend.DataDir;
   DECLARE $Races String = 'read_csv(''' + $Dir + '/f1db-races.csv'')';
@@ -242,18 +243,14 @@ BEGIN
   DECLARE $Circuits String = 'read_csv(''' + $Dir + '/f1db-circuits.csv'')';
   DECLARE $Gp String = 'read_csv(''' + $Dir + '/f1db-grands-prix.csv'')';
 
-  -- Which races the query is about: one by key, one by id, one season by year,
-  -- or the most recent season when the caller said nothing.
+  -- Which races the query is about: one by key, one season by year, or the most
+  -- recent season when the caller said nothing.
   DECLARE $Where String = 'r.year = (SELECT max(year) FROM ' + $Races + ')';
   IF $Key != '' THEN
     SET $Where = 'r.id || ''-c'' = ''' + $Key + '''';
   ELSE
-    IF $KeyRaceId != 0 THEN
-      SET $Where = 'r.id = ' + toString($KeyRaceId);
-    ELSE
-      IF $Year != 0 THEN
-        SET $Where = 'r.year = ' + toString($Year);
-      END IF;
+    IF $Year != 0 THEN
+      SET $Where = 'r.year = ' + toString($Year);
     END IF;
   END IF;
 
@@ -297,7 +294,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_WeekendShape (
 )
   RETURNS List of Formula1Backend.Stg_WeekendShape AS $Rows
 BEGIN
-  $RaceId = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $RaceId = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'raceId', Fallback = 0);
 
   DECLARE $Dir String = @Formula1Backend.DataDir;
@@ -388,9 +385,9 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LapChart (
 )
   RETURNS List of Formula1Backend.Stg_LapChart AS $Rows
 BEGIN
-  $Year = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'year', Fallback = 0);
-  $Round = CALL JAVA ACTION Formula1Backend.ODataFilterYear(
+  $Round = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'round', Fallback = 0);
 
   DECLARE $Dir String = @Formula1Backend.DataDir;

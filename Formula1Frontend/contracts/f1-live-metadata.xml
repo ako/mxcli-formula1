@@ -101,9 +101,10 @@
       </EntityType>
       <EntityType Name="Stg_DriverStanding">
         <Key>
-          <PropertyRef Name="driverId"/>
+          <PropertyRef Name="standingKey"/>
         </Key>
-        <Property MaxLength="60" Name="driverId" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="80" Name="standingKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="driverId" Type="Edm.String"/>
         <Property Name="year" Type="Edm.Int64"/>
         <Property Name="positionOrder" Type="Edm.Int64"/>
         <Property Name="position" Type="Edm.Int64"/>
@@ -114,9 +115,10 @@
       </EntityType>
       <EntityType Name="Stg_ConstructorStanding">
         <Key>
-          <PropertyRef Name="constructorId"/>
+          <PropertyRef Name="standingKey"/>
         </Key>
-        <Property MaxLength="60" Name="constructorId" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="80" Name="standingKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="constructorId" Type="Edm.String"/>
         <Property Name="year" Type="Edm.Int64"/>
         <Property Name="positionOrder" Type="Edm.Int64"/>
         <Property Name="position" Type="Edm.Int64"/>

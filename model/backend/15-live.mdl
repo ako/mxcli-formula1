@@ -14,41 +14,133 @@
  * No `$filter` plumbing here: a snapshot is one session, so each resource
  * returns the file. The session key travels as data so the page can show which
  * session it is looking at.
+ *
+ * All three reads call ODataPushdown.Parse once and hand the answer to their
+ * query — the module's bind style, the same as 02. See the header there for
+ * what `Columns`, the types and `RejectUnsupported` are doing.
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveEntry AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'entryKey:entryKey:text,sessionKey:sessionKey:text,'
+    + 'driverNumber:driverNumber:number,code:code:text,'
+    + 'driverName:driverName:text,team:team:text,'
+    + 'teamColour:teamColour:text,position:position:number,'
+    + 'gapToLeader:gapToLeader:text,interval:interval:text,'
+    + 'lapNumber:lapNumber:number,'
+    + 'lastLapSeconds:lastLapSeconds:number,sector1:sector1:number,'
+    + 'sector2:sector2:number,sector3:sector3:number,'
+    + 'speedTrap:speedTrap:number,compound:compound:text,'
+    + 'tyreAge:tyreAge:number,pitStops:pitStops:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'entryKey', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveMessage AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'messageKey:messageKey:text,sessionKey:sessionKey:text,'
+    + 'at:at:text,category:category:text,flag:flag:text,'
+    + 'scope:scope:text,lap:lap:number,message:message:text';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'messageKey', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveSession AS $Rows
 BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'sessionKey:sessionKey:text,sessionName:sessionName:text,'
+    + 'sessionType:sessionType:text,location:location:text,'
+    + 'countryName:countryName:text,circuitName:circuitName:text,'
+    + 'dateStart:dateStart:text,year:year:number,'
+    + 'driverCount:driverCount:number,leadLap:leadLap:number,'
+    + 'fetchedAt:fetchedAt:text,airTemperature:airTemperature:number,'
+    + 'trackTemperature:trackTemperature:number,'
+    + 'humidity:humidity:number,rainfall:rainfall:number,'
+    + 'windSpeed:windSpeed:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'sessionKey', RejectUnsupported = false);
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
-    (dataDir = @Formula1Backend.DataDir);
-  $Total = COUNT($Rows);
-  CHANGE $Response (Count = $Total);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
   RETURN $Rows;
 END;
 

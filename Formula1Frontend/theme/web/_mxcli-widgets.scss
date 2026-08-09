@@ -65,6 +65,25 @@
   box-shadow: var(--mxt-shadow);
 }
 
+// _datagrid-filters.scss:71, 143, 153 and 206 — the same two-layer light-mode
+// shadow, baked four times:
+//
+//   box-shadow: 0 2px 20px 1px rgba(5, 15, 129, .05),
+//               0 2px 16px 0 rgba(33, 43, 54, .08);
+//
+// These are the filter-operator popover, the dropdown filter's list in both its
+// standalone and contained forms, and the list inside a dropdown container. Each
+// already takes its background from --bg-color-secondary, so Atlas re-colours the
+// panel and leaves the shadow behind — elevation drawn for a light ground,
+// floating over a dark one. Same treatment as .column-selectors above.
+.filter-selectors,
+.dropdown-content,
+:not(.dropdown-content) > .dropdown-list,
+.dropdown-container .dropdown-list {
+  border-color: var(--mxt-line);
+  box-shadow: var(--mxt-shadow);
+}
+
 // _three-state-checkbox.scss — the row-select boxes down the left of every
 // grid. Nine baked literals: #e7e7e9 borders and #f8f8f8 disabled fills that
 // vanish on a dark surface, #ffffff checkmarks, and #264ae5 for the checked and
@@ -147,4 +166,4 @@ input[type="checkbox"].three-state-checkbox {
   background-color: var(--mxt-brand);
   color: var(--mxt-brand-ink);
 }
-// mxcli:theme:end console 1a1fe935bbf08313
+// mxcli:theme:end console b01587fe9b58b6ae
