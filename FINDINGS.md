@@ -1564,7 +1564,29 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
-1. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
+1. **`create external entities from` duplicates suffixed associations, unbounded**
+   (§50) — an external entity's navigation property becomes an association named
+   after it, and three F1Cached entities have a `season` property, so Mendix
+   names them `season`, `season_2`, `season_3`. On a re-run the unsuffixed ones
+   are matched and left alone; the suffixed ones never match, because the dedup
+   compares association *names* and the generator computes a fresh suffix before
+   it looks. Two more appear per run, for ever. This repo had accumulated
+   `season_2` … `season_15` before anyone noticed — `mx check` is clean, every
+   test passes, and the only symptom is duplicate links in Studio Pro's domain
+   model. Reproduction and byte counts in §50.
+2. **Re-running a script rewrites the document with different bytes** (§50) — a
+   `create or modify` regenerates the internal element id of everything inside
+   the document it touches, so a re-run is a no-op in the model and a large diff
+   in the repository. Minimal case: `create or modify constant … default
+   'mendix'` re-declared identically against an unchanged project changes
+   **exactly 16 bytes** of a 241-byte file — one UUID. Across both apps a full
+   re-run rewrites 143 documents, and three consecutive re-runs give three
+   different tree hashes while the semantic fingerprint never moves. `git diff`
+   therefore cannot answer "did this change anything", two developers running
+   the same scripts commit different bytes, and `.mxunit` merges are not
+   resolvable. Sub-element ids should be preserved when the element is
+   unchanged, the way the document's own id already is.
+3. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
    (§48) — `27ea1da` fixed exactly this for `TopSupported`/`SkipSupported`; the
    filter and sort terms have the same problem. `mdl/types/edmx.go:446` takes
    `NonFilterableProperties` out of the record and ignores the record's own
@@ -1575,19 +1597,19 @@ the scripts quietly stop being the source of truth.
    NO attribute of a resource is filterable, and the list form when some are —
    both appear in one document. Generating external entities from this repo's
    `F1OpsApi` gives 28 × CE6630. Reproduction in §48.
-2. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
+4. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
    fetch is in the create path only, so after a published service changes shape
    the client keeps its cached contract, reports "Modified OData client", and
    `create external entities` regenerates from stale metadata without saying so.
    Recovery is drop-and-recreate, which cascades into every page and grant that
    binds those entities.
-3. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+5. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
    to forget a case. Declaring what is filterable already happens in `expose (…)`;
    handing the microflow the parsed values rather than the raw request would
    remove the class instead of the instance.
-4. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+6. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
    sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
    never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
    help). This is why five rendering defects survived — a white chart under every
@@ -1595,28 +1617,28 @@ the scripts quietly stop being the source of truth.
    `check`, the build, the log or `curl` can see. Whatever the mechanism (a
    loopback exemption, an http-safe cookie under `--hub`), being able to render
    the real app is the highest-leverage check missing here.
-5. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+7. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
    next boot then refuses, correctly, on the previous run's corpse: *"port 6643
    is already in use"*. The guard is right; the diagnosis is misleading, because
    the process it names is one you already killed. Reap the child on exit, or
    print the offending pid so the fix is one command rather than three.
-6. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-7. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+9. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
    here are still stamped two days earlier, so a rebuild alone does not carry it.
-8. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+10. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-9. **Design-property lint does not know the theme** (§29) — `check` green-lights
+11. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
 
-10. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+12. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
    naming a microflow that no longer exists throws on every startup and blocks
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
@@ -3224,4 +3246,92 @@ differed — which is precisely why a rebuild is worth more than an inventory.
 identical. The residue outside MDL is unchanged and is what §48 listed: three
 hand-written Java classes, two SCSS files, the data and schema scripts, and the
 four cached `$metadata` contracts.
+
+
+## 50. Idempotent in meaning, not in bytes — and one bug that accumulates
+
+§49 proved the scripts rebuild the apps. A different question: re-run them on a
+project that is already built, and is nothing supposed to change? For version
+control the answer needs to be yes, and it is not.
+
+### Two separate problems, and only one of them is cosmetic
+
+**Every re-run rewrites 74 backend and 69 frontend documents with different
+bytes.** Zero added, zero deleted — the documents keep their own ids, so this is
+not the GUID churn a rebuild causes. Three consecutive re-runs, hashing the
+`mprcontents` tree each time:
+
+```
+HEAD          e98b9c80d6a344e7
+after run 1   33c2fcc2e4b97371   74 files differ from HEAD
+after run 2   d90a1cd72a927895   74 files differ from HEAD
+after run 3   38a3cdf48ed636b9   74 files differ from HEAD
+```
+
+The same 74 files, a different hash every time, and the semantic fingerprint
+identical throughout. So the model does not change and the bytes never settle.
+
+**The cause is sub-element ids.** A `create or modify` regenerates the internal
+element id of everything inside the document it rewrites, while the document's
+own id (its filename) is stable. The differing bytes fall into 965 contiguous
+runs averaging 14.2 bytes, 806 of them between 10 and 16 — the signature of
+16-byte UUIDs where some bytes happen to coincide.
+
+The minimal reproduction is a constant:
+
+```
+create or modify constant Formula1Backend.DuckDbUser type string default 'mendix';
+```
+
+Re-declared identically against an unchanged project: **241 bytes on disk,
+exactly 16 differ.** One UUID. The database connection is 139837 bytes and 13733
+differ (~858 ids, one per query parameter and mapping); the domain model is
+232855 bytes and 10074 differ (~630, one per attribute).
+
+What it costs: `git diff` can never answer "did this script change anything",
+two people running the same scripts commit different bytes, and a merge on a
+`.mxunit` is not resolvable by hand. A model-as-code workflow needs re-running a
+script to be a no-op in the repository, not just in the model.
+
+### The one that is not cosmetic
+
+**`create external entities from` duplicates any association whose name needed a
+numeric suffix, on every run, without bound.**
+
+An external entity's navigation property becomes an association named after it.
+Three F1Cached entities have a `season` property — `Races`, `DriverStandings`,
+`ConstructorStandings` — so Mendix names them `season`, `season_2`, `season_3`.
+Correct, and that is the state after exactly one generation.
+
+Re-run it and `circuit`, `constructor`, `driver` and `season` are matched and
+left alone, but `season_2` and `season_3` are not: two more appear as `season_4`
+and `season_5`. The dedup match is by association *name*, and the generator
+computes a fresh suffix before it looks, so a suffixed association can never
+match itself. Two per run, for ever:
+
+```
+one generation      season  season_2  season_3            (correct: 6 in F1Cached)
++1 re-run           …       season_4  season_5
++2 re-runs          …       season_6  season_7
+```
+
+This had been running since the project started. The pre-rebuild `.mpr` carried
+`season_2` … `season_15` — twelve spurious associations, committed, invisible
+in every `mx check` and every test, and visible in Studio Pro's domain model as
+duplicate links. §49's rebuild cut it to four only because that rebuild happened
+to run the script four times, and the fix in this section brought it to zero.
+
+It also means the two-pass rebuild §49 documents is itself harmful:
+`02-external-entities.mdl` must run exactly **once**, and the procedure now says
+so.
+
+### Repaired here
+
+The frontend was rebuilt with `02` run once, giving the correct six F1Cached
+associations. Dropping the extras by hand is not enough on its own — external
+entity access rules reference them by association, so removing one leaves
+CE1613 "The selected association no longer exists" behind, which is how the
+over-deletion showed up.
+
+23/23 frontend tests pass, `mx check` clean.
 

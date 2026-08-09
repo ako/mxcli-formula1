@@ -40,6 +40,34 @@ The frontend has the same shape and needs three passes — its page scripts
 cross-reference each other's pages (`04` opens `Driver_Career` from `07`, which
 opens `Race_Weekend` from `08`).
 
+**`02-external-entities.mdl` must run exactly once**, so it is outside the loop:
+
+```bash
+cd Formula1Frontend
+./mxcli exec ../model/frontend/01-odata-clients.mdl     -p Formula1Frontend.mpr
+./mxcli exec ../model/frontend/02-external-entities.mdl -p Formula1Frontend.mpr   # ONCE
+for pass in 1 2 3; do
+  for f in ../model/frontend/0[3-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.mpr; done
+done
+```
+
+`create external entities from` duplicates any association whose name needed a
+numeric suffix, every time it runs, without bound — two per run here. This repo
+had silently accumulated `season_2` … `season_15` before a rebuild exposed it.
+FINDINGS §50.
+
+## Re-running is not free
+
+A rebuild converges, but re-running the scripts on an already-built project is
+**not** a no-op in version control. It is a no-op in the *model* — the semantic
+fingerprint does not move — but every `create or modify` regenerates the
+internal element ids of the document it rewrites, so 143 `.mxunit` files change
+and their bytes differ on every run. A constant re-declared identically changes
+exactly 16 bytes: one UUID.
+
+Practically: do not expect `git diff` to tell you whether a script did anything,
+and do not commit the churn from a re-run that changed nothing. FINDINGS §50.
+
 ## Verified, not asserted
 
 `scripts/fingerprint.sh` dumps a semantic fingerprint of both apps — every
