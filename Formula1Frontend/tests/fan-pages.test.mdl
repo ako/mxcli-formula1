@@ -120,3 +120,20 @@ $result = CALL MICROFLOW Formula1Frontend.Test_CalendarByKey();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked();
 /
+
+/**
+ * FINDINGS §42: the nine resources that declared a key their read microflow
+ * could not answer. Before the fix both of these returned the newest row.
+ *
+ * @test Live service: a season looked up by key is that season
+ * @expect $result = 1957
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveSeasonByKey();
+/
+
+/**
+ * @test Live service: a standing's key identifies the season as well as the driver
+ * @expect $result = 1957
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveStandingByKey();
+/

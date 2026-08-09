@@ -17,36 +17,48 @@
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveEntry AS $Rows
 BEGIN
+  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'entryKey');
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveOrder
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
   $Total = COUNT($Rows);
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveMessage AS $Rows
 BEGIN
+  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'messageKey');
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveMessages
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
   $Total = COUNT($Rows);
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
+  $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.Stg_LiveSession AS $Rows
 BEGIN
+  $Key = CALL JAVA ACTION Formula1Backend.ODataFilterId(
+    Uri = $Request/Uri, Field = 'sessionKey');
+
   $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveSession
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Key);
   $Total = COUNT($Rows);
   CHANGE $Response (Count = $Total);
   RETURN $Rows;

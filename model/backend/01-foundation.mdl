@@ -119,7 +119,16 @@ create or modify non-persistent entity Formula1Backend.Stg_RaceResult (
   PolePosition: boolean
 );
 
+/*
+ * The standings carry a synthetic key because the natural one is not unique:
+ * a driver appears once per season, so `driverId` alone identifies up to 77
+ * rows. A published entity must have a key, and a key that matches many rows is
+ * worse than none — the client re-reads a row it holds, gets the newest match,
+ * and silently swaps one season for another. `<year>-<driverId>` is the pair
+ * that actually identifies a standing. FINDINGS §37, §42.
+ */
 create or modify non-persistent entity Formula1Backend.Stg_DriverStanding (
+  StandingKey: string(80),
   Year: long,
   PositionOrder: long,
   PositionNumber: long,
@@ -131,6 +140,7 @@ create or modify non-persistent entity Formula1Backend.Stg_DriverStanding (
 );
 
 create or modify non-persistent entity Formula1Backend.Stg_ConstructorStanding (
+  StandingKey: string(80),
   Year: long,
   PositionOrder: long,
   EngineManufacturer: string(60),
@@ -488,40 +498,67 @@ connection string @Formula1Backend.DuckDbUrl
 username @Formula1Backend.DuckDbUser
 password @Formula1Backend.DuckDbPassword
 begin
+  /*
+   * `keyFilter` is how this resource answers a lookup by its own key.
+   *
+   * A client holding one of these rows re-reads it by key on its own, and a
+   * read that ignores the request answers with the whole collection instead —
+   * whereupon the client adopts the first row as that object's identity and
+   * keeps it. The guard is written as an OR so one query serves both callers:
+   * empty means "the collection", anything else means "that row". Bound, not
+   * interpolated, so it cannot carry SQL. FINDINGS §37, §42.
+   */
   query GetSeasons
-    sql 'SELECT s.year AS year,
-                COALESCE(d.name, ''—'') AS championDriverName,
-                COALESCE(c.name, ''—'') AS championConstructorName,
-                (SELECT count(*) FROM read_csv({dataDir} || ''/f1db-races.csv'') r
-                   WHERE r.year = s.year) AS raceCount
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') s
-         LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
-                ON ds.year = s.year AND ds.championshipWon = true
-         LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
-         LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
-                ON cs.year = s.year AND cs.championshipWon = true
-         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
-         ORDER BY s.year DESC'
+    sql 'SELECT * FROM (
+           SELECT s.year AS year,
+                  COALESCE(d.name, ''—'') AS championDriverName,
+                  COALESCE(c.name, ''—'') AS championConstructorName,
+                  (SELECT count(*) FROM read_csv({dataDir} || ''/f1db-races.csv'') r
+                     WHERE r.year = s.year) AS raceCount
+           FROM read_csv({dataDir} || ''/f1db-seasons.csv'') s
+           LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
+                  ON ds.year = s.year AND ds.championshipWon = true
+           LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
+           LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
+                  ON cs.year = s.year AND cs.championshipWon = true
+           LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.year AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.year AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.year DESC'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_Season
     map ( year as Year, championDriverName as ChampionDriverName,
           championConstructorName as ChampionConstructorName, raceCount as RaceCount );
 
   query GetCircuits
-    sql 'SELECT id, name, fullName, placeName, countryId, latitude, longitude,
-                length, turns, totalRacesHeld
-         FROM read_csv({dataDir} || ''/f1db-circuits.csv'') ORDER BY name'
+    sql 'SELECT * FROM (
+           SELECT id, name, fullName, placeName, countryId, latitude, longitude,
+                  length, turns, totalRacesHeld
+           FROM read_csv({dataDir} || ''/f1db-circuits.csv'')
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.name'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_Circuit
     map ( id as CircuitId, name as Name, fullName as FullName, placeName as PlaceName,
           countryId as Country, latitude as Latitude, longitude as Longitude,
           length as Length, turns as Turns, totalRacesHeld as RacesHeld );
 
   query GetConstructors
-    sql 'SELECT id, name, fullName, countryId, totalChampionshipWins, totalRaceStarts,
-                totalRaceWins, totalPodiums, totalPoints, totalPolePositions
-         FROM read_csv({dataDir} || ''/f1db-constructors.csv'') ORDER BY name'
+    sql 'SELECT * FROM (
+           SELECT id, name, fullName, countryId, totalChampionshipWins, totalRaceStarts,
+                  totalRaceWins, totalPodiums, totalPoints, totalPolePositions
+           FROM read_csv({dataDir} || ''/f1db-constructors.csv'')
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.name'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_Constructor
     map ( id as ConstructorId, name as Name, fullName as FullName, countryId as Country,
           totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
@@ -544,12 +581,17 @@ begin
           totalPolePositions as PolePositions );
 
   query GetRaces
-    sql 'SELECT r.id, r.year, r.round, r.date, r.officialName, r.grandPrixId,
-                r.circuitId, c.name AS circuitName, r.laps, r.distance
-         FROM read_csv({dataDir} || ''/f1db-races.csv'') r
-         LEFT JOIN read_csv({dataDir} || ''/f1db-circuits.csv'') c ON c.id = r.circuitId
-         ORDER BY r.year DESC, r.round'
+    sql 'SELECT * FROM (
+           SELECT r.id, r.year, r.round, r.date, r.officialName, r.grandPrixId,
+                  r.circuitId, c.name AS circuitName, r.laps, r.distance
+           FROM read_csv({dataDir} || ''/f1db-races.csv'') r
+           LEFT JOIN read_csv({dataDir} || ''/f1db-circuits.csv'') c ON c.id = r.circuitId
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.id AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.id AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.year DESC, t.round'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_Race
     map ( id as RaceId, year as Year, round as Round, date as RaceDate,
           officialName as OfficialName, grandPrixId as GrandPrixId,
@@ -594,28 +636,42 @@ begin
     map ( total as Total );
 
   query GetDriverStandings
-    sql 'SELECT ds.year, ds.positionDisplayOrder, ds.positionNumber, ds.positionText,
-                ds.driverId, d.name AS driverName, ds.points, ds.championshipWon
-         FROM read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
-         LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
-         ORDER BY ds.year DESC, ds.positionDisplayOrder'
+    sql 'SELECT * FROM (
+           SELECT ds.year || ''-'' || ds.driverId AS standingKey,
+                  ds.year, ds.positionDisplayOrder, ds.positionNumber, ds.positionText,
+                  ds.driverId, d.name AS driverName, ds.points, ds.championshipWon
+           FROM read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
+           LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = ds.driverId
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.year DESC, t.positionDisplayOrder'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_DriverStanding
-    map ( year as Year, positionDisplayOrder as PositionOrder,
+    map ( standingKey as StandingKey, year as Year,
+          positionDisplayOrder as PositionOrder,
           positionNumber as PositionNumber, positionText as PositionText,
           driverId as DriverId, driverName as DriverName, points as Points,
           championshipWon as ChampionshipWon );
 
   query GetConstructorStandings
-    sql 'SELECT cs.year, cs.positionDisplayOrder, cs.positionNumber, cs.positionText,
-                cs.constructorId, c.name AS constructorName, cs.engineManufacturerId,
-                cs.points, cs.championshipWon
-         FROM read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
-         LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
-         ORDER BY cs.year DESC, cs.positionDisplayOrder'
+    sql 'SELECT * FROM (
+           SELECT cs.year || ''-'' || cs.constructorId AS standingKey,
+                  cs.year, cs.positionDisplayOrder, cs.positionNumber, cs.positionText,
+                  cs.constructorId, c.name AS constructorName, cs.engineManufacturerId,
+                  cs.points, cs.championshipWon
+           FROM read_csv({dataDir} || ''/f1db-seasons-constructor-standings.csv'') cs
+           LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = cs.constructorId
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.standingKey AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.standingKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.year DESC, t.positionDisplayOrder'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_ConstructorStanding
-    map ( year as Year, positionDisplayOrder as PositionOrder,
+    map ( standingKey as StandingKey, year as Year,
+          positionDisplayOrder as PositionOrder,
           positionNumber as PositionNumber, positionText as PositionText,
           constructorId as ConstructorId, constructorName as ConstructorName,
           engineManufacturerId as EngineManufacturer,
@@ -891,22 +947,28 @@ begin
    * ---------------------------------------------------------------------- */
 
   query GetLiveOrder
-    sql 'SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
-                code, driverName, team, teamColour, position, gapToLeader, interval,
-                lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
-                compound, tyreAge, pitStops
-         FROM read_csv({dataDir} || ''/../live/live-order.csv'', header = true,
-                       columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
-                                  ''code'': ''VARCHAR'', ''driverName'': ''VARCHAR'',
-                                  ''team'': ''VARCHAR'', ''teamColour'': ''VARCHAR'',
-                                  ''position'': ''BIGINT'', ''gapToLeader'': ''VARCHAR'',
-                                  ''interval'': ''VARCHAR'', ''lapNumber'': ''BIGINT'',
-                                  ''lastLapSeconds'': ''DOUBLE'', ''sector1'': ''DOUBLE'',
-                                  ''sector2'': ''DOUBLE'', ''sector3'': ''DOUBLE'',
-                                  ''speedTrap'': ''BIGINT'', ''compound'': ''VARCHAR'',
-                                  ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT''})
-         ORDER BY position'
+    sql 'SELECT * FROM (
+         SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
+                  code, driverName, team, teamColour, position, gapToLeader, interval,
+                  lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
+                  compound, tyreAge, pitStops
+           FROM read_csv({dataDir} || ''/../live/live-order.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
+                                    ''code'': ''VARCHAR'', ''driverName'': ''VARCHAR'',
+                                    ''team'': ''VARCHAR'', ''teamColour'': ''VARCHAR'',
+                                    ''position'': ''BIGINT'', ''gapToLeader'': ''VARCHAR'',
+                                    ''interval'': ''VARCHAR'', ''lapNumber'': ''BIGINT'',
+                                    ''lastLapSeconds'': ''DOUBLE'', ''sector1'': ''DOUBLE'',
+                                    ''sector2'': ''DOUBLE'', ''sector3'': ''DOUBLE'',
+                                    ''speedTrap'': ''BIGINT'', ''compound'': ''VARCHAR'',
+                                    ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT''})
+           ORDER BY position
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.entryKey AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.entryKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+         ORDER BY t.position'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_LiveEntry
     map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
           code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
@@ -926,37 +988,49 @@ begin
    * one session are a real possibility.
    */
   query GetLiveMessages
-    sql 'SELECT sessionKey || ''-'' || row_number() OVER () AS messageKey,
-                sessionKey, "at" AS atTime, category, flag, scope, lap, message
-         FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
-                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
-                                  ''category'': ''VARCHAR'', ''flag'': ''VARCHAR'',
-                                  ''scope'': ''VARCHAR'', ''lap'': ''BIGINT'',
-                                  ''message'': ''VARCHAR''})'
+    sql 'SELECT * FROM (
+         SELECT sessionKey || ''-'' || row_number() OVER () AS messageKey,
+                  sessionKey, "at" AS atTime, category, flag, scope, lap, message
+           FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                    ''category'': ''VARCHAR'', ''flag'': ''VARCHAR'',
+                                    ''scope'': ''VARCHAR'', ''lap'': ''BIGINT'',
+                                    ''message'': ''VARCHAR''})
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.messageKey AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.messageKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_LiveMessage
     map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
           category as Category, flag as Flag, scope as Scope, lap as Lap,
           message as Message );
 
   query GetLiveSession
-    sql 'SELECT s.sessionKey, s.sessionName, s.sessionType, s.location, s.countryName,
-                s.circuitName, s.dateStart, s.year, s.driverCount, s.leadLap, s.fetchedAt,
-                w.airTemperature, w.trackTemperature, w.humidity, w.rainfall, w.windSpeed
-         FROM read_csv({dataDir} || ''/../live/live-session.csv'', header = true,
-                       columns = {''sessionKey'': ''VARCHAR'', ''sessionName'': ''VARCHAR'',
-                                  ''sessionType'': ''VARCHAR'', ''location'': ''VARCHAR'',
-                                  ''countryName'': ''VARCHAR'', ''circuitName'': ''VARCHAR'',
-                                  ''dateStart'': ''VARCHAR'', ''year'': ''BIGINT'',
-                                  ''driverCount'': ''BIGINT'', ''leadLap'': ''BIGINT'',
-                                  ''fetchedAt'': ''VARCHAR''}) s
-         LEFT JOIN read_csv({dataDir} || ''/../live/live-weather.csv'', header = true,
-                       columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
-                                  ''airTemperature'': ''DOUBLE'', ''trackTemperature'': ''DOUBLE'',
-                                  ''humidity'': ''DOUBLE'', ''rainfall'': ''DOUBLE'',
-                                  ''windSpeed'': ''DOUBLE''}) w
-                ON w.sessionKey = s.sessionKey'
+    sql 'SELECT * FROM (
+         SELECT s.sessionKey, s.sessionName, s.sessionType, s.location, s.countryName,
+                  s.circuitName, s.dateStart, s.year, s.driverCount, s.leadLap, s.fetchedAt,
+                  w.airTemperature, w.trackTemperature, w.humidity, w.rainfall, w.windSpeed
+           FROM read_csv({dataDir} || ''/../live/live-session.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''sessionName'': ''VARCHAR'',
+                                    ''sessionType'': ''VARCHAR'', ''location'': ''VARCHAR'',
+                                    ''countryName'': ''VARCHAR'', ''circuitName'': ''VARCHAR'',
+                                    ''dateStart'': ''VARCHAR'', ''year'': ''BIGINT'',
+                                    ''driverCount'': ''BIGINT'', ''leadLap'': ''BIGINT'',
+                                    ''fetchedAt'': ''VARCHAR''}) s
+           LEFT JOIN read_csv({dataDir} || ''/../live/live-weather.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''at'': ''VARCHAR'',
+                                    ''airTemperature'': ''DOUBLE'', ''trackTemperature'': ''DOUBLE'',
+                                    ''humidity'': ''DOUBLE'', ''rainfall'': ''DOUBLE'',
+                                    ''windSpeed'': ''DOUBLE''}) w
+                  ON w.sessionKey = s.sessionKey
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.sessionKey AS VARCHAR) = {keyFilter}
+               OR TRY_CAST(t.sessionKey AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+'
     parameter dataDir: string
+    parameter keyFilter: string
     returns Formula1Backend.Stg_LiveSession
     map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
           location as Location, countryName as CountryName, circuitName as CircuitName,

@@ -27,7 +27,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Seasons ()
   RETURNS Long AS $N
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   $N = COUNT($Rows);
   RETURN $N;
 END;
@@ -36,7 +36,7 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Count_Live_Races ()
   RETURNS Long AS $N
 BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   $N = COUNT($Rows);
   RETURN $N;
 END;

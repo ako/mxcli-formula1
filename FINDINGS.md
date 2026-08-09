@@ -1564,7 +1564,24 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
-1. **`authentication microflow` cannot name its microflow** (§40) — the type is
+1. **The external-entity generator ignores the contract's `$top`/`$skip`
+   capabilities** (§42) — `cmd_contract.go:1214` stamps `SkipSupported` and
+   `TopSupported` true whatever the metadata says, while deriving Creatable and
+   Deletable from it two lines above. A service that honestly declares
+   `TopSupported: No` then makes the consuming app unbuildable with CE6630, and
+   MDL cannot correct it after the fact. This blocks the remedy MDL-ODATA03
+   itself recommends.
+2. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
+   fetch is in the create path only, so after a published service changes shape
+   the client keeps its cached contract, reports "Modified OData client", and
+   `create external entities` regenerates from stale metadata without saying so.
+   Recovery is drop-and-recreate, which cascades into every page and grant that
+   binds those entities.
+3. **MDL-ODATA03 has a false negative** (§42) — it fires on the *absence* of a
+   `System.HttpRequest` parameter, so adding one for an unrelated reason (the
+   key lookup) silences it while `?$top=5` still returns all 77 rows. Check for
+   a use of the request, not its presence.
+4. **`authentication microflow` cannot name its microflow** (§40) — the type is
    accepted, the microflow is silently dropped, and the build then fails with
    CE0333 "Please select a microflow to use for authentication". Custom
    authentication is the one documented way off per-request password hashing,
@@ -1573,13 +1590,13 @@ the scripts quietly stop being the source of truth.
    field, the writer and the reader all exist — `visitor_odata.go:323` recognises
    the keyword and captures no name, and nothing assigns `svc.AuthMicroflow`.
    `DESCRIBE` emits it as a comment, so such a service cannot round-trip either.
-2. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+5. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
    to forget a case. Declaring what is filterable already happens in `expose (…)`;
    handing the microflow the parsed values rather than the raw request would
    remove the class instead of the instance.
-3. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+6. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
    sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
    never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
    help). This is why five rendering defects survived — a white chart under every
@@ -1587,15 +1604,15 @@ the scripts quietly stop being the source of truth.
    `check`, the build, the log or `curl` can see. Whatever the mechanism (a
    loopback exemption, an http-safe cookie under `--hub`), being able to render
    the real app is the highest-leverage check missing here.
-4. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+7. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
    next boot then refuses, correctly, on the previous run's corpse: *"port 6643
    is already in use"*. The guard is right; the diagnosis is misleading, because
    the process it names is one you already killed. Reap the child on exit, or
    print the offending pid so the fix is one command rather than three.
-5. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
+8. **`MENU ITEM` cannot carry an icon** (§36) — Atlas's collapsed sidebar is a 48px
    icon rail, and a text-only menu renders "Constru" down the left edge of every
    page. There is no way to fix it in the navigation model.
-6. **`create or modify odata service` still drops role grants** (§34, §26) — the
+9. **`create or modify odata service` still drops role grants** (§34, §26) — the
    published-member half was fixed in `c76d4b7`; this half was not. Recreating a
    service silently revokes its access and the build fails with "At least one
    allowed role must be selected".
@@ -1603,23 +1620,23 @@ the scripts quietly stop being the source of truth.
    — and `mdl/backend/modelsdk/odata_write.go`, the writer this project's path
    uses, has no `AllowedModuleRoles` handling at all, so it still drops them.
    Reproduced twice on `b4a825e`. §41.
-7. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+10. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-8. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+11. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
    here are still stamped two days earlier, so a rebuild alone does not carry it.
-9. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+12. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-10. **Design-property lint does not know the theme** (§29) — `check` green-lights
+13. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
 
-11. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+14. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
    naming a microflow that no longer exists throws on every startup and blocks
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
@@ -2305,3 +2322,123 @@ Cleared the setting, dropped the module; 21/21 frontend tests pass again.
 Worth a rule: an `AfterStartupMicroflow` naming a microflow that does not exist
 is always wrong, and `mxcli check`/`lint` can see it without a runtime.
 
+
+## 42. Fixing the nine: what the key lookup actually needed, and three things found on the way
+
+§41 found nine resources whose read microflow could not answer a lookup by the
+key the service declares — six on `F1LiveApi`, three on `F1LiveNowApi`, each a
+latent §37. This is the fix.
+
+### The shape
+
+Each read microflow now takes `System.HttpRequest`, lifts the key out of
+`$filter`, and passes it to its query as a **bound** parameter. The guard lives
+in the query rather than the microflow, so the SQL stays in one place:
+
+```sql
+SELECT * FROM ( <the query as it was> ) t
+WHERE {keyFilter} = '' OR CAST(t.<key> AS VARCHAR) = {keyFilter}
+      OR TRY_CAST(t.<key> AS DOUBLE) = TRY_CAST({keyFilter} AS DOUBLE)
+```
+
+Empty means "the collection", anything else means "that row" — one query for
+both callers, no dynamic SQL, no duplicated SELECT drifting from the original.
+Verified per resource against the running service: every one returns the whole
+collection unfiltered and exactly one row for a key.
+
+| | collection | by key |
+|---|---|---|
+| Seasons | 77 | 1 (`year eq 1957`) |
+| Circuits | 78 | 1 (`circuitId eq 'monza'`) |
+| Constructors | 187 | 1 (`ferrari`) |
+| Races | 1171 | 1 (`raceId eq 1036`) |
+| DriverStandings | 1680 | 1 (`1957-juan-manuel-fangio`) |
+| ConstructorStandings | — | 1 (`1979-ferrari`) |
+| Order / Messages / Session | 22 / 80 / 1 | 1 each |
+
+### Three things the fix needed that were not obvious
+
+**A numeric key arrives unquoted.** `ODataFilterId` matches `field eq 'value'`;
+Mendix sends `year eq 1957` for an `Edm.Int64` key, with no quotes, so the
+identifier reader returns "" and the request falls straight back through to the
+collection — the exact failure being fixed. Seasons and Races read the key both
+ways and take whichever the client sent.
+
+**The comparison has to survive the column's inferred type.** `CAST(t.year AS
+VARCHAR) = '1957'` returned nothing where the same shape worked for a text id,
+so the guard compares as text *and* as a number. Cheap insurance against
+whatever `read_csv` decided a column was.
+
+**The standings' key was not unique.** `driverId` identifies up to 77 rows — one
+per season — so even a lookup that reached the backend could only return the
+newest. A key matching many rows is worse than none: it is the §37 failure with
+extra steps. Both standings now carry `<year>-<driverId>`, which is the pair
+that actually identifies a standing.
+
+Also: the six queries have other callers — the refresh jobs in `04-refresh.mdl`
+and the counts in `08-health.mdl` — which now pass `keyFilter = ''`. And
+modifying `F1LiveApi` dropped its role grant again (§41's unfixed item), so
+`02-live-service.mdl` re-grants at the end like 13/14/15 already do.
+
+### MDL-ODATA03 went quiet without the behaviour changing
+
+Both rules now report zero. Only one of them should.
+
+`MDL-ODATA03` fires when a resource advertises `$top`/`$skip` and its read
+microflow "never sees the request (no `System.HttpRequest` parameter)". Giving
+the microflow that parameter — for the *key*, which is a different concern —
+satisfies the rule. But the paging is still not applied:
+
+```
+GET /odata/f1-live/Seasons?$top=5   →   77 rows
+```
+
+The rule can see whether a microflow *could* read the request, not whether it
+does, so it has a false negative exactly where a resource has been half-fixed.
+Worth tightening to look for a use of the parameter, not its presence.
+
+### And the remedy it suggests cannot be used here
+
+`MDL-ODATA03` offers the honest alternative: "declare `TopSupported: No,
+SkipSupported: No`". Tried it on all nine. The backend accepts it, the contract
+correctly says `Bool="false"` — and the **frontend then cannot build**:
+
+```
+[error] [CE6630] "'Seasons' is marked supports $top=False in the OData service,
+                  but True in the app." at Entity 'F1Live.Seasons'
+```
+
+Because the external-entity generator hardcodes both:
+
+```go
+// mdl/executor/cmd_contract.go:1211
+ent.Creatable    = entitySet.Insertable != nil && *entitySet.Insertable
+ent.Deletable    = entitySet.Deletable  != nil && *entitySet.Deletable
+ent.Updatable    = false
+ent.SkipSupported = true      // ← ignores the contract
+ent.TopSupported  = true      // ← ignores the contract
+```
+
+Creatable and Deletable are derived from the annotations; Skip and Top are
+stamped true regardless. The comment directly above even explains that the app
+must match the service "or mx check reports CE6630". MDL cannot correct it
+afterwards either — `skipsupported`/`topsupported` exist only on the *published*
+side (`visitor_odata.go:381`), not on an external entity.
+
+So the declaration was reverted and the nine still advertise paging they do not
+do. This is §24's family: the generator defaults a capability rather than
+reading it, and the mismatch surfaces as a build error in the *other* app.
+
+### One more, found while regenerating
+
+**`create or modify odata client` does not re-fetch `$metadata`.** The fetch
+lives in the create path (`cmd_odata.go:1131`); modify leaves the cached
+contract alone. So after changing what a service publishes, re-running the
+client script reports "Modified OData client" and imports nothing new — the
+model keeps the old shape, and `create or modify external entities` then
+faithfully regenerates from stale metadata. It reported "8 updated" while
+silently omitting the new attribute.
+
+The recovery is to drop the client and its external entities and recreate them,
+which in this project also means re-running the pages and grants that bind them.
+Either modify should re-fetch, or it should say that it did not.

@@ -21,7 +21,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetSeasons
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Season (
       Year = $Row/Year,
@@ -43,7 +43,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuits
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Circuit (
       CircuitId = $Row/CircuitId,
@@ -71,7 +71,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructors
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     $New = CREATE Formula1Backend.Constructor (
       ConstructorId = $Row/ConstructorId,
@@ -132,7 +132,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetRaces
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Circuit FROM Formula1Backend.Circuit WHERE CircuitId = $Row/CircuitId LIMIT 1;
@@ -207,7 +207,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDriverStandings
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Driver FROM Formula1Backend.Driver WHERE DriverId = $Row/DriverId LIMIT 1;
@@ -238,7 +238,7 @@ BEGIN
     DELETE $Old;
   END LOOP;
   $Rows = execute database query Formula1Backend.F1Warehouse.GetConstructorStandings
-    (dataDir = @Formula1Backend.DataDir);
+    (dataDir = @Formula1Backend.DataDir, keyFilter = '');
   LOOP $Row IN $Rows BEGIN
     RETRIEVE $Season FROM Formula1Backend.Season WHERE Year = $Row/Year LIMIT 1;
     RETRIEVE $Constructor FROM Formula1Backend.Constructor
