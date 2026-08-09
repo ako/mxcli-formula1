@@ -9,8 +9,10 @@
 // export-alert focus ring, feedback and take-picture buttons). FINDINGS §33
 // filed it; §34 records the fix. Everything it covers has been deleted here.
 //
-// `b4a825e` took the filter-operator popover too, so what is left here is what
-// no generated stylesheet can reach:
+// `b4a825e` took the filter-operator popover too, and `715bac5` took the last
+// structural workaround with it: MENU ITEM can carry an ICON now (FINDINGS §48),
+// so the collapsed rail renders icons the way Atlas designed it and no longer
+// has to be hidden. What is left here is what no generated stylesheet can reach:
 //
 //   1. Plotly paints its own paper as inline style, and reads no token;
 //   2. the header mark is an <img>, which no stylesheet can recolour.
@@ -74,23 +76,6 @@
   .modebar-btn:hover path { fill: var(--mxt-brand) !important; }
   .modebar-group { background: transparent !important; }
 }
-
-// ---------------------------------------------------------------------------
-// The closed navigation rail.
-//
-// Atlas collapses the sidebar to --navsidebar-width-closed (48px) rather than
-// to nothing, because it expects every menu item to carry an icon: 48px is one
-// icon wide. MDL's MENU ITEM has no icon clause (FINDINGS §36), so every item
-// is text only and the rail renders "Constru", "Race re", "Live rac" — clipped
-// words down the left edge of every page.
-//
-// Until the items can carry icons, collapse it the whole way. The toggle is in
-// the header and opens the full 232px sidebar; a rail that shows nothing is
-// better than one that shows half a word.
-// ---------------------------------------------------------------------------
-.layout-atlas-responsive,
-.layout-atlas-responsive-default,
-.layout-atlas-responsive-sidebar { --navsidebar-width-closed: 0px; }
 
 // ---------------------------------------------------------------------------
 // The header mark.

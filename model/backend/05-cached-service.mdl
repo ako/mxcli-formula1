@@ -25,7 +25,7 @@ create or modify odata service Formula1Backend.F1CachedApi (
   namespace: 'Formula1Backend.Cached',
   PublishAssociations: Yes
 )
-authentication basic, session
+authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Season as 'Seasons' (
     ReadMode: source,

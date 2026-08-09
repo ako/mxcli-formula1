@@ -38,11 +38,25 @@
  * are recreated at startup; on a real deployment existing users keep their old
  * cost until their next password change.
  *
- * This shrinks the cost rather than removing it. The fix that removes it is a
- * custom authentication microflow — no password hash at all, ~40 ms — which
- * mxcli cannot currently express. FINDINGS §40.
+ *
+ * THE DOWNGRADE IS GONE
+ *
+ * `ALTER SETTINGS MODEL BcryptCost = 8;` used to be the line under this
+ * comment. It shrank the cost rather than removing it, and shrinking a work
+ * factor is a deliberate weakening — defensible only because these are machine
+ * accounts, and taken only because the real fix could not be written.
+ *
+ * The real fix is custom authentication: no password is presented per request,
+ * so no hash is computed and the work factor stops mattering. It needs
+ * `authentication microflow Module.X` on the service, which MDL accepted while
+ * silently dropping the microflow name — the build then failed CE0333 "Please
+ * select a microflow to use for authentication". mxcli `715bac5` carries the
+ * name through, and `mxcli check` gained MDL-ODATA04 for the unnamed form. All
+ * five services authenticate through Formula1Backend.AuthenticateApiClient now
+ * (16-ops-procedures.mdl), the frontend's clients send the key as a header
+ * instead of a password, and the cost is back at the Mendix default of 12.
+ * FINDINGS §40, §48.
  */
-ALTER SETTINGS MODEL BcryptCost = 8;
 
 /* A demo user per role, so both services can be exercised without a login page. */
 CREATE DEMO USER 'f1api' PASSWORD 'F1apiConsumer!2345' (ApiConsumer);

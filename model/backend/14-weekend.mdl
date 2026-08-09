@@ -492,7 +492,7 @@ create or modify odata service Formula1Backend.F1FanApi (
   ODataVersion: OData4,
   namespace: 'Formula1Backend.Fan'
 )
-authentication basic, session
+authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_RaceWeekend as 'RaceWeekend' (
     ReadMode: microflow Formula1Backend.Read_RaceWeekend,
@@ -762,12 +762,16 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.ApiU
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.DataAdmin;
 
 /*
- * The service grants live here too, and they have to: `create or modify odata
- * service` still drops role access when it rewrites a service (FINDINGS §26 —
- * the published-member half is fixed in c76d4b7, this half is not). 13 granted
- * them, 14 recreates the service, and the build then fails with "At least one
- * allowed role must be selected for the published OData service to be
- * accessible." Re-granting after the declaration is the whole fix.
+ * The service grants live here because this is the file that declares the
+ * service, and a service with no allowed role fails the build with CE0307
+ * "At least one allowed role must be selected".
+ *
+ * They used to be a re-grant: `create or modify odata service` dropped role
+ * access every time it rewrote a service, so any file modifying one had to put
+ * the grants back or the next build broke. mxcli `715bac5` fixed the modelsdk
+ * writer, which was the half `28ce821` missed, and a bare modify now preserves
+ * them — verified. These stay because a fresh run still has to grant once.
+ * FINDINGS §26, §41, §48.
  */
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;

@@ -97,17 +97,35 @@ create or modify user role Enthusiast (
   F1Now.Reader, System.User
 );
 
+/*
+ * The menu, with icons.
+ *
+ * Atlas collapses the sidebar to --navsidebar-width-closed (48px) rather than
+ * to nothing, because it expects every item to carry an icon: 48px is one icon
+ * wide. MDL had no ICON clause, so every item was text only and the rail
+ * rendered "Constru", "Race re", "Live rac" down the left edge of every page —
+ * clipped words. theme/web/_f1-widget-dark.scss carried the workaround, which
+ * was to collapse the rail the whole way to 0px and make the toggle the only
+ * way in. FINDINGS §36.
+ *
+ * mxcli `715bac5` adds ICON, as a qualified name into an icon collection rather
+ * than a string, so it is a model reference that `mx check` resolves. The
+ * workaround is deleted and the rail works as Atlas intended. FINDINGS §48.
+ *
+ * Hyphenated Atlas names need quoting: ICON Atlas_Core.Atlas."map-location-pin".
+ * Browse them with SHOW ICON COLLECTION / DESCRIBE ICON COLLECTION.
+ */
 create or replace navigation Responsive
   HOME PAGE Formula1Frontend.Home
   MENU (
-    MENU ITEM 'Home' PAGE Formula1Frontend.Home;
-    MENU ITEM 'Live race' PAGE Formula1Frontend.Live_Race;
-    MENU ITEM 'Seasons' PAGE Formula1Frontend.Seasons_Overview;
-    MENU 'Drivers' (
-      MENU ITEM 'Cached (Postgres)' PAGE Formula1Frontend.Drivers_Cached;
-      MENU ITEM 'Live (CSV)' PAGE Formula1Frontend.Drivers_Live;
+    MENU ITEM 'Home' PAGE Formula1Frontend.Home ICON Atlas_Core.Atlas.home;
+    MENU ITEM 'Live race' PAGE Formula1Frontend.Live_Race ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Seasons' PAGE Formula1Frontend.Seasons_Overview ICON Atlas_Core.Atlas.calendar;
+    MENU 'Drivers' ICON Atlas_Core.Atlas."user-neutral-group" (
+      MENU ITEM 'Cached (Postgres)' PAGE Formula1Frontend.Drivers_Cached ICON Atlas_Core.Atlas."synchronize-arrow-clock";
+      MENU ITEM 'Live (CSV)' PAGE Formula1Frontend.Drivers_Live ICON Atlas_Core.Atlas.flag;
     );
-    MENU ITEM 'Constructors' PAGE Formula1Frontend.Constructors_Overview;
-    MENU ITEM 'Circuits' PAGE Formula1Frontend.Circuits_Overview;
-    MENU ITEM 'Race results' PAGE Formula1Frontend.RaceResults_Overview;
+    MENU ITEM 'Constructors' PAGE Formula1Frontend.Constructors_Overview ICON Atlas_Core.Atlas."org-chart";
+    MENU ITEM 'Circuits' PAGE Formula1Frontend.Circuits_Overview ICON Atlas_Core.Atlas."map-location-pin";
+    MENU ITEM 'Race results' PAGE Formula1Frontend.RaceResults_Overview ICON Atlas_Core.Atlas.trophy;
   );

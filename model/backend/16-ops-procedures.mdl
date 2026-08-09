@@ -24,28 +24,73 @@
  *     answers with one row carrying the INOUT values.
  *
  *
- * WHY THE SECOND ONE IS SHAPED LIKE AN ENTITY SET
+ * THE SECOND ONE IS AN ODATA ACTION
  *
- * A procedure that changes something wants to be an OData **action** —
- * `POST /odata/f1-ops/RecordPrediction` with the arguments in the body,
- * declared as a function import in $metadata. Mendix supports exactly that:
- * the metamodel has ODataPublish$PublishedMicroflow, and the model SDK has a
- * constructor for it.
+ * A procedure that changes something wants to be an action, not an entity set:
+ * `POST /odata/f1-ops/RecordPrediction` with the arguments in the body and an
+ * ActionImport in $metadata.
  *
- * MDL cannot write one. `create odata service` takes `publish entity` blocks
- * and nothing else — there is no `publish microflow` — and the writer never
- * emits a Microflows collection. Verified against b4a825e; filed. FINDINGS §47.
+ * When this file was first written MDL could not declare one. `create odata
+ * service` took `publish entity` blocks and nothing else, and neither writer
+ * had a single reference to PublishedMicroflow — so the procedure shipped as an
+ * entity set with an insert microflow, which cost the operation's name, turned
+ * its parameters into attributes of the result, and answered 201 to a request
+ * the domain had rejected. That was FINDINGS §47.1, filed as the top open gap.
  *
- * So the procedure is published the way MDL *can* express an invocation with
- * side effects: as an entity set whose InsertMode is a microflow. A client
- * POSTs a Prediction with the arguments filled in, the microflow CALLs the
- * procedure, writes the answer back onto the same object, and Mendix returns
- * it as the response body. That is the OData-v2-era idiom for an action; it is
- * discoverable in $metadata, it works from any client, and the only thing it
- * costs is that the operation is named `Predictions` rather than
- * `RecordPrediction`. Swap it for a real action the day MDL grows one — the
- * microflow underneath does not change.
+ * mxcli `715bac5` closed it:
+ *
+ *   publish microflow Formula1Backend.RecordPrediction as 'RecordPrediction'
+ *     expose ( DriverId as 'driverId', ... );
+ *
+ * Parameter types and the return type are not restated — they are read off the
+ * microflow, which already declares them, so the two cannot drift. The
+ * workaround is gone and the microflow underneath is unchanged, which is what
+ * it was designed for. FINDINGS §48.
+ *
+ * `Predictions` stays, read-only: an action records a prediction, and the
+ * entity set is how you read one back.
  */
+
+-- ---------------------------------------------------------------- the caller
+
+/*
+ * Who is calling, without hashing a password to find out.
+ *
+ * A shared key in a header, compared against a private constant, and the API
+ * user returned on a match. Returning empty denies the request — Mendix answers
+ * 401 and the read microflow never runs.
+ *
+ * A shared key is the right shape for machine-to-machine here and the wrong
+ * shape for anything with human users: it does not expire, it does not identify
+ * a caller, and it is only as good as the channel. A real deployment puts a
+ * token check here instead — the point of the microflow is that WHAT gets
+ * checked is now yours to decide, which is what basic authentication does not
+ * allow.
+ */
+-- Override per environment with MX_Formula1Backend_ApiKey; never a real secret
+-- in source.
+create or modify constant Formula1Backend.ApiKey type string
+  default 'f1-ops-key-2f8a1c' PRIVATE;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.AuthenticateApiClient (
+  $Headers: List of System.HttpHeader
+)
+  RETURNS System.User AS $User
+BEGIN
+  DECLARE $Presented String = '';
+  LOOP $H IN $Headers BEGIN
+    IF toLowerCase($H/Key) = 'x-api-key' THEN
+      SET $Presented = $H/Value;
+    END IF;
+  END LOOP;
+
+  IF $Presented != @Formula1Backend.ApiKey THEN
+    RETURN empty;
+  END IF;
+
+  RETRIEVE $User FROM System.User WHERE Name = 'f1api' LIMIT 1;
+  RETURN $User;
+END;
 
 -- ---------------------------------------------------------------- the database
 
@@ -210,14 +255,17 @@ create or modify non-persistent entity Formula1Backend.Stg_ProcedureResult (
 );
 
 /*
- * The action, as an entity. Request fields the client fills in; result fields
- * the microflow fills in and Mendix sends back in the 201.
+ * A prediction: the arguments, the key it was stored under, and how it went.
  *
- * PredictionKey is the OData key. A published entity needs one, and a client
- * that has just POSTed will re-read the thing it created by that key — so it
- * has to be something the resource can answer for, which is why the microflow
- * sets it from the id the procedure returned. FINDINGS §37 is what happens when
- * it cannot.
+ * `accepted` and `message` look like they belong to a submission rather than to
+ * a record, and they were nearly split out — but Mendix requires an action's
+ * return type to be an entity published by the same service (CE7244
+ * "Published microflow 'RecordPrediction' returns
+ * 'Formula1Backend.Stg_ProcedureResult', but that entity is not published in
+ * this service"). Splitting them would have meant inventing a second entity set
+ * to hold outcomes, which is a worse lie than one entity carrying both. So this
+ * is one resource: the action returns it, and a GET reads it back with
+ * accepted=true, message='stored'. FINDINGS §48.
  */
 @Position(700, 1400)
 create or modify non-persistent entity Formula1Backend.Ops_Prediction (
@@ -264,42 +312,54 @@ BEGIN
 END;
 
 /*
- * The procedure, behind an insert — the nearest thing to an OData action that
- * MDL can declare (see the header).
+ * The procedure, as an OData action.
  *
- * $Object is what the client POSTed, deserialised by Mendix. The microflow
- * calls the procedure with it and writes the answer back onto the same object.
- * It returns nothing — Mendix requires that (CE6588 "The insert microflow must
- * return Nothing") and serialises the parameter object itself, so `accepted`,
- * `message` and the key still reach the caller in the 201.
+ * Its parameters are the procedure's arguments and nothing else — no entity to
+ * post, no attributes standing in for arguments, no key to invent for a row
+ * that may never be written. The return is the procedure's own INOUT row, so
+ * the caller gets the id, the verdict and the database's message.
  *
- * Rejections come back as accepted=false with the database's own message
- * rather than as an exception, because they are answers, not failures — the
- * procedure validated the request and said no. A 500 would lose the reason.
+ * Rejections come back as accepted=false carrying the procedure's own message
+ * rather than as an exception, because they are answers and not failures: the
+ * routine validated the request and said no. A 500 would lose the reason.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Insert_Prediction (
-  $Object: Formula1Backend.Ops_Prediction
+CREATE OR REPLACE MICROFLOW Formula1Backend.RecordPrediction (
+  $DriverId: String,
+  $RaceId: Long,
+  $Position: Long,
+  $SubmittedBy: String
 )
+  RETURNS Formula1Backend.Ops_Prediction AS $Answer
 BEGIN
-  $Result = execute database query Formula1Backend.F1Ops.CallRecordPrediction
-    (driverId = $Object/DriverId,
-     raceId = toString($Object/RaceId),
-     position = toString($Object/Position),
-     submittedBy = $Object/SubmittedBy);
+  -- The answer starts as a refusal, echoing back what was asked, and is
+  -- overwritten by whatever the routine says. Built this way round because MDL
+  -- cannot declare an object variable up front (MDL043/CE0053), so a CREATE
+  -- inside a branch would leave $Answer assigned on one path only — which
+  -- MDL005 rightly warns about.
+  $Answer = CREATE Formula1Backend.Ops_Prediction (
+    DriverId = $DriverId,
+    RaceId = $RaceId,
+    Position = $Position,
+    SubmittedBy = $SubmittedBy,
+    Accepted = false,
+    Message = 'the procedure returned no row'
+  );
 
-  $Row = HEAD($Result);
-  IF $Row != empty THEN
-    CHANGE $Object (
-      Accepted = $Row/Accepted,
-      Message = $Row/Message,
-      PredictionKey = toString($Row/PredictionId)
-    );
-  ELSE
-    CHANGE $Object (
-      Accepted = false,
-      Message = 'the procedure returned no row'
+  $Result = execute database query Formula1Backend.F1Ops.CallRecordPrediction
+    (driverId = $DriverId,
+     raceId = toString($RaceId),
+     position = toString($Position),
+     submittedBy = $SubmittedBy);
+
+  $Found = HEAD($Result);
+  IF $Found != empty THEN
+    CHANGE $Answer (
+      PredictionKey = toString($Found/PredictionId),
+      Accepted = $Found/Accepted,
+      Message = $Found/Message
     );
   END IF;
+  RETURN $Answer;
 END;
 
 -- ---------------------------------------------------------------- the service
@@ -342,13 +402,36 @@ BEGIN
   RETURN $Rows;
 END;
 
+/*
+ * Custom authentication, which is the fix for the BCrypt cost rather than a
+ * shrinking of it.
+ *
+ * Basic authentication hashes the presented password with BCrypt on EVERY
+ * request. §31 measured it at 60-80% of a cached page turn, and §40's answer
+ * was to drop the work factor from 12 to 8 — faster, and a deliberate
+ * weakening. Custom authentication removes the hash instead: the microflow is
+ * handed the request's headers and returns a user, so there is no password to
+ * verify per request.
+ *
+ * MDL could not express it. `authentication microflow` parsed, the microflow
+ * name was silently dropped, and the build then failed CE0333 "Please select a
+ * microflow to use for authentication" — so the type was reachable and useless.
+ * mxcli `715bac5` carries the name through, and `mxcli check` gained
+ * MDL-ODATA04 for the unnamed form. FINDINGS §40, §48.
+ *
+ * All five services use it now. The microflow lives here because this is the
+ * file that introduced it; 02, 05, 14 and 15 name it too, and their clients in
+ * the frontend send the key as a header instead of a password. With no password
+ * verified per request, `BcryptCost` goes back to the Mendix default of 12 —
+ * see 07-demo-users.mdl, where the downgrade used to be.
+ */
 create or modify odata service Formula1Backend.F1OpsApi (
   path: 'odata/f1-ops/',
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'Formula1Backend.Ops'
 )
-authentication basic, session
+authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_DriverForm as 'DriverForm' (
     ReadMode: microflow Formula1Backend.Read_DriverForm,
@@ -373,8 +456,7 @@ authentication basic, session
 
   publish entity Formula1Backend.Ops_Prediction as 'Predictions' (
     ReadMode: microflow Formula1Backend.Read_Predictions,
-    InsertMode: microflow Formula1Backend.Insert_Prediction,
-    UpdateMode: not_supported, DeleteMode: not_supported,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
     Countable: No, TopSupported: No, SkipSupported: No
   )
   expose (
@@ -386,17 +468,32 @@ authentication basic, session
     Accepted as 'accepted',
     Message as 'message'
   );
+
+  /*
+   * The procedure itself, invocable. An ActionImport in $metadata, so a client
+   * discovers it rather than being told which entity set to POST to.
+   *
+   * No types here: mxcli reads them off the microflow. That is the difference
+   * between a declaration and a second copy of one.
+   */
+  publish microflow Formula1Backend.RecordPrediction as 'RecordPrediction'
+    expose (
+      DriverId as 'driverId',
+      RaceId as 'raceId',
+      Position as 'position',
+      SubmittedBy as 'submittedBy'
+    );
 };
 
 /*
- * Re-granted after the service, because `create or modify odata service` still
- * drops AllowedModuleRoles — 28ce821 fixed the .mpr writer, not the modelsdk
- * one. FINDINGS §41.
+ * Granted once. This used to need repeating after every service modify, because
+ * the modelsdk writer dropped AllowedModuleRoles — `28ce821` fixed the .mpr
+ * writer and missed this one. `715bac5` fixed it. FINDINGS §41, §48.
  */
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1OpsApi TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverForm  TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Predictions TO Formula1Backend.ApiUser;
-GRANT EXECUTE ON MICROFLOW Formula1Backend.Insert_Prediction TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.RecordPrediction TO Formula1Backend.ApiUser;
 
 GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_DriverForm      (read *);
 GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_ProcedureResult (read *);
