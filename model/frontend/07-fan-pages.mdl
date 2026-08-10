@@ -575,10 +575,19 @@ create or replace page Formula1Frontend.Driver_Career
         ) {
           container stripCell (
             class: 'strip-cell',
+            /*
+             * Every branch tests `empty` before it compares. A comparison
+             * against an unset number is not false in Mendix, it throws —
+             * "Operator > not supported in expression >(, 0)" — and it throws
+             * in the browser, at render, where `mx check` cannot see it. A
+             * driver who retired has no finishing position and a driver who
+             * scored nothing can have no points at all.
+             */
             dynamicclasses:
               'if $currentObject/finishPosition = empty then ''strip-dnf''
                else if $currentObject/finishPosition = 1 then ''strip-win''
                else if $currentObject/finishPosition <= 3 then ''strip-podium''
+               else if $currentObject/points = empty then ''strip-none''
                else if $currentObject/points > 0 then ''strip-points''
                else ''strip-none''',
             OnClick: MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace(Race: $currentObject)

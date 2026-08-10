@@ -3435,6 +3435,28 @@ set $Share = parseInteger(formatDecimal($Pct, '0'));
 
 **Also:** `not contains(…)` does not parse; `contains(…) = false` does.
 
+### A comparison against `empty` throws, in the browser, at render
+
+Not a parse error and not a build error — `mx check` reports 0 errors and the
+page renders until the first row where the attribute is unset:
+
+```
+[Client] An error occurred while evaluating dynamic classes of
+Formula1Frontend.Driver_Career.stripCell:
+Operator > not supported in expression >(, 0)
+```
+
+`$currentObject/points > 0` is fine for every driver who scored and throws for
+one who did not, and Mendix surfaces it as a modal that then swallows every
+later click. Two of these shipped in one afternoon — a strip cell keyed on
+points, a table cell keyed on positions gained — and both were found only by
+driving the running app, because the data that triggers them is the exception
+row. Every branch of a `dynamicclasses` or `DynamicCellClass` expression over a
+nullable number now tests `= empty` before it compares.
+
+This is the strongest argument in this file for the Playwright pass: `check`,
+`mx check`, the build and the log were all clean, and the page was broken.
+
 ### Refreshing an external entity after the service grows a column
 
 This is the workflow gap, not a bug in one command. The backend gained two
