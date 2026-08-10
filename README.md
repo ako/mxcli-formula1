@@ -328,6 +328,55 @@ client it had just built and every page came up black, so this repo carried a
 wrapper script to put it back; the boot now bundles after packaging and verifies
 it. FINDINGS §35, §41.
 
+**Watching it run.** `scripts/run-observed.sh` boots both apps with the three
+things a plain `run --local` leaves off, and puts them on the hub:
+
+```bash
+scripts/run-observed.sh          # both apps, observed, on $MXCLI_HUB_URL
+HUB= scripts/run-observed.sh     # the same, local only
+scripts/run-observed.sh stop
+```
+
+| | |
+|---|---|
+| Errors | `Formula1{Backend,Frontend}/.mxcli/runtime.log` — server stack traces and microflow `LOG` output. The browser only ever shows a generic dialog; this is where the cause is. |
+| Metrics | `--metrics` registers a Prometheus registry: `http://127.0.0.1:8090/prometheus` (backend), `:8190` (frontend). Sessions, JVM, connection pool, request counts. |
+| Traces | `--trace-otlp` attaches the OpenTelemetry agent and exports to `scripts/otlp-collector.py`, which writes one JSON object per span to `.mxcli-obs/spans.jsonl`. |
+
+`--trace` on its own uses a console exporter that drops timestamps and parent
+span ids — enough to see that a span happened, not enough for a duration or a
+call tree. The collector is what keeps both, and
+
+```bash
+python3 scripts/span-report.py .mxcli-obs/spans.jsonl --since 60
+```
+
+reads it: failures first, then total self-time by span, then the slowest single
+spans, then the traces worth opening. Self-time is a span's duration less its
+children's — a parent at 2000ms with 3ms of its own is not the bottleneck,
+something under it is. Take one of the trace ids it prints and
+
+```bash
+python3 scripts/span-report.py .mxcli-obs/spans.jsonl --trace <id>
+```
+
+prints that request as a tree, SQL statements included. A cold
+`GET /odata/f1-fan/DriverSeasons` looks like this — the authentication microflow,
+then the DuckDB scan that is the actual cost:
+
+```
+  866.9ms  own   38.7ms  GET /*
+     12.4ms  own   1.7ms  Microflow Formula1Backend.AuthenticateApiClient
+       10.7ms  own   8.0ms  Retrieve activity //System.User[Name = ?]
+    810.7ms  own   1.4ms  Microflow Formula1Backend.Read_DriverSeasons
+      808.1ms own 393.4ms  ExecuteDatabaseQueryAction activity
+```
+
+One caveat worth knowing before reading a report: the first thirty seconds after
+boot are dominated by Mendix's own cluster-management tasks, which have nothing
+to do with the app. `--since` exists for that — exercise the page, then ask what
+the last sixty seconds did.
+
 **Regenerating the screenshots.** With both apps up:
 
 ```bash

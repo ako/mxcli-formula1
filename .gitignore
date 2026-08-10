@@ -56,3 +56,8 @@
 # Semantic fingerprints from scripts/fingerprint.sh — a local before/after
 # comparison, not an artefact worth versioning.
 /fingerprint/
+
+# Runtime observation output from scripts/run-observed.sh — collected spans,
+# the collector's own log and each app's boot log. Minutes of browsing is tens
+# of MB of JSONL, and it describes one run of one machine.
+/.mxcli-obs/
