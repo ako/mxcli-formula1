@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on **`c76d4b7`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on **`38a1137`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1597,12 +1597,18 @@ the scripts quietly stop being the source of truth.
    NO attribute of a resource is filterable, and the list form when some are —
    both appear in one document. Generating external entities from this repo's
    `F1OpsApi` gives 28 × CE6630. Reproduction in §48.
-4. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
-   fetch is in the create path only, so after a published service changes shape
-   the client keeps its cached contract, reports "Modified OData client", and
-   `create external entities` regenerates from stale metadata without saying so.
-   Recovery is drop-and-recreate, which cascades into every page and grant that
-   binds those entities.
+4. **`create or modify odata client` does not re-fetch `$metadata`** (§42, §51)
+   — the fetch is in the create path only, so after a published service changes
+   shape the client keeps its cached contract, reports "Modified OData client",
+   and `create external entities` regenerates from stale metadata without
+   saying so. Re-confirmed on `38a1137` while adding two attributes to an
+   existing resource: `create or modify external entities from` then reports
+   "10 updated" and adds nothing, and neither `alter entity … add attribute`
+   (CE6612, no remote-name mapping) nor the explicit `create or modify external
+   entity … from odata client …` form (CE6611, contract binding lost) can patch
+   it by hand. Recovery is drop-and-recreate the client, which works — entities
+   rebind in place — but takes every entity access rule on the module with it.
+   A `REFRESH ODATA CLIENT Mod.Client` would make this a one-liner.
 5. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
@@ -1643,6 +1649,30 @@ the scripts quietly stop being the source of truth.
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
    statically: `check`/`lint` can compare the name against the model.
+13. **Five page-widget properties are parsed, dropped and not reported** (§51) —
+   `sort by` on a LISTVIEW's database datasource, `OnClick` on a LISTVIEW,
+   `PageSize` on a GALLERY, and chart-level `CustomLayout` /
+   `CustomConfigurations` when spelled with a capital. All four pass
+   `mxcli check` with no MDL-WIDGET07 warning and are simply absent from the
+   model afterwards. The chart case is the sharpest: series-level properties
+   *are* matched case-insensitively, so one document can have
+   `StaticBarColor` honoured and `CustomLayout` discarded on the capital letter
+   alone — which reads as "custom layout is unsupported" rather than "you
+   spelled it wrong". MDL-WIDGET07 already exists for exactly this; whatever
+   path drops these should route through it.
+14. **`LISTVIEW`'s `PageSize` does not round-trip** (§51) — the writer honours
+   it (`TestBuildListViewV3_PageSize` guards that), but `describe page` never
+   prints it back, so the round-trip this repo uses to verify every other
+   change reports it as dropped. The default is 20, which silently ends a
+   24-round season in a "Load more" button.
+15. **Two expression traps that only `mx check` catches** (§51) — division is
+   `div`, not `/` (CE0117 for any operand types, Decimal included), and `div`
+   does *not* floor, so `77 div 5` is 15.4; and there is no cast from Decimal
+   to Long, so a rounded percentage has to go through
+   `parseInteger(formatDecimal($x, '0'))`. Neither `/` nor `round($x)` with one
+   argument is rejected by `mxcli check`. Also `not contains(…)` does not parse
+   where `contains(…) = false` does. A `check` that validated microflow
+   expressions against Mendix's grammar would catch all four at write time.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -3335,3 +3365,148 @@ over-deletion showed up.
 
 23/23 frontend tests pass, `mx check` clean.
 
+
+---
+
+## 51. Building the design comp for real: five silent property drops and two expression traps
+
+*Verified 2026-08-09/10, on `ako/mxcli` main @ `38a1137`, Mendix 11.13.0.*
+
+The four screens were already on the comp's palette; what was missing was its
+*arrangement* — chip rows, banner cards with the numbers inline, a colour-coded
+result strip, in-table bars, side-by-side charts, tinted highlight cards. None
+of that is exotic, and almost all of it went in cleanly. What did not is
+recorded here, because every one of these cost a build-and-look cycle and none
+of them said anything at write time.
+
+### The five silent drops
+
+Each of these parses, passes `mxcli check` with no MDL-WIDGET07 warning, writes
+without error, and is simply not in the model afterwards.
+
+| Written | What happens |
+|---|---|
+| `LISTVIEW … (datasource: database from E **sort by** a desc)` | the entity is kept, the sort is dropped. A GALLERY keeps it. |
+| `LISTVIEW … (**PageSize**: 40)` | honoured — but `describe page` never prints it back, so a round-trip looks like it was dropped |
+| `LISTVIEW … (**OnClick**: …)` | dropped. The same property on a CONTAINER inside the list view works. |
+| `GALLERY … (**PageSize**: 20)` | dropped |
+| chart-level `**CustomLayout**` / `**CustomConfigurations**` (capitalised) | dropped. The exact lowercase property key — `customLayout` — is kept. |
+
+The last is the sharpest. Series-level properties are matched
+case-insensitively (`StaticBarColor`, `CustomSeriesOptions` both land), so the
+same document can have one property honoured and its sibling silently discarded
+purely on the capital letter. That produced a chart with per-series colours and
+no axis configuration, which reads as "custom layout is not supported" rather
+than "you spelled it wrong".
+
+**Suggestion:** MDL-WIDGET07 already exists to catch an unrecognised property on
+a built-in widget. It did not fire for any of the five. Whatever path drops
+these should route through the same warning; a property that is parsed, not
+persisted, and not reported is the worst of the three outcomes.
+
+`LISTVIEW`'s `PageSize` deserves its own note: the writer honours it (there is a
+test guarding exactly that, `TestBuildListViewV3_PageSize`), but `describe page`
+omits it, so the round-trip that this repo uses to verify every other change
+cannot see it. The default is 20, which means a 24-round season silently ends in
+a "Load more" button — a truncation that looks like a design decision.
+
+### Two expression traps, both silent until `mx check`
+
+**Division is `div`, and `div` is not integer division.** `$a / $b` is CE0117
+"Error(s) in expression" for any operand types — Decimal by Decimal included.
+Mendix's operator is `div`, and unlike Pascal's it does not floor: `77 div 5`
+is 15.4. A first attempt bucketed a percentage into 5% steps with
+`x div 5 * 5`, which returned the input unchanged.
+
+That mattered more than it should have, because the bucket named a CSS class.
+`w-77` where only `w-75` and `w-80` exist is not a missing rule, it is *no width
+rule*, and a fill with no width fills its track — every bar in the table drew at
+100%. A wrong reading, not a missing one. The page now carries one rule per
+whole percent and does no arithmetic at all.
+
+**There is no cast from Decimal to Long.** `round(x)` is not a function either
+(it is `round(value, precision)`), and even `round(x, 0)` is a Decimal, so
+assigning it to a Long attribute is CE0117. What works:
+
+```
+set $Pct   = $Points div $Best * 100.0;
+set $Share = parseInteger(formatDecimal($Pct, '0'));
+```
+
+**Also:** `not contains(…)` does not parse; `contains(…) = false` does.
+
+### Refreshing an external entity after the service grows a column
+
+This is the workflow gap, not a bug in one command. The backend gained two
+attributes on an existing resource. To get them into the frontend:
+
+- `create external entities from` **skips** an entity that already exists;
+- `create or **modify** external entities from` reports "10 updated" and adds
+  nothing — the new attribute does not appear;
+- `create or modify odata client` with a changed `MetadataUrl` re-reads
+  nothing: `describe contract entity` still shows the old property list.
+
+The cached contract inside the `.mpr` is only ever populated when the client is
+*created*. The working sequence is therefore destructive:
+
+```
+drop odata client Mod.Client;
+create or modify odata client Mod.Client (…);        -- caches $metadata afresh
+create or modify external entities from Mod.Client into Mod;
+<re-run the security script>                          -- grants do not survive
+```
+
+`mx check` is clean afterwards and the pages keep working — the entities are
+rebound in place rather than duplicated — but every entity access rule on the
+module is gone and has to be re-applied. On a real project that is a foot-gun.
+
+**Suggestion:** either make `create or modify odata client` re-read the metadata
+URL, or add an explicit `REFRESH ODATA CLIENT Mod.Client` that re-caches the
+contract without dropping anything.
+
+Trying to sidestep it by hand does not work either. `alter entity … add
+attribute` adds the attribute but not its remote-name mapping (CE6612
+"Attribute … of external entity … is not supported"), and the explicit
+`create or modify external entity … from odata client … (EntitySet: …,
+RemoteName: …)` form loses the contract binding entirely (CE6611 "External
+entity … is not defined in OData service", plus one CE6612 per attribute). Both
+were tried and reverted.
+
+### What the widgets can do that was not obvious
+
+Two things worth writing down because they turned "Mendix cannot draw this" into
+"Mendix can draw this":
+
+**There is no combination chart, but there is a combination.** A Column chart
+series takes raw Plotly trace JSON in `customSeriesOptions`, and the chart takes
+raw layout JSON in `customLayout`. So a second series declared as
+`{"type":"scatter","mode":"lines+markers","yaxis":"y2",…}` against a
+`{"yaxis2":{"overlaying":"y","side":"right","autorange":"reversed"}}` layout is
+bars and a reversed line on one plot. The same two hooks give a scatter (a Line
+chart with `lineStyle: 'custom'` and `{"mode":"markers"}`), a step line
+(`{"line":{"shape":"hv"}}`) and a parity reference line (a layout `shapes`
+entry). Every colour in those strings is a literal, because Plotly reads no CSS
+variable — that is the one place in this app where a colour lives in the model.
+
+**A data-driven bar needs no widget.** `style:` on a page widget is a literal,
+so a width cannot be computed — but `dynamicclasses` can compute a *class name*,
+and a hundred and one `.w-N { width: N% }` rules turn a 0–100 attribute into a
+bar. Two nested containers, no third-party widget, and the DOM stays yours. The
+Progress Bar widget was the obvious choice and is the wrong one: its dynamic
+mode wants an attribute for the minimum as well as the maximum, and there is no
+zero column to bind.
+
+### Layout notes that are Mendix, not CSS
+
+- A data view renders a wrapper div and puts its children one level down, so a
+  grid declared on the data view lays out *one* item. `> .mx-dataview-content
+  { display: contents }` takes the wrapper out of layout and the children become
+  the grid's own items. This is the fix for every "my cards came back stacked".
+- Atlas pads a list view's `<li>` by 16px through `.mx-listview > ul > li`, so a
+  reset needs that depth or the padding survives.
+- `repeat(auto-fit, …)` cannot count inside a flex item — the available width is
+  indefinite, so it resolves to one track. `grid-auto-flow: column` with
+  `grid-auto-columns` is what a variable-length stat row actually wants.
+- A data grid's `ColumnWidth: manual` + `Size: n` is a *weight*, not pixels.
+  `Size: 230` against eleven unset columns gave the one column 95% of the table
+  and squeezed every caption to an ellipsis.
