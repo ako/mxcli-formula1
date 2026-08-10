@@ -96,6 +96,9 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamSeason TO Formula1Frontend.En
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamH2H TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamLatestStanding TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Weekend TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendRounds TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_PrevRound TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NextRound TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;

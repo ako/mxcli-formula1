@@ -103,10 +103,13 @@ END;
  * The peer row's twenty.
  *
  * A microflow rather than the list view's own `database from … sort by …
- * limit`, because a list view keeps neither: mxcli writes the entity and drops
- * the sort, and neither list view nor gallery takes a page size at all — only
- * DATAGRID does. A gallery does keep the sort, but not the limit, which would
- * make the chip row nine hundred drivers long.
+ * limit`: a list view drops the sort — mxcli writes the entity and loses the
+ * order — and it has no limit clause at all. A gallery does keep the sort but
+ * still has no limit, which would make the chip row nine hundred drivers long.
+ *
+ * PageSize is a separate matter and does work on a list view, though `describe
+ * page` does not print it back; it is how many of the list are shown before a
+ * "Load more", not how many are fetched.
  *
  * `SORT BY … LIMIT` in a retrieve becomes $orderby + $top on the wire, and both
  * are pushed into SQL by Read_Drivers, so this is twenty rows fetched, not
@@ -197,10 +200,10 @@ END;
 /*
  * The season's rounds for the calendar cards.
  *
- * A microflow rather than the list view's own database datasource, because a
- * list view over a database source pages at twenty and shows a "Load more"
- * button — and MDL cannot set a list view's page size, only a data grid's. A
- * microflow hands over the whole list and the grid of cards is the season.
+ * A microflow rather than the list view's own database datasource, so the
+ * whole season arrives in one read and the sort survives. The list view's own
+ * PageSize is raised past a season's length as well: it defaults to twenty and
+ * a 24-round year would otherwise end in a "Load more" button.
  */
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonCalendar (
   $Season: F1Cached.Seasons)
@@ -486,7 +489,8 @@ create or replace page Formula1Frontend.Driver_Career
      * the sort and the limit are pushed down, so it is twenty rows.
      */
     container chipsRow (class: 'chips-row') {
-      listview lvPeers (datasource: MICROFLOW Formula1Frontend.DS_DriverPeers) {
+      listview lvPeers (datasource: MICROFLOW Formula1Frontend.DS_DriverPeers,
+                        PageSize: 40) {
         container chipPeer (
           class: 'chip-pick',
           dynamicclasses: 'if $currentObject/driverId = $Driver/driverId then ''is-picked'' else ''''',
@@ -566,7 +570,8 @@ create or replace page Formula1Frontend.Driver_Career
       }
       container stripGrid (class: 'strip-grid') {
         listview lvStrip (
-          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver)
+          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver),
+          PageSize: 40
         ) {
           container stripCell (
             class: 'strip-cell',
@@ -989,9 +994,14 @@ create or replace page Formula1Frontend.Season_Summary
       container calCards (class: 'card-grid') {
         listview lvCalendar (
           datasource: MICROFLOW Formula1Frontend.DS_SeasonCalendar(Season: $Season),
-          OnClick: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject)
+          PageSize: 40
         ) {
-          container calCard (class: 'cal-card') {
+          -- The click goes on the card, not on the list view: a list view keeps
+          -- no OnClick (mxcli drops it silently), a container does.
+          container calCard (
+            class: 'cal-card',
+            OnClick: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject)
+          ) {
             container calCardTop (class: 'cal-card-top') {
               dynamictext calRound (content: 'R{1}', contentparams: [{1} = round],
                                     class: 'cal-round')
@@ -1088,7 +1098,8 @@ create or replace page Formula1Frontend.Constructor_Detail
      * a three-letter code, so twelve fit where twenty codes did.
      */
     container chipsRow (class: 'chips-row') {
-      listview lvTeams (datasource: MICROFLOW Formula1Frontend.DS_TeamPeers) {
+      listview lvTeams (datasource: MICROFLOW Formula1Frontend.DS_TeamPeers,
+                        PageSize: 40) {
         container chipTeam (
           class: 'chip-pick',
           dynamicclasses: 'if $currentObject/constructorId = $Constructor/constructorId then ''is-picked'' else ''''',

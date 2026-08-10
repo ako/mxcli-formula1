@@ -622,6 +622,144 @@
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------- round nav -- */
+
+// Two step buttons and then the season as chips. The chip row is the same
+// component as the driver and constructor pages; `chips-inline` only stops it
+// claiming the margin below, since the nav is one line.
+.round-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.chips-inline { margin-bottom: 0; min-width: 0; }
+
+// Atlas paints a button; this un-paints it back to the chip the comp draws, so
+// the two steps and the twenty-four rounds read as one control.
+.nav-step,
+.nav-step.btn {
+  padding: 5px 10px;
+  border-radius: var(--mxt-radius);
+  border: 1px solid var(--mxt-line);
+  background: var(--mxt-surface);
+  color: var(--mxt-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: none;
+
+  &:hover { border-color: var(--mxt-brand); background: var(--mxt-surface-hover); }
+}
+
+/* -------------------------------------------------- highlight cards -- */
+
+// The three cards along the right of the weekend banner. Each is tinted by
+// what it is about — practice on the plain surface, pole on the accent, the win
+// on the brand — which is the one place in the design where a fill carries
+// meaning rather than just separating a panel from the page.
+.hl-cards {
+  margin-left: auto;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(190px, 240px);
+  gap: 12px;
+}
+
+.hl-card {
+  @include f1-surface;
+  background: var(--mxt-ground);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.hl-card-pole {
+  background: color-mix(in srgb, var(--mxt-accent) 12%, var(--mxt-ground));
+  border-color: color-mix(in srgb, var(--mxt-accent) 40%, var(--mxt-line));
+}
+
+.hl-card-win {
+  background: color-mix(in srgb, var(--mxt-brand) 12%, var(--mxt-ground));
+  border-color: color-mix(in srgb, var(--mxt-brand) 40%, var(--mxt-line));
+}
+
+.hl-label {
+  @include f1-label;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.hl-value {
+  display: block;
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--mxt-ink);
+  white-space: nowrap;
+}
+
+// A winner is a name, not a lap time; tabular figures at 19px would truncate it.
+.hl-value-name {
+  font-family: var(--mxt-font);
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hl-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The banner's eyebrow, above the Grand Prix name.
+.hero-eyebrow {
+  @include f1-label;
+  display: block;
+  margin-bottom: 2px;
+}
+
+@media (max-width: 1199px) {
+  .hl-cards {
+    margin-left: 0;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------- deltas -- */
+
+// Places gained and lost in the race. The arrow is drawn by the rule so the
+// cell keeps a plain number, which is what makes the column sortable.
+.delta-up,
+.delta-up .td-text { color: var(--mxt-tone-ok); }
+
+.delta-down,
+.delta-down .td-text { color: var(--mxt-tone-risk); }
+
+.delta-up::before { content: "▲ "; }
+.delta-down::before { content: "▼ "; }
+
+// Nothing moved. Collapsing the digit and drawing a dash in its place is the
+// comp's reading: a zero here is an absence, not a measurement.
+.delta-flat {
+  font-size: 0;
+  color: var(--mxt-ink-faint);
+
+  &::before {
+    content: "–";
+    font-size: 12px;
+    font-family: var(--mxt-font-mono);
+  }
+}
+
 /* --------------------------------------------------------------- cards -- */
 
 // A season's calendar as one card per round rather than as a table: the whole

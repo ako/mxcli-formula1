@@ -41,6 +41,46 @@ BEGIN
 END;
 
 /*
+ * The season's rounds, for the chip row across the top: one chip per Grand
+ * Prix, the one being shown outlined. `year` is pushed down, so this is the
+ * season and not the calendar.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_WeekendRounds ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.Calendar AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Race/year SORT BY round ASC;
+  RETURN $Rows;
+END;
+
+/*
+ * Prev and Next. `round` is pushed down on Calendar now, so each is one row
+ * over the wire rather than a season fetched to pick one out of it.
+ *
+ * At either end the neighbour does not exist and the button does nothing —
+ * the comp greys them out, which a Mendix button can only do from a page
+ * variable, and there is none here to hold "is this the first round".
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_PrevRound ($Race: F1Fan.Calendar)
+BEGIN
+  DECLARE $Target Long = $Race/round - 1;
+  RETRIEVE $Prev FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Target LIMIT 1;
+  IF $Prev != empty THEN
+    SHOW PAGE Formula1Frontend.Race_Weekend (Race: $Prev);
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NextRound ($Race: F1Fan.Calendar)
+BEGIN
+  DECLARE $Target Long = $Race/round + 1;
+  RETRIEVE $Next FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Target LIMIT 1;
+  IF $Next != empty THEN
+    SHOW PAGE Formula1Frontend.Race_Weekend (Race: $Next);
+  END IF;
+END;
+
+/*
  * The URL carries the race, so a weekend can be linked to. That only works
  * because Read_Calendar answers a lookup by key — resolving `{Race}` back into
  * an object is exactly the read that used to fall through to the collection
@@ -55,69 +95,76 @@ create or replace page Formula1Frontend.Race_Weekend
 )
 {
   container pageBody {
-    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race)) {
-      container head (class: 'pagehead') {
-        container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: '{1} · Round {2}',
-            contentparams: [{1} = year, {2} = round], class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = name],
-                             rendermode: H2, class: 'pagehead-title')
-          dynamictext sub (content: '{1} · {2} laps · {3} km',
-            contentparams: [{1} = circuitName, {2} = laps, {3} = distance],
-            class: 'pagehead-sub')
-        }
-        container headBadge (class: 'pagehead-badge') {
-          dynamictext rnd (content: 'R{1}', contentparams: [{1} = round])
+    /*
+     * The comp's round nav: two step buttons and then a chip per Grand Prix,
+     * the one on screen outlined. Both are the season in one line, so a
+     * weekend can be left in either direction without going back to a list.
+     */
+    container roundNav (class: 'round-nav') {
+      actionbutton btnPrev (caption: '← Prev', class: 'nav-step',
+        action: microflow Formula1Frontend.ACT_PrevRound(Race: $Race))
+      actionbutton btnNext (caption: 'Next →', class: 'nav-step',
+        action: microflow Formula1Frontend.ACT_NextRound(Race: $Race))
+      container roundChips (class: 'chips-row chips-inline') {
+        listview lvRounds (
+          datasource: MICROFLOW Formula1Frontend.DS_WeekendRounds(Race: $Race),
+          PageSize: 40
+        ) {
+          container chipRound (
+            class: 'chip-pick',
+            dynamicclasses: 'if $currentObject/round = $Race/round then ''is-picked'' else ''''',
+            OnClick: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject)
+          ) {
+            dynamictext chipCode (content: '{1}', contentparams: [{1} = code])
+          }
         }
       }
+    }
 
-      /*
-       * The session cards: who led each session and with what lap. Practice is
-       * empty before 1986 and FP3 before 2003, so a card can legitimately read
-       * as a dash.
-       */
-      container sessions (class: 'kpis') {
-        container sFp1 (class: 'kpi') {
-          dynamictext sFp1L (content: 'FP1', class: 'kpi-label')
-          dynamictext sFp1V (content: '{1}', contentparams: [{1} = fp1LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp1S (content: '{1}', contentparams: [{1} = fp1LeaderName],
-                             class: 'kpi-sub')
+    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race),
+                        class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroId (class: 'hero-id') {
+          dynamictext heroRound (content: 'Round {1} of {2}',
+            contentparams: [{1} = round, {2} = year], class: 'hero-eyebrow')
+          dynamictext heroName (content: '{1}', contentparams: [{1} = name],
+                                rendermode: H2, class: 'hero-name')
+          dynamictext heroCircuit (content: '{1}', contentparams: [{1} = circuitName],
+                                   class: 'hero-sub')
+          dynamictext heroLaps (content: '{1} laps · {2} km',
+            contentparams: [{1} = laps, {2} = distance], class: 'hero-sub')
         }
-        container sFp2 (class: 'kpi') {
-          dynamictext sFp2L (content: 'FP2', class: 'kpi-label')
-          dynamictext sFp2V (content: '{1}', contentparams: [{1} = fp2LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp2S (content: '{1}', contentparams: [{1} = fp2LeaderName],
-                             class: 'kpi-sub')
-        }
-        container sFp3 (class: 'kpi') {
-          dynamictext sFp3L (content: 'FP3', class: 'kpi-label')
-          dynamictext sFp3V (content: '{1}', contentparams: [{1} = fp3LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp3S (content: '{1}', contentparams: [{1} = fp3LeaderName],
-                             class: 'kpi-sub')
-        }
-        container sPole (class: 'kpi kpi-accent') {
-          dynamictext sPoleL (content: 'Pole', class: 'kpi-label')
-          dynamictext sPoleV (content: '{1}', contentparams: [{1} = poleTime],
-                              class: 'kpi-value')
-          dynamictext sPoleS (content: '{1}', contentparams: [{1} = poleName],
-                              class: 'kpi-sub')
-        }
-        container sFast (class: 'kpi') {
-          dynamictext sFastL (content: 'Fastest lap', class: 'kpi-label')
-          dynamictext sFastV (content: '{1}', contentparams: [{1} = fastestLapTime],
-                              class: 'kpi-value')
-          dynamictext sFastS (content: '{1}', contentparams: [{1} = fastestLapName],
-                              class: 'kpi-sub')
-        }
-        container sWin (class: 'kpi kpi-text') {
-          dynamictext sWinL (content: 'Winner', class: 'kpi-label')
-          dynamictext sWinV (content: '{1}', contentparams: [{1} = winnerName],
-                             class: 'kpi-value')
-          dynamictext sWinS (content: '{1}', contentparams: [{1} = winnerTeam],
-                             class: 'kpi-sub')
+
+        /*
+         * The comp's three highlight cards, each tinted by what it is about:
+         * practice on the plain surface, pole on the accent, the win on the
+         * brand. Practice is empty before 1986 and FP3 before 2003, so a card
+         * can legitimately read as a dash — that is data, not a fault.
+         */
+        container hlCards (class: 'hl-cards') {
+          container hlPractice (class: 'hl-card') {
+            dynamictext hlPracticeL (content: 'Fastest in practice', class: 'hl-label')
+            dynamictext hlPracticeV (content: '{1}', contentparams: [{1} = fp3LeaderTime],
+                                     class: 'hl-value')
+            dynamictext hlPracticeS (content: 'FP3 · {1}',
+                                     contentparams: [{1} = fp3LeaderName],
+                                     class: 'hl-sub')
+          }
+          container hlPole (class: 'hl-card hl-card-pole') {
+            dynamictext hlPoleL (content: 'Pole position', class: 'hl-label')
+            dynamictext hlPoleV (content: '{1}', contentparams: [{1} = poleTime],
+                                 class: 'hl-value')
+            dynamictext hlPoleS (content: '{1}', contentparams: [{1} = poleName],
+                                 class: 'hl-sub')
+          }
+          container hlWin (class: 'hl-card hl-card-win') {
+            dynamictext hlWinL (content: 'Race winner', class: 'hl-label')
+            dynamictext hlWinV (content: '{1}', contentparams: [{1} = winnerName],
+                                class: 'hl-value hl-value-name')
+            dynamictext hlWinS (content: '{1} · fastest lap {2}',
+              contentparams: [{1} = winnerTeam, {2} = fastestLapName],
+              class: 'hl-sub')
+          }
         }
       }
     }
@@ -378,13 +425,28 @@ create or replace page Formula1Frontend.Race_Weekend
           column colQual (attribute: qualPosition, caption: 'Quali', Alignment: right)
           column colQualT (attribute: qualTime, caption: 'Quali lap', Alignment: right)
           column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
-          column colDelta (attribute: positionsGained, caption: 'Δ', Alignment: right)
+          /*
+           * The comp draws the delta as an arrow, green for places gained and
+           * red for places lost, and a dash where nothing moved. The arrow is
+           * a cell class rather than a value, so the number stays a number and
+           * stays sortable; the zero case collapses the digit and the rule
+           * draws the dash in its place.
+           */
+          column colDelta (
+            attribute: positionsGained, caption: 'Δ', Alignment: right,
+            DynamicCellClass: 'if $currentObject/positionsGained = empty then ''delta-flat'' else if $currentObject/positionsGained > 0 then ''delta-up'' else if $currentObject/positionsGained < 0 then ''delta-down'' else ''delta-flat'''
+          )
           column colBest (attribute: bestLapTime, caption: 'Best lap', Alignment: right)
           column colPits (attribute: pitStops, caption: 'Pits', Alignment: right)
           column colPts (attribute: points, caption: 'Pts', Alignment: right)
           column colOut (attribute: reasonRetired, caption: 'Retired')
         }
       }
+    }
+
+    container dataNote (class: 'data-note') {
+      dynamictext noteLead (content: 'Data note.', class: 'data-note-lead')
+      dynamictext noteBody (content: ' Every session classification, lap time and grid slot is f1db, read from the CSVs on each request. Practice columns are empty before the era each session was timed — FP1 and FP2 from 1986, FP3 from 2003 — and a highlight card reads as a dash for the same reason. The lap traces come from Jolpica-F1: f1db has every session result but not a row per lap.')
     }
   }
 }
