@@ -322,6 +322,11 @@
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+
+  // The row is a data view when its numbers are computed rather than bound —
+  // see .hero-stats. Same unwrap: without it the grid's only item is the data
+  // view's content div and the five cards come back stacked.
+  > .mx-dataview-content { display: contents; }
 }
 
 .kpi {
@@ -615,6 +620,63 @@
   font-size: 11px;
   color: var(--mxt-ink-muted);
   white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- cards -- */
+
+// A season's calendar as one card per round rather than as a table: the whole
+// year is visible at once and a round is a target, not a row to scan for.
+// Same list-view unwrap as the chip row and the strip.
+.card-grid {
+  @include f1-listview-reset;
+
+  > .mx-listview > ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px;
+  }
+}
+
+.cal-card {
+  background: var(--mxt-ground);
+  border: 1px solid var(--mxt-line);
+  border-radius: var(--mxt-radius);
+  padding: 7px 9px;
+  cursor: pointer;
+  min-width: 0;
+
+  &:hover { border-color: var(--mxt-brand); }
+}
+
+.cal-card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cal-round {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
+}
+
+.cal-code {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mxt-ink);
+}
+
+// The winner is the card's payload; it is truncated rather than wrapped so
+// every card in the grid is the same height.
+.cal-winner {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ------------------------------------------------------- head to head -- */

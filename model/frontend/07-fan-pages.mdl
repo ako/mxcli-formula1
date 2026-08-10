@@ -12,6 +12,46 @@
  * across the wire for nothing.
  */
 
+/* ------------------------------------------------------------ view model -- */
+
+/*
+ * Two non-persistent entities that exist only to be shown.
+ *
+ * Everything else on these pages is read straight off a resource. These two are
+ * not: the comp's season screen asks for numbers that are *relationships*
+ * between rows — the margin between first and second, how many different
+ * drivers won a race, each driver's points as a share of the winner's — and a
+ * row cannot see its siblings. They are computed once, in a microflow, into a
+ * shape the page can bind to.
+ *
+ * Non-persistent, so nothing is stored and nothing has to be cleaned up; they
+ * live for the request that built them.
+ */
+@Position(100, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonHeadline (
+  Year: long,
+  ChampionDriver: string(120),
+  ChampionPoints: decimal,
+  RunnerUp: string(120),
+  Margin: decimal,
+  ChampionTeam: string(120),
+  ChampionTeamPoints: decimal,
+  TeamMargin: decimal,
+  Rounds: long,
+  FirstCode: string(10),
+  LastCode: string(10),
+  RaceWinners: long
+);
+
+@Position(340, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonDriverRow (
+  PositionText: string(20),
+  PositionOrder: long,
+  DriverName: string(120),
+  Points: decimal,
+  Share: long
+);
+
 /* ---------------------------------------------------------- datasources -- */
 
 /*
@@ -154,6 +194,22 @@ BEGIN
   END IF;
 END;
 
+/*
+ * The season's rounds for the calendar cards.
+ *
+ * A microflow rather than the list view's own database datasource, because a
+ * list view over a database source pages at twenty and shows a "Load more"
+ * button — and MDL cannot set a list view's page size, only a data grid's. A
+ * microflow hands over the whole list and the grid of cards is the season.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonCalendar (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Fan.Calendar AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Season/year SORT BY round ASC;
+  RETURN $Rows;
+END;
+
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
   RETURNS List of F1Fan.SeasonProgress AS $Rows
 BEGIN
@@ -261,6 +317,145 @@ BEGIN
   RETRIEVE $Last FROM F1Fan.TeamSeason
     WHERE constructorId = $Constructor/constructorId and round = $Round LIMIT 1;
   RETURN $Last;
+END;
+
+/*
+ * The five numbers across the top of the season screen.
+ *
+ * Three of them are margins and counts rather than fields: how far the champion
+ * finished ahead of second, how far the winning team finished ahead of second,
+ * and how many different drivers won a race. Each needs the whole standings
+ * list in hand at once, which is why this is a microflow and not five bindings.
+ *
+ * The distinct-winner count is a delimited string rather than a set, because
+ * MDL has no set and no list-of-primitives. Each winner is wrapped in pipes
+ * before the `contains` test so "Hill" cannot match inside "Damon Hill".
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonHeadline (
+  $Season: F1Cached.Seasons)
+  RETURNS Formula1Frontend.SeasonHeadline AS $H
+BEGIN
+  $H = CREATE Formula1Frontend.SeasonHeadline (
+    Year = $Season/year,
+    ChampionDriver = '-',
+    ChampionPoints = 0,
+    RunnerUp = '-',
+    Margin = 0,
+    ChampionTeam = '-',
+    ChampionTeamPoints = 0,
+    TeamMargin = 0,
+    Rounds = $Season/raceCount,
+    FirstCode = '-',
+    LastCode = '-',
+    RaceWinners = 0
+  );
+
+  RETRIEVE $Drivers FROM F1Cached.DriverStandings WHERE year = $Season/year;
+  LOOP $D IN $Drivers BEGIN
+    IF $D/positionOrder = 1 THEN
+      CHANGE $H (ChampionDriver = $D/driverName, ChampionPoints = $D/points);
+    END IF;
+    IF $D/positionOrder = 2 THEN
+      CHANGE $H (RunnerUp = $D/driverName, Margin = $D/points);
+    END IF;
+  END LOOP;
+  -- Margin held the runner-up's score until both were known; now it is the gap.
+  CHANGE $H (Margin = $H/ChampionPoints - $H/Margin);
+
+  RETRIEVE $Teams FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+  LOOP $T IN $Teams BEGIN
+    IF $T/positionOrder = 1 THEN
+      CHANGE $H (ChampionTeam = $T/constructorName, ChampionTeamPoints = $T/points);
+    END IF;
+    IF $T/positionOrder = 2 THEN
+      CHANGE $H (TeamMargin = $T/points);
+    END IF;
+  END LOOP;
+  CHANGE $H (TeamMargin = $H/ChampionTeamPoints - $H/TeamMargin);
+
+  RETRIEVE $Races FROM F1Fan.Calendar WHERE year = $Season/year;
+  DECLARE $Seen String = '|';
+  DECLARE $Winners Long = 0;
+  DECLARE $First Long = 9999;
+  DECLARE $Last Long = 0;
+  LOOP $R IN $Races BEGIN
+    IF $R/round < $First THEN
+      SET $First = $R/round;
+      CHANGE $H (FirstCode = $R/code);
+    END IF;
+    IF $R/round > $Last THEN
+      SET $Last = $R/round;
+      CHANGE $H (LastCode = $R/code);
+    END IF;
+    IF $R/winnerName != '' and $R/winnerName != '-'
+       and contains($Seen, '|' + $R/winnerName + '|') = false THEN
+      SET $Seen = $Seen + $R/winnerName + '|';
+      SET $Winners = $Winners + 1;
+    END IF;
+  END LOOP;
+  CHANGE $H (RaceWinners = $Winners);
+
+  RETURN $H;
+END;
+
+/*
+ * The drivers' championship, with each driver's points as a share of the
+ * champion's so the table can draw a bar beside the number.
+ *
+ * The comp's column is a share of the *team's* points; the standings resource
+ * carries no team, so this is a share of the winner's score instead — the same
+ * reading (how close was anyone to the front) against a denominator the data
+ * actually has. Two passes: the first finds the top score, the second builds
+ * the rows.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverRows (
+  $Season: F1Cached.Seasons)
+  RETURNS List of Formula1Frontend.SeasonDriverRow AS $Rows
+BEGIN
+  RETRIEVE $Standings FROM F1Cached.DriverStandings WHERE year = $Season/year;
+
+  DECLARE $Best Decimal = 0.0;
+  LOOP $S IN $Standings BEGIN
+    IF $S/points > $Best THEN
+      SET $Best = $S/points;
+    END IF;
+  END LOOP;
+  -- A season where nobody scored still has to draw a table.
+  IF $Best = 0 THEN
+    SET $Best = 1.0;
+  END IF;
+
+  /*
+   * Two things Mendix's expression language does not spell the way SQL does,
+   * and both are silent until `mx check`:
+   *
+   *   division is `div`, not `/` — and `div` is *not* integer division, it is
+   *   plain division that happens to be spelled like Pascal's;
+   *   there is no cast from Decimal to Long, so the percentage is rounded by
+   *   formatting it to no decimals and parsing that back.
+   *
+   * The Long matters: the width is carried as a class name, and `w-77.0` is a
+   * rule that does not exist, which renders as a full-width bar — a wrong
+   * reading rather than a missing one.
+   */
+  DECLARE $Pct Decimal = 0.0;
+  DECLARE $Share Integer = 0;
+
+  $Rows = CREATE LIST OF Formula1Frontend.SeasonDriverRow;
+  LOOP $Standing IN $Standings BEGIN
+    SET $Pct = $Standing/points div $Best * 100.0;
+    SET $Share = parseInteger(formatDecimal($Pct, '0'));
+    $Row = CREATE Formula1Frontend.SeasonDriverRow (
+      PositionText = $Standing/positionText,
+      PositionOrder = $Standing/positionOrder,
+      DriverName = $Standing/driverName,
+      Points = $Standing/points,
+      Share = $Share
+    );
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  RETURN $Rows;
 END;
 
 /* --------------------------------------------------------- driver career -- */
@@ -618,22 +813,54 @@ create or replace page Formula1Frontend.Season_Summary
         }
       }
 
-      container kpis (class: 'kpis') {
-        container kChampion (class: 'kpi kpi-text kpi-accent') {
-          dynamictext kChampionL (content: 'Drivers'' champion', class: 'kpi-label')
-          dynamictext kChampionV (content: '{1}', contentparams: [{1} = championDriver],
-                                  class: 'kpi-value')
-        }
-        container kTeam (class: 'kpi kpi-text') {
-          dynamictext kTeamL (content: 'Constructors'' champion', class: 'kpi-label')
-          dynamictext kTeamV (content: '{1}', contentparams: [{1} = championConstructor],
+    }
+
+    /*
+     * The comp's five cards. Three of them are relationships between rows —
+     * the margin at the front, the margin at the front of the constructors'
+     * table, and how many different drivers won a race — so all five come from
+     * one microflow rather than five bindings, and each carries a caption line
+     * under the number the way the comp does.
+     */
+    dataview dvHeadline (
+      datasource: MICROFLOW Formula1Frontend.DS_SeasonHeadline(Season: $Season),
+      class: 'kpis'
+    ) {
+      container kChampion (class: 'kpi kpi-text kpi-accent') {
+        dynamictext kChampionL (content: 'Drivers'' champion', class: 'kpi-label')
+        dynamictext kChampionV (content: '{1}', contentparams: [{1} = ChampionDriver],
+                                class: 'kpi-value')
+        dynamictext kChampionS (content: '{1} pts', contentparams: [{1} = ChampionPoints],
+                                class: 'kpi-sub')
+      }
+      container kMargin (class: 'kpi') {
+        dynamictext kMarginL (content: 'Winning margin', class: 'kpi-label')
+        dynamictext kMarginV (content: '{1}', contentparams: [{1} = Margin],
                               class: 'kpi-value')
-        }
-        container kRaces (class: 'kpi') {
-          dynamictext kRacesL (content: 'Rounds', class: 'kpi-label')
-          dynamictext kRacesV (content: '{1}', contentparams: [{1} = raceCount],
+        dynamictext kMarginS (content: 'over {1}', contentparams: [{1} = RunnerUp],
+                              class: 'kpi-sub')
+      }
+      container kTeam (class: 'kpi kpi-text') {
+        dynamictext kTeamL (content: 'Constructors'' champion', class: 'kpi-label')
+        dynamictext kTeamV (content: '{1}', contentparams: [{1} = ChampionTeam],
+                            class: 'kpi-value')
+        dynamictext kTeamS (content: '{1} pts · {2} clear',
+                            contentparams: [{1} = ChampionTeamPoints, {2} = TeamMargin],
+                            class: 'kpi-sub')
+      }
+      container kRounds (class: 'kpi') {
+        dynamictext kRoundsL (content: 'Rounds', class: 'kpi-label')
+        dynamictext kRoundsV (content: '{1}', contentparams: [{1} = Rounds],
+                              class: 'kpi-value')
+        dynamictext kRoundsS (content: '{1} → {2}',
+                              contentparams: [{1} = FirstCode, {2} = LastCode],
+                              class: 'kpi-sub')
+      }
+      container kWinners (class: 'kpi') {
+        dynamictext kWinnersL (content: 'Race winners', class: 'kpi-label')
+        dynamictext kWinnersV (content: '{1}', contentparams: [{1} = RaceWinners],
                                class: 'kpi-value')
-        }
+        dynamictext kWinnersS (content: 'different drivers on top', class: 'kpi-sub')
       }
     }
 
@@ -644,14 +871,26 @@ create or replace page Formula1Frontend.Season_Summary
         contentparams: [{1} = title, {2} = license], class: 'credit')
     }
 
-    container chartPanel (class: 'panel') {
+    /*
+     * The comp puts the progression beside the constructors' table, 2:1. The
+     * left panel is unchanged; the right one is the same standings the table
+     * below shows, drawn as horizontal bars so the gaps are read rather than
+     * subtracted.
+     */
+    container seasonCharts (class: 'split') {
+      container chartPanel (class: 'panel') {
       container chartHead (class: 'panel-head') {
         dynamictext chartTitle (content: 'Championship points progression',
                                 class: 'panel-title')
         dynamictext chartSub (content: 'cumulative, top five of the final standings',
                               class: 'panel-sub')
       }
-      pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress {
+      pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress (
+        enableAdvancedOptions: true,
+        gridLines: 'horizontal',
+        customLayout: '{"margin":{"l":46,"r":14,"t":8,"b":38},"xaxis":{"title":{"text":"Round"},"zeroline":false},"yaxis":{"zeroline":false}}',
+        customConfigurations: '{"displayModeBar":false}'
+      ) {
         line lineP1 (
           DataSet: 'static',
           DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
@@ -698,6 +937,32 @@ create or replace page Formula1Frontend.Season_Summary
           content: 'Lines are final championship positions, not named drivers — one page serves every season. The standings below name them, in the same order.',
           class: 'chip')
       }
+      }
+
+      container consChartPanel (class: 'panel') {
+        container consChartHead (class: 'panel-head') {
+          dynamictext consChartTitle (content: 'Constructors'' championship',
+                                      class: 'panel-title')
+          dynamictext consChartSub (content: 'final points', class: 'panel-sub')
+        }
+        pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chartCons (
+          enableAdvancedOptions: true,
+          showLegend: false,
+          gridLines: 'vertical',
+          customLayout: '{"margin":{"l":112,"r":26,"t":8,"b":32},"yaxis":{"autorange":"reversed","type":"category"},"xaxis":{"zeroline":false}}',
+          customConfigurations: '{"displayModeBar":false}'
+        ) {
+          series sCons (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
+            StaticXAttribute: points,
+            StaticYAttribute: constructorName,
+            StaticName: 'Points',
+            AggregationType: 'none',
+            StaticBarColor: '''#2DD4BF'''
+          )
+        }
+      }
     }
 
     container calendarPanel (class: 'panel') {
@@ -716,66 +981,93 @@ create or replace page Formula1Frontend.Season_Summary
        * it by, which is what handing a row to another page comes down to.
        * FINDINGS §37.
        */
-      container calGrid (class: 'grid-dense') {
-        datagrid dgCalendar (
-          datasource: database from F1Fan.Calendar where [year = $Season/year]
-                      sort by round asc,
-          PageSize: 12,
-          PagingPosition: bottom
+      /*
+       * The comp's calendar is a card per round, not a table: round code above
+       * the winner, twelve or so to a row, the whole season visible at once.
+       * A card opens the weekend behind it.
+       */
+      container calCards (class: 'card-grid') {
+        listview lvCalendar (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonCalendar(Season: $Season),
+          OnClick: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject)
         ) {
-          column colRound (attribute: round, caption: 'Rd', Alignment: right)
-          column colCode (attribute: code, caption: 'Code')
-          column colName (attribute: circuitName, caption: 'Circuit')
-          column colDate (attribute: raceDate, caption: 'Date')
-          column colWinner (attribute: winnerName, caption: 'Winner')
-          column colWinTeam (attribute: winnerTeam, caption: 'Team')
-          column colOpenWeekend (caption: 'Open') {
-            linkbutton btnWeekend (Caption: 'Weekend',
-              Action: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject))
+          container calCard (class: 'cal-card') {
+            container calCardTop (class: 'cal-card-top') {
+              dynamictext calRound (content: 'R{1}', contentparams: [{1} = round],
+                                    class: 'cal-round')
+              dynamictext calCode (content: '{1}', contentparams: [{1} = code],
+                                   class: 'cal-code')
+            }
+            dynamictext calWinner (content: '{1}', contentparams: [{1} = winnerName],
+                                   class: 'cal-winner')
           }
         }
       }
     }
 
-    container standings (class: 'split-even') {
-      container driversPanel (class: 'panel') {
-        container driversHead (class: 'panel-head') {
-          dynamictext driversTitle (content: 'Drivers'' championship', class: 'panel-title')
-          dynamictext driversSub (content: 'final standings', class: 'panel-sub')
-        }
-        container driversGrid (class: 'grid-dense') {
-          datagrid dgDriverStandings (
-            datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverStandings(Season: $Season),
-            PageSize: 12,
-            PagingPosition: bottom
+    /*
+     * The drivers' table, full width as in the comp, with the share bar as its
+     * last column. The comp's is a share of the driver's team score; the
+     * standings resource carries no team, so this is a share of the winner's —
+     * the same reading against a denominator the data has.
+     */
+    container driversPanel (class: 'panel') {
+      container driversHead (class: 'panel-head') {
+        dynamictext driversTitle (content: 'Drivers'' championship', class: 'panel-title')
+        dynamictext driversSub (content: 'final standings', class: 'panel-sub')
+      }
+      container driversGrid (class: 'grid-dense') {
+        datagrid dgDriverStandings (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverRows(Season: $Season),
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column colPos (attribute: PositionText, caption: 'Pos', Alignment: right)
+          column colDriver (attribute: DriverName, caption: 'Driver')
+          column colPts (attribute: Points, caption: 'Points', Alignment: right)
+          column colDriverShare (
+            caption: 'Share of the winner''s points',
+            ColumnWidth: manual, Size: 3, Sortable: false
           ) {
-            column colPos (attribute: positionText, caption: 'Pos', Alignment: right)
-            column colDriver (attribute: driverName, caption: 'Driver')
-            column colPts (attribute: points, caption: 'Points', Alignment: right)
+            container dsBarRow (class: 'bar-row') {
+              container dsTrack (class: 'bar-track') {
+                container dsFill (class: 'bar-fill',
+                  dynamicclasses: '''w-'' + toString($currentObject/Share)') {
+                  dynamictext dsFillX (content: '{1}', contentparams: [{1} = Share])
+                }
+              }
+              dynamictext dsPct (content: '{1}%', contentparams: [{1} = Share],
+                                 class: 'bar-value')
+            }
           }
         }
       }
+    }
 
-      container consPanel (class: 'panel') {
-        container consHead (class: 'panel-head') {
-          dynamictext consTitle (content: 'Constructors'' championship',
-                                 class: 'panel-title')
-          dynamictext consSub (content: 'from 1958 — it did not exist before',
-                               class: 'panel-sub')
-        }
-        container consGrid (class: 'grid-dense') {
-          datagrid dgConstructorStandings (
-            datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
-            PageSize: 12,
-            PagingPosition: bottom
-          ) {
-            column colCPos (attribute: positionText, caption: 'Pos', Alignment: right)
-            column colTeam (attribute: constructorName, caption: 'Constructor')
-            column colEngine (attribute: engineManufacturer, caption: 'Engine')
-            column colCPts (attribute: points, caption: 'Points', Alignment: right)
-          }
+    container consPanel (class: 'panel') {
+      container consHead (class: 'panel-head') {
+        dynamictext consTitle (content: 'Constructors'' championship',
+                               class: 'panel-title')
+        dynamictext consSub (content: 'from 1958 — it did not exist before',
+                             class: 'panel-sub')
+      }
+      container consGrid (class: 'grid-dense') {
+        datagrid dgConstructorStandings (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
+          PageSize: 12,
+          PagingPosition: bottom
+        ) {
+          column colCPos (attribute: positionText, caption: 'Pos', Alignment: right)
+          column colTeam (attribute: constructorName, caption: 'Constructor')
+          column colEngine (attribute: engineManufacturer, caption: 'Engine')
+          column colCPts (attribute: points, caption: 'Points', Alignment: right)
         }
       }
+    }
+
+    container dataNote (class: 'data-note') {
+      dynamictext noteLead (content: 'Data note.', class: 'data-note-lead')
+      dynamictext noteBody (content: ' Standings, race winners and the calendar are f1db. The winning margin, the constructors'' margin and the count of different race winners are computed from those standings — a row cannot see its siblings, so they are worked out once per page rather than read off a field. The progression lines are final championship positions, not named drivers: one page serves every season.')
     }
   }
 }

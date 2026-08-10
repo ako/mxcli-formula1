@@ -85,6 +85,9 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverLatestSeason TO Formula1Fro
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverLatestRaces TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonProgress TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonCalendar TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonHeadline TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverRows TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Retirements TO Formula1Frontend.Enthusiast;
