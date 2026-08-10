@@ -65,7 +65,11 @@ stop >/dev/null 2>&1 || true
 # The collector first: an app that boots with nowhere to export to logs a
 # connection error per batch for as long as it runs.
 : > "$OBS/spans.jsonl"
-nohup python3 "$ROOT/scripts/otlp-collector.py" "$OBS/spans.jsonl" 4318 \
+# setsid as well as nohup: this repo is often driven from a remote sandbox that
+# reaps a turn's process group when the session goes idle, and a runtime killed
+# that way leaves no shutdown in its log — it simply stops mid-life. Detaching
+# into a new session is the part of that we can control.
+setsid nohup python3 "$ROOT/scripts/otlp-collector.py" "$OBS/spans.jsonl" 4318 \
   > "$OBS/collector.log" 2>&1 &
 sleep 2
 
@@ -73,14 +77,14 @@ hub_args=""
 [ -n "$HUB" ] && hub_args="--hub $HUB --hub-solution formula1"
 
 # shellcheck disable=SC2086
-(cd "$ROOT/Formula1Backend" && nohup ./mxcli run --local $hub_args \
+(cd "$ROOT/Formula1Backend" && setsid nohup ./mxcli run --local $hub_args \
    ${HUB:+--hub-project f1-backend} \
    -p Formula1Backend.mpr \
    --metrics --trace-otlp "$OTLP" --trace-service Formula1Backend \
    > "$OBS/backend.log" 2>&1 &)
 sleep 3
 # shellcheck disable=SC2086
-(cd "$ROOT/Formula1Frontend" && nohup ./mxcli run --local $hub_args \
+(cd "$ROOT/Formula1Frontend" && setsid nohup ./mxcli run --local $hub_args \
    ${HUB:+--hub-project f1-frontend} \
    -p Formula1Frontend.mpr \
    --app-port 8180 --admin-port 8190 --serve-port 6643 \
