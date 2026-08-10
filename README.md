@@ -377,6 +377,29 @@ boot are dominated by Mendix's own cluster-management tasks, which have nothing
 to do with the app. `--since` exists for that — exercise the page, then ask what
 the last sixty seconds did.
 
+**Flame charts.** With the apps observed, walk the screens and render the spans
+as flame charts:
+
+```bash
+node  scripts/walk-screens.mjs .mxcli-obs/marks.json      # drives the six screens
+python3 scripts/span-flame.py .mxcli-obs/spans.jsonl \
+        .mxcli-obs/marks.json flames.html \
+        Formula1Frontend/theme/web/mxcli-fonts/…          # optional inlined faces
+```
+
+`marks.json` records when each screen was on screen, which is how a span is
+attributed to the screen that caused it. Each screen then gets two flames, and
+they answer different questions. The **timeline** is one request on real time —
+x is offset from its start, so a wide frame with a narrow child was waiting. The
+**merged** flame is every span the screen produced, folded by call path and
+summed, so x is share of work rather than time and a query issued twenty-eight
+times is twenty-eight times wider.
+
+Both are end to end: the consumed OData client propagates trace context, so one
+stack descends from the browser's `POST /xas/`, through the frontend's
+`Retrieve by microflow`, across the service call, into the backend microflow and
+down to the DuckDB scan. FINDINGS §52 is what the first run of this found.
+
 **Regenerating the screenshots.** With both apps up:
 
 ```bash
