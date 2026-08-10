@@ -34,6 +34,26 @@ stop() {
   for pid in $(ps -e -o pid=,args= | grep "[o]tlp-collector.py" | awk '{print $1}'); do
     kill "$pid" 2>/dev/null || true
   done
+
+  # Wait for the ports, not for the processes. A JVM is gone from `ps` before it
+  # has released its listeners, and mxcli refuses to boot onto an occupied admin
+  # port — correctly, but the message names a pid that no longer exists and
+  # reads like a stale-cache problem. Three seconds was not enough: the second
+  # app started fine and the first lost the race.
+  i=0
+  while [ $i -lt 30 ]; do
+    busy=""
+    for port in 8080 8090 8180 8190 6643; do
+      if (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null; then
+        exec 3>&- 2>/dev/null || true
+        busy="$busy $port"
+      fi
+    done
+    [ -z "$busy" ] && break
+    sleep 1
+    i=$((i + 1))
+  done
+  [ -n "$busy" ] && echo "warning: still listening on$busy after ${i}s"
   echo "stopped"
 }
 
@@ -41,7 +61,6 @@ stop() {
 
 mkdir -p "$OBS"
 stop >/dev/null 2>&1 || true
-sleep 3
 
 # The collector first: an app that boots with nowhere to export to logs a
 # connection error per batch for as long as it runs.
