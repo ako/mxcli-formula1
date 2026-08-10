@@ -3518,6 +3518,25 @@ Progress Bar widget was the obvious choice and is the wrong one: its dynamic
 mode wants an attribute for the minimum as well as the maximum, and there is no
 zero column to bind.
 
+### Two more chart facts, both found by asking why the page looked wrong
+
+**A series' legend label cannot carry data.** Every text template on a chart
+series is bound to the series' datasource except one: `staticName`, which the
+widget definition gives no `dataSource` at all. So five lines over a season's
+progression can be labelled "1st".."5th" and nothing else — a driver's name is
+not available to the legend, and there is no arrangement of parameters that
+makes it so. `staticTooltipHoverText` *is* bound, so the name can be in the
+hover; the names now also print under the chart as a strip that reads the same
+resource, against the same five colours declared on both sides.
+
+**A static series' bar colour is one colour.** `staticBarColor` is an
+expression bound to the series' datasource, which reads as "evaluated per bar"
+and is not: it resolves once, against the first row, and a ten-team
+constructors' chart came out entirely in the leader's orange. Per-bar colour
+needs a **dynamic** series — `dataSet: 'dynamic'` with `groupByAttribute`, so
+each group is its own trace and a trace has its own colour. Same data, same
+resource, one property different.
+
 ### Layout notes that are Mendix, not CSS
 
 - A data view renders a wrapper div and puts its children one level down, so a
@@ -3532,3 +3551,9 @@ zero column to bind.
 - A data grid's `ColumnWidth: manual` + `Size: n` is a *weight*, not pixels.
   `Size: 230` against eleven unset columns gave the one column 95% of the table
   and squeezed every caption to an ellipsis.
+- The content region has **no padding of its own**. Atlas leaves the gutter to
+  the page template, and a page built from bare containers therefore starts
+  hard against the nav rail on the left and the window edge on the right. The
+  padding belongs on `.region-content > .mx-scrollcontainer-wrapper >
+  .mx-placeholder` and not on the region, which is also the scroll container —
+  padding there scrolls the right-hand gutter away.

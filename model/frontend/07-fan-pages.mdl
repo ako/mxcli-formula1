@@ -43,6 +43,16 @@ create or modify non-persistent entity Formula1Frontend.SeasonHeadline (
   RaceWinners: long
 );
 
+@Position(580, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonTeamRow (
+  PositionText: string(20),
+  PositionOrder: long,
+  ConstructorName: string(120),
+  EngineManufacturer: string(60),
+  Points: decimal,
+  Colour: string(10)
+);
+
 @Position(340, 700)
 create or modify non-persistent entity Formula1Frontend.SeasonDriverRow (
   PositionText: string(20),
@@ -211,6 +221,21 @@ CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonCalendar (
 BEGIN
   RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Season/year SORT BY round ASC;
   RETURN $Rows;
+END;
+
+/*
+ * One row of the progression, for the strip that names the five lines.
+ *
+ * d1Name … d5Name are the same in every round — they are "whoever finished
+ * first", not "whoever led this round" — so any row will do and the first is
+ * one read.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonLeaders (
+  $Season: F1Cached.Seasons)
+  RETURNS F1Fan.SeasonProgress AS $Row
+BEGIN
+  RETRIEVE $Row FROM F1Fan.SeasonProgress WHERE year = $Season/year LIMIT 1;
+  RETURN $Row;
 END;
 
 CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
@@ -454,6 +479,60 @@ BEGIN
       DriverName = $Standing/driverName,
       Points = $Standing/points,
       Share = $Share
+    );
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  RETURN $Rows;
+END;
+
+/*
+ * The constructors' standings with a colour on every row.
+ *
+ * A chart series' bar colour is an expression bound to the series' datasource,
+ * so it is evaluated per bar and a single series can be twelve colours — which
+ * is what the comp draws. What it needs is somewhere to read the colour from,
+ * and no resource carries one: f1db has no livery.
+ *
+ * The map is the comp's own, which is the FIA's: the ten current teams plus the
+ * two that have just left. Everything before that is a marque that no longer
+ * races, so the older seasons fall through to the brand — a season of teal bars
+ * is honest about there being no colour to give them, where twelve shades of
+ * invented orange would not be.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonTeamRows (
+  $Season: F1Cached.Seasons)
+  RETURNS List of Formula1Frontend.SeasonTeamRow AS $Rows
+BEGIN
+  RETRIEVE $Standings FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+
+  DECLARE $Colour String = '#2DD4BF';
+  $Rows = CREATE LIST OF Formula1Frontend.SeasonTeamRow;
+  LOOP $Team IN $Standings BEGIN
+    SET $Colour = '#2DD4BF';
+    IF $Team/constructorId = 'red-bull' THEN SET $Colour = '#3671C6'; END IF;
+    IF $Team/constructorId = 'mclaren' THEN SET $Colour = '#FF8000'; END IF;
+    IF $Team/constructorId = 'ferrari' THEN SET $Colour = '#E8002D'; END IF;
+    IF $Team/constructorId = 'mercedes' THEN SET $Colour = '#27F4D2'; END IF;
+    IF $Team/constructorId = 'aston-martin' THEN SET $Colour = '#229971'; END IF;
+    IF $Team/constructorId = 'alpine' THEN SET $Colour = '#FF87BC'; END IF;
+    IF $Team/constructorId = 'haas' THEN SET $Colour = '#B6BABD'; END IF;
+    IF $Team/constructorId = 'rb' THEN SET $Colour = '#6692FF'; END IF;
+    IF $Team/constructorId = 'racing-bulls' THEN SET $Colour = '#6692FF'; END IF;
+    IF $Team/constructorId = 'williams' THEN SET $Colour = '#64C4FF'; END IF;
+    IF $Team/constructorId = 'sauber' THEN SET $Colour = '#52E252'; END IF;
+    IF $Team/constructorId = 'alphatauri' THEN SET $Colour = '#5E8FAA'; END IF;
+    IF $Team/constructorId = 'alfa-romeo' THEN SET $Colour = '#C92D4B'; END IF;
+    IF $Team/constructorId = 'audi' THEN SET $Colour = '#BB0A30'; END IF;
+    IF $Team/constructorId = 'cadillac' THEN SET $Colour = '#C9B037'; END IF;
+
+    $Row = CREATE Formula1Frontend.SeasonTeamRow (
+      PositionText = $Team/positionText,
+      PositionOrder = $Team/positionOrder,
+      ConstructorName = $Team/constructorName,
+      EngineManufacturer = $Team/engineManufacturer,
+      Points = $Team/points,
+      Colour = $Colour
     );
     ADD $Row TO $Rows;
   END LOOP;
@@ -901,6 +980,7 @@ create or replace page Formula1Frontend.Season_Summary
       }
       pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress (
         enableAdvancedOptions: true,
+        showLegend: false,
         gridLines: 'horizontal',
         customLayout: '{"margin":{"l":46,"r":14,"t":8,"b":38},"xaxis":{"title":{"text":"Round"},"zeroline":false},"yaxis":{"zeroline":false}}',
         customConfigurations: '{"displayModeBar":false}'
@@ -911,7 +991,9 @@ create or replace page Formula1Frontend.Season_Summary
           StaticXAttribute: round,
           StaticYAttribute: d1Points,
           StaticName: '1st',
-          Interpolation: 'linear'
+          Interpolation: 'linear',
+          StaticLineColor: '''#58A6FF''',
+          StaticTooltipHoverText: '1st · {d1Name} — {d1Points} pts after round {round}'
         )
         line lineP2 (
           DataSet: 'static',
@@ -919,7 +1001,9 @@ create or replace page Formula1Frontend.Season_Summary
           StaticXAttribute: round,
           StaticYAttribute: d2Points,
           StaticName: '2nd',
-          Interpolation: 'linear'
+          Interpolation: 'linear',
+          StaticLineColor: '''#FF8000''',
+          StaticTooltipHoverText: '2nd · {d2Name} — {d2Points} pts after round {round}'
         )
         line lineP3 (
           DataSet: 'static',
@@ -927,7 +1011,9 @@ create or replace page Formula1Frontend.Season_Summary
           StaticXAttribute: round,
           StaticYAttribute: d3Points,
           StaticName: '3rd',
-          Interpolation: 'linear'
+          Interpolation: 'linear',
+          StaticLineColor: '''#3FB950''',
+          StaticTooltipHoverText: '3rd · {d3Name} — {d3Points} pts after round {round}'
         )
         line lineP4 (
           DataSet: 'static',
@@ -935,7 +1021,9 @@ create or replace page Formula1Frontend.Season_Summary
           StaticXAttribute: round,
           StaticYAttribute: d4Points,
           StaticName: '4th',
-          Interpolation: 'linear'
+          Interpolation: 'linear',
+          StaticLineColor: '''#F85149''',
+          StaticTooltipHoverText: '4th · {d4Name} — {d4Points} pts after round {round}'
         )
         line lineP5 (
           DataSet: 'static',
@@ -943,13 +1031,44 @@ create or replace page Formula1Frontend.Season_Summary
           StaticXAttribute: round,
           StaticYAttribute: d5Points,
           StaticName: '5th',
-          Interpolation: 'linear'
+          Interpolation: 'linear',
+          StaticLineColor: '''#A78BFA''',
+          StaticTooltipHoverText: '5th · {d5Name} — {d5Points} pts after round {round}'
         )
       }
-      container chartLegend (class: 'legend') {
-        dynamictext lgPos (
-          content: 'Lines are final championship positions, not named drivers — one page serves every season. The standings below name them, in the same order.',
-          class: 'chip')
+      /*
+       * Who the five lines are.
+       *
+       * The legend inside the chart can only say "1st".."5th": a series' name
+       * is the one text template on it that is not bound to the series'
+       * datasource, so it cannot carry a driver. The names are printed here
+       * instead, in the same order and against the same five colours, and the
+       * hover on each line carries the name too.
+       */
+      dataview dvLeaders (
+        datasource: MICROFLOW Formula1Frontend.DS_SeasonLeaders(Season: $Season),
+        class: 'series-key'
+      ) {
+        container lk1 (class: 'series-item series-1') {
+          dynamictext lk1r (content: '1st', class: 'series-rank')
+          dynamictext lk1n (content: '{1}', contentparams: [{1} = d1Name])
+        }
+        container lk2 (class: 'series-item series-2') {
+          dynamictext lk2r (content: '2nd', class: 'series-rank')
+          dynamictext lk2n (content: '{1}', contentparams: [{1} = d2Name])
+        }
+        container lk3 (class: 'series-item series-3') {
+          dynamictext lk3r (content: '3rd', class: 'series-rank')
+          dynamictext lk3n (content: '{1}', contentparams: [{1} = d3Name])
+        }
+        container lk4 (class: 'series-item series-4') {
+          dynamictext lk4r (content: '4th', class: 'series-rank')
+          dynamictext lk4n (content: '{1}', contentparams: [{1} = d4Name])
+        }
+        container lk5 (class: 'series-item series-5') {
+          dynamictext lk5r (content: '5th', class: 'series-rank')
+          dynamictext lk5n (content: '{1}', contentparams: [{1} = d5Name])
+        }
       }
       }
 
@@ -966,14 +1085,23 @@ create or replace page Formula1Frontend.Season_Summary
           customLayout: '{"margin":{"l":112,"r":26,"t":8,"b":32},"yaxis":{"autorange":"reversed","type":"category"},"xaxis":{"zeroline":false}}',
           customConfigurations: '{"displayModeBar":false}'
         ) {
+          /*
+           * A dynamic series, not a static one, and only because of the
+           * colour: a static series' bar colour is one expression for the
+           * whole series, so it resolves against the first row and every bar
+           * comes out McLaren orange. Grouping by the team makes each team its
+           * own trace, and a trace has its own colour.
+           */
           series sCons (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
-            StaticXAttribute: points,
-            StaticYAttribute: constructorName,
-            StaticName: 'Points',
+            DataSet: 'dynamic',
+            DataSource: microflow Formula1Frontend.DS_SeasonTeamRows(Season: $Season),
+            GroupByAttribute: ConstructorName,
+            DynamicXAttribute: Points,
+            DynamicYAttribute: ConstructorName,
+            DynamicName: '{ConstructorName}',
             AggregationType: 'none',
-            StaticBarColor: '''#2DD4BF'''
+            DynamicBarColor: '$currentObject/Colour',
+            DynamicTooltipHoverText: '{ConstructorName} — {Points} pts'
           )
         }
       }
@@ -1072,14 +1200,14 @@ create or replace page Formula1Frontend.Season_Summary
       }
       container consGrid (class: 'grid-dense') {
         datagrid dgConstructorStandings (
-          datasource: MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings(Season: $Season),
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonTeamRows(Season: $Season),
           PageSize: 12,
           PagingPosition: bottom
         ) {
-          column colCPos (attribute: positionText, caption: 'Pos', Alignment: right)
-          column colTeam (attribute: constructorName, caption: 'Constructor')
-          column colEngine (attribute: engineManufacturer, caption: 'Engine')
-          column colCPts (attribute: points, caption: 'Points', Alignment: right)
+          column colCPos (attribute: PositionText, caption: 'Pos', Alignment: right)
+          column colTeam (attribute: ConstructorName, caption: 'Constructor')
+          column colEngine (attribute: EngineManufacturer, caption: 'Engine')
+          column colCPts (attribute: Points, caption: 'Points', Alignment: right)
         }
       }
     }
