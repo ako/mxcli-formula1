@@ -283,8 +283,11 @@
   margin-left: auto;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(84px, 92px);
-  gap: 12px;
+  // minmax(84px, auto) rather than the comp's fixed 92px: a career total is
+  // five digits and two decimals where a season's is three, and a fixed track
+  // runs "11338.00" straight into the next label.
+  grid-auto-columns: minmax(84px, auto);
+  gap: 18px;
 
   > .mx-dataview-content { display: contents; }
 }
@@ -307,6 +310,7 @@
   font-size: 21px;
   font-weight: 600;
   color: var(--mxt-ink);
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------ tiles -- */
@@ -611,6 +615,69 @@
   font-size: 11px;
   color: var(--mxt-ink-muted);
   white-space: nowrap;
+}
+
+/* ------------------------------------------------------- head to head -- */
+
+// Two bars growing away from a centre label — the comp's five-column grid:
+// value, bar, label, bar, value. The left bar is anchored to its right edge so
+// the pair reads outward from the middle.
+.h2h-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 150px 1fr 64px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+
+.h2h-label {
+  @include f1-label(0.05em);
+  text-align: center;
+}
+
+.h2h-value {
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--mxt-ink);
+}
+
+.h2h-value-left { text-align: right; }
+
+.h2h-track {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-tint-neutral);
+  overflow: hidden;
+}
+
+// Anchoring the fill to the right edge is what makes the pair grow apart
+// instead of both running left to right.
+.h2h-track-left { justify-content: flex-end; }
+
+.h2h-fill {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-info);
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  overflow: hidden;
+}
+
+// The two names under the bars, each under its own side.
+.h2h-names { margin-top: 2px; margin-bottom: 0; }
+
+.h2h-name {
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+.h2h-name-left { text-align: right; }
+
+@media (max-width: 767px) {
+  .h2h-row { grid-template-columns: 40px 1fr 96px 1fr 40px; gap: 6px; }
 }
 
 /* -------------------------------------------------------------- data note -- */

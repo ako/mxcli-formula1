@@ -162,6 +162,50 @@
         <Property Name="seasonBestPoints" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="pointsShare" Type="Edm.Int64"/>
       </EntityType>
+      <EntityType Name="Stg_TeamSeason">
+        <Key>
+          <PropertyRef Name="teamSeasonKey"/>
+        </Key>
+        <Property MaxLength="100" Name="teamSeasonKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="constructorId" Type="Edm.String"/>
+        <Property MaxLength="120" Name="constructorName" Type="Edm.String"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property Name="round" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="code" Type="Edm.String"/>
+        <Property MaxLength="200" Name="raceName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="driver1Name" Type="Edm.String"/>
+        <Property Name="driver1Points" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="120" Name="driver2Name" Type="Edm.String"/>
+        <Property Name="driver2Points" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="teamPoints" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="standingPosition" Type="Edm.Int64"/>
+      </EntityType>
+      <EntityType Name="Stg_TeamH2H">
+        <Key>
+          <PropertyRef Name="h2hKey"/>
+        </Key>
+        <Property MaxLength="100" Name="h2hKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="constructorId" Type="Edm.String"/>
+        <Property Name="year" Type="Edm.Int64"/>
+        <Property MaxLength="120" Name="leftName" Type="Edm.String"/>
+        <Property MaxLength="120" Name="rightName" Type="Edm.String"/>
+        <Property Name="qualLeft" Type="Edm.Int64"/>
+        <Property Name="qualRight" Type="Edm.Int64"/>
+        <Property Name="qualLeftShare" Type="Edm.Int64"/>
+        <Property Name="qualRightShare" Type="Edm.Int64"/>
+        <Property Name="raceLeft" Type="Edm.Int64"/>
+        <Property Name="raceRight" Type="Edm.Int64"/>
+        <Property Name="raceLeftShare" Type="Edm.Int64"/>
+        <Property Name="raceRightShare" Type="Edm.Int64"/>
+        <Property Name="pointsLeft" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="pointsRight" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="pointsLeftShare" Type="Edm.Int64"/>
+        <Property Name="pointsRightShare" Type="Edm.Int64"/>
+        <Property Name="dnfLeft" Type="Edm.Int64"/>
+        <Property Name="dnfRight" Type="Edm.Int64"/>
+        <Property Name="dnfLeftShare" Type="Edm.Int64"/>
+        <Property Name="dnfRightShare" Type="Edm.Int64"/>
+      </EntityType>
       <EntityType Name="Stg_DriverRace">
         <Key>
           <PropertyRef Name="raceKey"/>
@@ -425,6 +469,84 @@
           </Annotation>
         </EntitySet>
         <EntitySet EntityType="Formula1Backend.Fan.Stg_DriverSeason" Name="DriverSeasons">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_TeamSeason" Name="TeamSeason">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_TeamH2H" Name="TeamH2H">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
             <Record>
               <PropertyValue Bool="false" Property="Insertable"/>

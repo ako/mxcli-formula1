@@ -683,6 +683,56 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     PointsShare as 'pointsShare' (Filterable, Sortable)
   );
 
+  publish entity Formula1Backend.Stg_TeamSeason as 'TeamSeason' (
+    ReadMode: microflow Formula1Backend.Read_TeamSeason,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    TeamSeasonKey as 'teamSeasonKey' (KEY, Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    ConstructorName as 'constructorName' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    Round as 'round' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    RaceName as 'raceName' (Filterable, Sortable),
+    Driver1Name as 'driver1Name' (Filterable, Sortable),
+    Driver1Points as 'driver1Points' (Filterable, Sortable),
+    Driver2Name as 'driver2Name' (Filterable, Sortable),
+    Driver2Points as 'driver2Points' (Filterable, Sortable),
+    TeamPoints as 'teamPoints' (Filterable, Sortable),
+    StandingPosition as 'standingPosition' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.Stg_TeamH2H as 'TeamH2H' (
+    ReadMode: microflow Formula1Backend.Read_TeamH2H,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    H2HKey as 'h2hKey' (KEY, Filterable, Sortable),
+    ConstructorId as 'constructorId' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    LeftName as 'leftName' (Filterable, Sortable),
+    RightName as 'rightName' (Filterable, Sortable),
+    QualLeft as 'qualLeft' (Filterable, Sortable),
+    QualRight as 'qualRight' (Filterable, Sortable),
+    QualLeftShare as 'qualLeftShare' (Filterable, Sortable),
+    QualRightShare as 'qualRightShare' (Filterable, Sortable),
+    RaceLeft as 'raceLeft' (Filterable, Sortable),
+    RaceRight as 'raceRight' (Filterable, Sortable),
+    RaceLeftShare as 'raceLeftShare' (Filterable, Sortable),
+    RaceRightShare as 'raceRightShare' (Filterable, Sortable),
+    PointsLeft as 'pointsLeft' (Filterable, Sortable),
+    PointsRight as 'pointsRight' (Filterable, Sortable),
+    PointsLeftShare as 'pointsLeftShare' (Filterable, Sortable),
+    PointsRightShare as 'pointsRightShare' (Filterable, Sortable),
+    DnfLeft as 'dnfLeft' (Filterable, Sortable),
+    DnfRight as 'dnfRight' (Filterable, Sortable),
+    DnfLeftShare as 'dnfLeftShare' (Filterable, Sortable),
+    DnfRightShare as 'dnfRightShare' (Filterable, Sortable)
+  );
+
   publish entity Formula1Backend.Stg_DriverRace as 'DriverRaces' (
     ReadMode: microflow Formula1Backend.Read_DriverRaces,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,

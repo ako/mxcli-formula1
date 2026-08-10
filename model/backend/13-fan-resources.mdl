@@ -358,6 +358,220 @@ BEGIN
   RETURN $Rows;
 END;
 
+/* ------------------------------------------------------- a team's season -- */
+
+/*
+ * A constructor's season round by round, and the season's team-mate record.
+ *
+ * Both start from the same idea: a team fields two cars, and almost everything
+ * interesting about its year is one car against the other. So both open with
+ * the same CTE — rank the season's drivers by points and call the top two seat
+ * 1 and seat 2. Seats rather than names, because a chart series binds its Y
+ * attribute at authoring time and a column called "Norris" serves one team in
+ * one year. The names travel as data.
+ *
+ * Third and fourth drivers (a mid-season replacement, a one-off stand-in) fall
+ * outside both seats. Their points still count in teamPoints, which is the
+ * honest total; they are just not in the two-car comparison, because there is
+ * no third bar to put them in.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TeamSeason (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_TeamSeason AS $Rows
+BEGIN
+  $ConstructorId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'constructorId');
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+  $Round = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'round', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Res String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drv String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+  DECLARE $Races String = 'read_csv(''' + $Dir + '/f1db-races.csv'')';
+  DECLARE $Gp String = 'read_csv(''' + $Dir + '/f1db-grands-prix.csv'')';
+  DECLARE $Teams String = 'read_csv(''' + $Dir + '/f1db-constructors.csv'')';
+  DECLARE $Cstand String = 'read_csv(''' + $Dir
+    + '/f1db-races-constructor-standings.csv'')';
+
+  -- No team, no season. The year defaults to the last one the team raced, so
+  -- the page has something to draw before anything is chosen.
+  --
+  -- Two spellings of the same predicate: the seat CTE reads one table and takes
+  -- the bare column names, the outer query has both rr and the seat table in
+  -- scope and needs them qualified or DuckDB refuses the reference.
+  DECLARE $Scope String = ' WHERE 1=0';
+  DECLARE $ScopeRr String = ' WHERE 1=0';
+  IF $ConstructorId != '' THEN
+    DECLARE $Yr String = '(SELECT max(year) FROM ' + $Res
+      + ' WHERE constructorId = ''' + $ConstructorId + ''')';
+    IF $Year != 0 THEN
+      SET $Yr = toString($Year);
+    END IF;
+    SET $Scope = ' WHERE constructorId = ''' + $ConstructorId
+      + ''' AND year = ' + $Yr;
+    SET $ScopeRr = ' WHERE rr.constructorId = ''' + $ConstructorId
+      + ''' AND rr.year = ' + $Yr;
+
+    -- One round of it, for a page that wants where the season ended rather
+    -- than how it got there. The seat CTE keeps the whole season: which car is
+    -- seat 1 is a season-long fact, and ranking it on one round would swap the
+    -- two whenever the slower car had a good afternoon.
+    IF $Round != 0 THEN
+      SET $ScopeRr = $ScopeRr + ' AND rr.round = ' + toString($Round);
+    END IF;
+  END IF;
+
+  DECLARE $Seats String = 'WITH seats AS ('
+    + ' SELECT constructorId, year, driverId,'
+    + '        row_number() OVER (PARTITION BY constructorId, year'
+    + '          ORDER BY sum(COALESCE(points, 0)) DESC, count(*) DESC, driverId) AS seat'
+    + ' FROM ' + $Res + $Scope
+    + ' GROUP BY constructorId, year, driverId)';
+
+  DECLARE $Sql String = $Seats
+    + ' SELECT rr.constructorId || ''-'' || rr.year || ''-'' || rr.round AS teamSeasonKey,'
+    + '        rr.constructorId AS constructorId,'
+    + '        COALESCE(max(c.name), rr.constructorId) AS constructorName,'
+    + '        rr.year AS year, rr.round AS round,'
+    + '        upper(COALESCE(max(g.abbreviation), ''R'' || rr.round)) AS code,'
+    + '        COALESCE(max(r.officialName), ''Round '' || rr.round) AS raceName,'
+    -- Season-constant, not per-round: taken from the seat table rather than
+    -- from this round's rows, so a race one of them sat out does not blank the
+    -- name the panel prints.
+    + '        (SELECT COALESCE(d1.name, s1.driverId) FROM seats s1'
+    + '           LEFT JOIN ' + $Drv + ' d1 ON d1.id = s1.driverId'
+    + '          WHERE s1.seat = 1 LIMIT 1) AS driver1Name,'
+    + '        COALESCE(sum(CASE WHEN s.seat = 1 THEN rr.points END), 0) AS driver1Points,'
+    + '        (SELECT COALESCE(d2.name, s2.driverId) FROM seats s2'
+    + '           LEFT JOIN ' + $Drv + ' d2 ON d2.id = s2.driverId'
+    + '          WHERE s2.seat = 2 LIMIT 1) AS driver2Name,'
+    + '        COALESCE(sum(CASE WHEN s.seat = 2 THEN rr.points END), 0) AS driver2Points,'
+    + '        COALESCE(sum(rr.points), 0) AS teamPoints,'
+    + '        max(cs.positionNumber) AS standingPosition'
+    + ' FROM ' + $Res + ' rr'
+    + ' LEFT JOIN seats s ON s.constructorId = rr.constructorId'
+    + '   AND s.year = rr.year AND s.driverId = rr.driverId'
+    + ' LEFT JOIN ' + $Races + ' r ON r.id = rr.raceId'
+    + ' LEFT JOIN ' + $Gp + ' g ON g.id = r.grandPrixId'
+    + ' LEFT JOIN ' + $Teams + ' c ON c.id = rr.constructorId'
+    + ' LEFT JOIN ' + $Cstand + ' cs ON cs.raceId = rr.raceId'
+    + '   AND cs.constructorId = rr.constructorId'
+    + $ScopeRr
+    + ' GROUP BY rr.constructorId, rr.year, rr.round ORDER BY rr.round';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetTeamSeason
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
+/*
+ * The team-mate record: one row, four comparisons.
+ *
+ * A round is pivoted to one row carrying both seats' qualifying slot, finish
+ * and points, and then the four counts fall out of comparing the two columns.
+ * A round where only one car has a number in a column counts for neither — a
+ * team-mate comparison needs a team-mate on track.
+ *
+ * The shares are computed here because the page draws bars and a bar needs a
+ * percentage; 19 against 5 is a rout, 19px against 5px is nothing.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TeamH2H (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_TeamH2H AS $Rows
+BEGIN
+  $ConstructorId = CALL JAVA ACTION ODataPushdown.Key(
+    Uri = $Request/Uri, KeyField = 'constructorId');
+  $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
+    Uri = $Request/Uri, Field = 'year', Fallback = 0);
+
+  DECLARE $Dir String = @Formula1Backend.DataDir;
+  DECLARE $Res String = 'read_csv(''' + $Dir + '/f1db-races-race-results.csv'')';
+  DECLARE $Drv String = 'read_csv(''' + $Dir + '/f1db-drivers.csv'')';
+
+  DECLARE $Scope String = ' WHERE 1=0';
+  DECLARE $ScopeRr String = ' WHERE 1=0';
+  IF $ConstructorId != '' THEN
+    DECLARE $Yr String = '(SELECT max(year) FROM ' + $Res
+      + ' WHERE constructorId = ''' + $ConstructorId + ''')';
+    IF $Year != 0 THEN
+      SET $Yr = toString($Year);
+    END IF;
+    SET $Scope = ' WHERE constructorId = ''' + $ConstructorId
+      + ''' AND year = ' + $Yr;
+    SET $ScopeRr = ' WHERE rr.constructorId = ''' + $ConstructorId
+      + ''' AND rr.year = ' + $Yr;
+  END IF;
+
+  DECLARE $Sql String = 'WITH seats AS ('
+    + ' SELECT constructorId, year, driverId,'
+    + '        row_number() OVER (PARTITION BY constructorId, year'
+    + '          ORDER BY sum(COALESCE(points, 0)) DESC, count(*) DESC, driverId) AS seat'
+    + ' FROM ' + $Res + $Scope
+    + ' GROUP BY constructorId, year, driverId),'
+    + ' per AS ('
+    + ' SELECT rr.constructorId AS cid, rr.year AS yr, rr.round AS rnd,'
+    + '   max(CASE WHEN s.seat = 1 THEN rr.qualificationPositionNumber END) AS q1,'
+    + '   max(CASE WHEN s.seat = 2 THEN rr.qualificationPositionNumber END) AS q2,'
+    + '   max(CASE WHEN s.seat = 1 THEN rr.positionNumber END) AS p1,'
+    + '   max(CASE WHEN s.seat = 2 THEN rr.positionNumber END) AS p2,'
+    + '   COALESCE(sum(CASE WHEN s.seat = 1 THEN rr.points END), 0) AS pt1,'
+    + '   COALESCE(sum(CASE WHEN s.seat = 2 THEN rr.points END), 0) AS pt2,'
+    + '   max(CASE WHEN s.seat = 1 AND rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS x1,'
+    + '   max(CASE WHEN s.seat = 2 AND rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS x2'
+    + ' FROM ' + $Res + ' rr'
+    + ' LEFT JOIN seats s ON s.constructorId = rr.constructorId'
+    + '   AND s.year = rr.year AND s.driverId = rr.driverId'
+    + $ScopeRr
+    + ' GROUP BY rr.constructorId, rr.year, rr.round),'
+    + ' agg AS ('
+    + ' SELECT max(cid) AS cid, max(yr) AS yr,'
+    + '   sum(CASE WHEN q1 IS NOT NULL AND q2 IS NOT NULL AND q1 < q2 THEN 1 ELSE 0 END) AS ql,'
+    + '   sum(CASE WHEN q1 IS NOT NULL AND q2 IS NOT NULL AND q2 < q1 THEN 1 ELSE 0 END) AS qr,'
+    + '   sum(CASE WHEN p1 IS NOT NULL AND p2 IS NOT NULL AND p1 < p2 THEN 1 ELSE 0 END) AS rl,'
+    + '   sum(CASE WHEN p1 IS NOT NULL AND p2 IS NOT NULL AND p2 < p1 THEN 1 ELSE 0 END) AS rrr,'
+    + '   sum(pt1) AS pl, sum(pt2) AS pr, sum(x1) AS dl, sum(x2) AS dr'
+    + ' FROM per)'
+    + ' SELECT a.cid || ''-'' || a.yr || ''-h'' AS h2hKey, a.cid AS constructorId,'
+    + '   a.yr AS year,'
+    + '   (SELECT COALESCE(d1.name, s1.driverId) FROM seats s1'
+    + '      LEFT JOIN ' + $Drv + ' d1 ON d1.id = s1.driverId'
+    + '     WHERE s1.seat = 1 LIMIT 1) AS leftName,'
+    + '   (SELECT COALESCE(d2.name, s2.driverId) FROM seats s2'
+    + '      LEFT JOIN ' + $Drv + ' d2 ON d2.id = s2.driverId'
+    + '     WHERE s2.seat = 2 LIMIT 1) AS rightName,'
+    + '   a.ql AS qualLeft, a.qr AS qualRight,'
+    + '   CAST(COALESCE(round(a.ql * 100.0 / NULLIF(a.ql + a.qr, 0)), 0) AS BIGINT) AS qualLeftShare,'
+    + '   CAST(COALESCE(round(a.qr * 100.0 / NULLIF(a.ql + a.qr, 0)), 0) AS BIGINT) AS qualRightShare,'
+    + '   a.rl AS raceLeft, a.rrr AS raceRight,'
+    + '   CAST(COALESCE(round(a.rl * 100.0 / NULLIF(a.rl + a.rrr, 0)), 0) AS BIGINT) AS raceLeftShare,'
+    + '   CAST(COALESCE(round(a.rrr * 100.0 / NULLIF(a.rl + a.rrr, 0)), 0) AS BIGINT) AS raceRightShare,'
+    + '   a.pl AS pointsLeft, a.pr AS pointsRight,'
+    + '   CAST(COALESCE(round(a.pl * 100.0 / NULLIF(a.pl + a.pr, 0)), 0) AS BIGINT) AS pointsLeftShare,'
+    + '   CAST(COALESCE(round(a.pr * 100.0 / NULLIF(a.pl + a.pr, 0)), 0) AS BIGINT) AS pointsRightShare,'
+    + '   a.dl AS dnfLeft, a.dr AS dnfRight,'
+    + '   CAST(COALESCE(round(a.dl * 100.0 / NULLIF(a.dl + a.dr, 0)), 0) AS BIGINT) AS dnfLeftShare,'
+    + '   CAST(COALESCE(round(a.dr * 100.0 / NULLIF(a.dl + a.dr, 0)), 0) AS BIGINT) AS dnfRightShare'
+    + ' FROM agg a WHERE a.cid IS NOT NULL';
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetTeamH2H
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  $Total = COUNT($Rows);
+  CHANGE $Response (Count = $Total);
+  RETURN $Rows;
+END;
+
 /*
  * The service itself moved to 14-weekend.mdl when the weekend resources were
  * added. `create or modify odata service` takes the whole surface, so one file
@@ -370,11 +584,15 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverSeasons TO Formula1Backend
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverRaces TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_SeasonProgress TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Retirements TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamSeason TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamH2H TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Facts TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverSeasons TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverRaces TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_SeasonProgress TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Retirements TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamSeason TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamH2H TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Facts TO Formula1Backend.DataAdmin;
 
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;

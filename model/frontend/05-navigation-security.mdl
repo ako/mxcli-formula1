@@ -52,6 +52,8 @@ grant F1Fan.Reader ON F1Fan.RaceSessions (READ *);
 grant F1Fan.Reader ON F1Fan.Calendar (READ *);
 grant F1Fan.Reader ON F1Fan.WeekendShape (READ *);
 grant F1Fan.Reader ON F1Fan.LapChart (READ *);
+grant F1Fan.Reader ON F1Fan.TeamSeason (READ *);
+grant F1Fan.Reader ON F1Fan.TeamH2H (READ *);
 
 /* Near-live timing */
 grant F1Now.Reader ON F1Now.Order (READ *);
@@ -86,6 +88,10 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonProgress TO Formula1Fronten
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Retirements TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamPeers TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamSeason TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamH2H TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamLatestStanding TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Weekend TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;

@@ -201,6 +201,68 @@ BEGIN
   RETURN $Rows;
 END;
 
+/*
+ * The constructor page's peer row. Twelve rather than the driver page's twenty:
+ * the chips carry team names, not three-letter codes, so twelve is what fits on
+ * one line — and twelve championship-winning teams is most of the list that has
+ * ever won one.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamPeers ()
+  RETURNS List of F1Cached.Constructors AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.Constructors SORT BY points DESC LIMIT 12;
+  RETURN $Rows;
+END;
+
+/*
+ * A team's most recent season, round by round: what each of the two cars
+ * scored and where the team stood in the championship after each one.
+ *
+ * No year is sent, so the backend answers for the last season the team raced —
+ * which is what the page wants and saves a round trip to work out what that is.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamSeason (
+  $Constructor: F1Cached.Constructors)
+  RETURNS List of F1Fan.TeamSeason AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId;
+  RETURN $Rows;
+END;
+
+/* The same season's team-mate record: one row, four comparisons. */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamH2H (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.TeamH2H AS $Row
+BEGIN
+  RETRIEVE $Row FROM F1Fan.TeamH2H
+    WHERE constructorId = $Constructor/constructorId LIMIT 1;
+  RETURN $Row;
+END;
+
+/*
+ * The last round of that season, for the banner: it carries the season, the
+ * two drivers' names and the championship position the team finished in.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamLatestStanding (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.TeamSeason AS $Last
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId;
+
+  DECLARE $Round Long = 0;
+  LOOP $Row IN $Rows BEGIN
+    IF $Row/round > $Round THEN
+      SET $Round = $Row/round;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Last FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId and round = $Round LIMIT 1;
+  RETURN $Last;
+END;
+
 /* --------------------------------------------------------- driver career -- */
 
 /*
@@ -729,46 +791,255 @@ create or replace page Formula1Frontend.Constructor_Detail
 )
 {
   container pageBody {
-    dataview dvConstructor (datasource: $Constructor) {
-      container head (class: 'pagehead') {
-        container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: 'Constructor', class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = fullName],
-                             rendermode: H2, class: 'pagehead-title')
-          dynamictext sub (content: '{1}', contentparams: [{1} = country],
-                           class: 'pagehead-sub')
+    /*
+     * The peer row, as on the driver page. Teams carry their names rather than
+     * a three-letter code, so twelve fit where twenty codes did.
+     */
+    container chipsRow (class: 'chips-row') {
+      listview lvTeams (datasource: MICROFLOW Formula1Frontend.DS_TeamPeers) {
+        container chipTeam (
+          class: 'chip-pick',
+          dynamicclasses: 'if $currentObject/constructorId = $Constructor/constructorId then ''is-picked'' else ''''',
+          OnClick: SHOW_PAGE Formula1Frontend.Constructor_Detail(Constructor: $currentObject)
+        ) {
+          dynamictext chipName (content: '{1}', contentparams: [{1} = name])
         }
-        container headBadge (class: 'pagehead-badge') {
-          dynamictext titles (content: '{1}', contentparams: [{1} = championshipWins])
+      }
+    }
+
+    /*
+     * The banner. The comp's five numbers are a season's; a constructor page
+     * spans seventy years of one marque, so these are the career totals and the
+     * subtitle says which season the panels below are about.
+     */
+    dataview dvConstructor (datasource: $Constructor, class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroMark (class: 'hero-mark') {
+          dynamictext heroTitles (content: '{1}', contentparams: [{1} = championshipWins])
+        }
+        container heroId (class: 'hero-id') {
+          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+                                rendermode: H2, class: 'hero-name')
+          dataview dvHeroSub (
+            datasource: MICROFLOW Formula1Frontend.DS_TeamLatestStanding(Constructor: $Constructor)
+          ) {
+            dynamictext heroSub (content: '{1} season · {2} and {3}',
+              contentparams: [{1} = year, {2} = driver1Name, {3} = driver2Name],
+              class: 'hero-sub')
+          }
+        }
+        container heroStats (class: 'hero-stats') {
+          container hsEntries (class: 'hero-stat') {
+            dynamictext hsEntriesL (content: 'Entries', class: 'hero-stat-label')
+            dynamictext hsEntriesV (content: '{1}', contentparams: [{1} = raceStarts],
+                                    class: 'hero-stat-value')
+          }
+          container hsPoints (class: 'hero-stat') {
+            dynamictext hsPointsL (content: 'Points', class: 'hero-stat-label')
+            dynamictext hsPointsV (content: '{1}', contentparams: [{1} = points],
+                                   class: 'hero-stat-value')
+          }
+          container hsWins (class: 'hero-stat') {
+            dynamictext hsWinsL (content: 'Wins', class: 'hero-stat-label')
+            dynamictext hsWinsV (content: '{1}', contentparams: [{1} = raceWins],
+                                 class: 'hero-stat-value')
+          }
+          container hsPodiums (class: 'hero-stat') {
+            dynamictext hsPodiumsL (content: 'Podiums', class: 'hero-stat-label')
+            dynamictext hsPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                    class: 'hero-stat-value')
+          }
+          container hsPoles (class: 'hero-stat') {
+            dynamictext hsPolesL (content: 'Poles', class: 'hero-stat-label')
+            dynamictext hsPolesV (content: '{1}', contentparams: [{1} = polePositions],
+                                  class: 'hero-stat-value')
+          }
+        }
+      }
+    }
+
+    /*
+     * The comp's two season charts, side by side.
+     *
+     * Left: points per race, the two cars stacked, so the column is the team's
+     * afternoon and the split is who had it. Right: championship position
+     * round by round, drawn as a step because a position holds until a race
+     * changes it — a straight line between rounds would draw positions the team
+     * never held.
+     *
+     * The series are seats, not names: a chart binds its Y attribute when the
+     * page is authored, and there is one page for every team in every season.
+     * The banner above names them.
+     */
+    container teamCharts (class: 'split-even') {
+      container ppr (class: 'panel') {
+        container pprHead (class: 'panel-head') {
+          dynamictext pprTitle (content: 'Points per race, by driver',
+                                class: 'panel-title')
+          dynamictext pprSub (content: 'stacked · the season most recently raced',
+                              class: 'panel-sub')
+        }
+        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartPpr (
+          advancedOptions: true,
+          showLegend: true,
+          gridLines: 'horizontal',
+          barmode: 'stack',
+          customLayout: '{"margin":{"l":42,"r":12,"t":24,"b":38},"legend":{"orientation":"h","y":1.16,"x":0,"font":{"size":11}},"xaxis":{"type":"category"}}',
+          customConfigurations: '{"displayModeBar":false}'
+        ) {
+          series sPprOne (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
+            StaticXAttribute: code,
+            StaticYAttribute: driver1Points,
+            StaticName: 'Seat 1',
+            AggregationType: 'none',
+            StaticBarColor: '''#F97316'''
+          )
+          series sPprTwo (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
+            StaticXAttribute: code,
+            StaticYAttribute: driver2Points,
+            StaticName: 'Seat 2',
+            AggregationType: 'none',
+            StaticBarColor: '''#8A4B12'''
+          )
         }
       }
 
-      container kpis (class: 'kpis') {
-        container kStarts (class: 'kpi') {
-          dynamictext kStartsL (content: 'Entries', class: 'kpi-label')
-          dynamictext kStartsV (content: '{1}', contentparams: [{1} = raceStarts],
-                                class: 'kpi-value')
+      container posPanel (class: 'panel') {
+        container posHead (class: 'panel-head') {
+          dynamictext posTitle (content: 'Championship position through the season',
+                                class: 'panel-title')
+          dynamictext posSub (content: 'after every round', class: 'panel-sub')
         }
-        container kWins (class: 'kpi kpi-accent') {
-          dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
-          dynamictext kWinsV (content: '{1}', contentparams: [{1} = raceWins],
-                              class: 'kpi-value')
+        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartPos (
+          enableAdvancedOptions: true,
+          showLegend: false,
+          gridLines: 'horizontal',
+          customLayout: '{"margin":{"l":42,"r":12,"t":8,"b":38},"yaxis":{"autorange":"reversed","dtick":1,"zeroline":false},"xaxis":{"type":"category"}}',
+          customConfigurations: '{"displayModeBar":false}'
+        ) {
+          line lPos (
+            DataSet: 'static',
+            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
+            StaticXAttribute: code,
+            StaticYAttribute: standingPosition,
+            StaticName: 'Position',
+            LineStyle: 'custom',
+            CustomSeriesOptions: '{"mode":"lines+markers","line":{"color":"#F97316","width":2,"shape":"hv"},"marker":{"color":"#F97316","size":5}}'
+          )
         }
-        container kPodiums (class: 'kpi') {
-          dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
-          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
-                                 class: 'kpi-value')
+      }
+    }
+
+    /*
+     * Team-mate head to head: the same season, four ways.
+     *
+     * Two bars per row growing away from a centre label, each sized by its
+     * share of the pair rather than by its value — nineteen against five is a
+     * rout, nineteen pixels against five is nothing. The shares are computed by
+     * the resource; the page only names the classes.
+     */
+    dataview dvH2H (
+      datasource: MICROFLOW Formula1Frontend.DS_TeamH2H(Constructor: $Constructor),
+      class: 'panel'
+    ) {
+      container h2hHead (class: 'panel-head') {
+        dynamictext h2hTitle (content: 'Team-mate head to head', class: 'panel-title')
+        dynamictext h2hSub (content: 'rounds where both cars were classified',
+                            class: 'panel-sub')
+      }
+
+      container h2hQual (class: 'h2h-row') {
+        dynamictext qlv (content: '{1}', contentparams: [{1} = qualLeft],
+                         class: 'h2h-value h2h-value-left')
+        container qlt (class: 'h2h-track h2h-track-left') {
+          container qlf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/qualLeftShare)') {
+            dynamictext qlfx (content: '{1}', contentparams: [{1} = qualLeftShare])
+          }
         }
-        container kPoles (class: 'kpi') {
-          dynamictext kPolesL (content: 'Poles', class: 'kpi-label')
-          dynamictext kPolesV (content: '{1}', contentparams: [{1} = polePositions],
-                               class: 'kpi-value')
+        dynamictext qlbl (content: 'Qualifying', class: 'h2h-label')
+        container qrt (class: 'h2h-track') {
+          container qrf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/qualRightShare)') {
+            dynamictext qrfx (content: '{1}', contentparams: [{1} = qualRightShare])
+          }
         }
-        container kTitles (class: 'kpi') {
-          dynamictext kTitlesL (content: 'Titles', class: 'kpi-label')
-          dynamictext kTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
-                                class: 'kpi-value')
+        dynamictext qrv (content: '{1}', contentparams: [{1} = qualRight],
+                         class: 'h2h-value')
+      }
+
+      container h2hRace (class: 'h2h-row') {
+        dynamictext rlv (content: '{1}', contentparams: [{1} = raceLeft],
+                         class: 'h2h-value h2h-value-left')
+        container rlt (class: 'h2h-track h2h-track-left') {
+          container rlf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/raceLeftShare)') {
+            dynamictext rlfx (content: '{1}', contentparams: [{1} = raceLeftShare])
+          }
         }
+        dynamictext rlbl (content: 'Race', class: 'h2h-label')
+        container rrt (class: 'h2h-track') {
+          container rrf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/raceRightShare)') {
+            dynamictext rrfx (content: '{1}', contentparams: [{1} = raceRightShare])
+          }
+        }
+        dynamictext rrv (content: '{1}', contentparams: [{1} = raceRight],
+                         class: 'h2h-value')
+      }
+
+      container h2hPoints (class: 'h2h-row') {
+        dynamictext plv (content: '{1}', contentparams: [{1} = pointsLeft],
+                         class: 'h2h-value h2h-value-left')
+        container plt (class: 'h2h-track h2h-track-left') {
+          container plf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/pointsLeftShare)') {
+            dynamictext plfx (content: '{1}', contentparams: [{1} = pointsLeftShare])
+          }
+        }
+        dynamictext plbl (content: 'Points', class: 'h2h-label')
+        container prt (class: 'h2h-track') {
+          container prf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/pointsRightShare)') {
+            dynamictext prfx (content: '{1}', contentparams: [{1} = pointsRightShare])
+          }
+        }
+        dynamictext prv (content: '{1}', contentparams: [{1} = pointsRight],
+                         class: 'h2h-value')
+      }
+
+      container h2hDnf (class: 'h2h-row') {
+        dynamictext dlv (content: '{1}', contentparams: [{1} = dnfLeft],
+                         class: 'h2h-value h2h-value-left')
+        container dlt (class: 'h2h-track h2h-track-left') {
+          container dlf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/dnfLeftShare)') {
+            dynamictext dlfx (content: '{1}', contentparams: [{1} = dnfLeftShare])
+          }
+        }
+        dynamictext dlbl (content: 'Retirements', class: 'h2h-label')
+        container drt (class: 'h2h-track') {
+          container drf (class: 'h2h-fill',
+            dynamicclasses: '''w-'' + toString($currentObject/dnfRightShare)') {
+            dynamictext drfx (content: '{1}', contentparams: [{1} = dnfRightShare])
+          }
+        }
+        dynamictext drv (content: '{1}', contentparams: [{1} = dnfRight],
+                         class: 'h2h-value')
+      }
+
+      container h2hNames (class: 'h2h-row h2h-names') {
+        dynamictext nSpacerL (content: ' ')
+        dynamictext nLeft (content: '{1}', contentparams: [{1} = leftName],
+                           class: 'h2h-name h2h-name-left')
+        dynamictext nMid (content: ' ')
+        dynamictext nRight (content: '{1}', contentparams: [{1} = rightName],
+                            class: 'h2h-name')
+        dynamictext nSpacerR (content: ' ')
       }
     }
 
@@ -820,6 +1091,11 @@ create or replace page Formula1Frontend.Constructor_Detail
           }
         }
       }
+    }
+
+    container dataNote (class: 'data-note') {
+      dynamictext noteLead (content: 'Data note.', class: 'data-note-lead')
+      dynamictext noteBody (content: ' Results, standings and retirement causes are f1db, read straight from the CSVs on each request. The two seats are the season''s top two scorers for the team, so a mid-season stand-in scores into the team total but not into the head to head — there is no third bar to put them in. A comparison only counts a round where both cars were classified.')
     }
   }
 }
