@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§52 on `38a1137`; §53 on **PR 125 head `9ab9afa`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52 on **PR 125 head `9ab9afa`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1575,7 +1575,7 @@ the scripts quietly stop being the source of truth.
    test passes, and the only symptom is duplicate links in Studio Pro's domain
    model. Reproduction and byte counts in §50.
 2. ~~**Re-running a script rewrites the document with different bytes** (§50)~~ —
-   **fixed by PR 125, verified here in §53.** A unit whose new content is
+   **fixed by PR 125, verified here in §52.** A unit whose new content is
    canonically equal to the stored one is no longer written. The re-runnable
    script set now leaves both apps byte-identical across consecutive passes, and
    the control (`MXCLI_ALWAYS_WRITE=1`, 72 units churning, then 0 on the next
@@ -3552,7 +3552,7 @@ resource, one property different.
   .mx-placeholder` and not on the region, which is also the scroll container —
   padding there scrolls the right-hand gutter away.
 
-## 53. PR 125 verified: re-running the scripts is now a no-op in the repository
+## 52. PR 125 verified: re-running the scripts is now a no-op in the repository
 
 *Verified 2026-08-11 against `ako/mxcli` PR 125, head `9ab9afa`, built from
 source. This closes open issue 2 (§50) — the one where a re-run rewrote 143

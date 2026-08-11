@@ -62,11 +62,11 @@ Re-running the scripts on an already-built project leaves the `.mpr` and
 `mprcontents/` **byte-identical**. mxcli compares each unit against the stored
 one in canonical form — element ids normalised away — and skips the write when
 they match, so a pass that changes nothing writes nothing. Verified across the
-whole re-runnable set, both apps, consecutive passes: zero files. FINDINGS §53.
+whole re-runnable set, both apps, consecutive passes: zero files. FINDINGS §52.
 
 This inverts the old advice. `git status` after a re-run is now a real answer to
 *is the model in sync with the scripts?*, and a dirty tree is a finding rather
-than noise — that is how the `Read_TeamSeason` drift in §53 was caught. Until
+than noise — that is how the `Read_TeamSeason` drift in §52 was caught. Until
 PR 125 landed, every re-run rewrote 143 documents with fresh element ids and a
 real change was one needle in that haystack (FINDINGS §50).
 
