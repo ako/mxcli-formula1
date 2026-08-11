@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on **`38a1137`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§52 on `38a1137`; §53 on **PR 125 head `9ab9afa`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1574,18 +1574,12 @@ the scripts quietly stop being the source of truth.
    `season_2` … `season_15` before anyone noticed — `mx check` is clean, every
    test passes, and the only symptom is duplicate links in Studio Pro's domain
    model. Reproduction and byte counts in §50.
-2. **Re-running a script rewrites the document with different bytes** (§50) — a
-   `create or modify` regenerates the internal element id of everything inside
-   the document it touches, so a re-run is a no-op in the model and a large diff
-   in the repository. Minimal case: `create or modify constant … default
-   'mendix'` re-declared identically against an unchanged project changes
-   **exactly 16 bytes** of a 241-byte file — one UUID. Across both apps a full
-   re-run rewrites 143 documents, and three consecutive re-runs give three
-   different tree hashes while the semantic fingerprint never moves. `git diff`
-   therefore cannot answer "did this change anything", two developers running
-   the same scripts commit different bytes, and `.mxunit` merges are not
-   resolvable. Sub-element ids should be preserved when the element is
-   unchanged, the way the document's own id already is.
+2. ~~**Re-running a script rewrites the document with different bytes** (§50)~~ —
+   **fixed by PR 125, verified here in §53.** A unit whose new content is
+   canonically equal to the stored one is no longer written. The re-runnable
+   script set now leaves both apps byte-identical across consecutive passes, and
+   the control (`MXCLI_ALWAYS_WRITE=1`, 72 units churning, then 0 on the next
+   normal run) shows the measurement can see a failure.
 3. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
    (§48) — `27ea1da` fixed exactly this for `TopSupported`/`SkipSupported`; the
    filter and sort terms have the same problem. `mdl/types/edmx.go:446` takes
@@ -3557,3 +3551,120 @@ resource, one property different.
   padding belongs on `.region-content > .mx-scrollcontainer-wrapper >
   .mx-placeholder` and not on the region, which is also the scroll container —
   padding there scrolls the right-hand gutter away.
+
+## 53. PR 125 verified: re-running the scripts is now a no-op in the repository
+
+*Verified 2026-08-11 against `ako/mxcli` PR 125, head `9ab9afa`, built from
+source. This closes open issue 2 (§50) — the one where a re-run rewrote 143
+documents with different bytes and never settled.*
+
+### What the PR does
+
+Before writing a unit, mxcli compares the new document against the stored one in
+**canonical form**: every element `$ID` replaced by its index in a deterministic
+containment walk. If they match, the write is skipped. Byte comparison would
+skip nothing, because a rebuild mints a fresh random `$ID` per sub-element —
+which is exactly the churn §50 measured. A microflow's `StableId` is carried
+from the stored document rather than re-minted, since the build derives every
+client-callable microflow's operation id from it.
+
+`MXCLI_ALWAYS_WRITE=1` disables the skipping (not the identity preservation) for
+bisecting, which is what makes the measurement below falsifiable.
+
+### Build the right binary, or measure nothing
+
+The first round of measurements here was worthless and it took a while to notice.
+`scripts/build-mxcli.sh` takes `MXCLI_REF` and defaults it to `main`, then does
+`git fetch --depth 1 origin "$REF"` and `git checkout -q FETCH_HEAD` **inside
+`.mxcli-src`** — so a manual `git checkout pr-125` in that directory is silently
+clobbered before the build. Every number that round was `main` with no elision
+code in it, and it looked exactly like "the PR does not work": 73 files changed
+on both runs, `MXCLI_ALWAYS_WRITE=1` made no difference. The tell was that
+`modelsdk/canon/` did not exist in the source tree.
+
+```sh
+MXCLI_FORCE=1 MXCLI_REF=pull/125/head sh scripts/build-mxcli.sh
+```
+
+Worth stating generally: **before measuring a feature flag, prove the feature is
+compiled in.** Here that meant finding `modelsdk/canon/{canon,identity}.go` on
+disk and `MXCLI_ALWAYS_WRITE` read at `identity.go:60`. A control run that
+behaves identically with and without the flag does not mean the flag is broken —
+it can equally mean neither path exists.
+
+### The measurements
+
+The minimal case from §50, one constant re-declared identically:
+
+| | `38a1137` (main) | `9ab9afa` (PR 125) |
+|---|---|---|
+| run 1 | 2 files | **0** |
+| run 2 | 2 files | **0** |
+| run 3 | 2 files | **0** |
+
+The full re-runnable script set — 12 backend scripts, 8 frontend — starting from
+a clean tree. Excluded as one-shot *by construction*, each verified to halt on a
+second run rather than churn: `00-dependencies.mdl` (`ADD JAR DEPENDENCY`),
+`03-persistent-entities.mdl` ("entity already exists"), `07-demo-users.mdl` and
+frontend `06-demo-user.mdl` ("demo user already exists: fan"), and frontend
+`02-external-entities.mdl` (the association-duplication bug, issue 1).
+
+```
+              pass 1 vs HEAD   pass 2 vs pass 1   pass 3 vs pass 2
+backend        2 files            0                  0
+frontend       5 files            0                  -
+```
+
+Zero. Not "the same files with different bytes" — the same bytes. §50's three
+different tree hashes from three identical runs are gone.
+
+### The control, which is the part that proves anything
+
+A test asserting "nothing changed" passes just as well against a build where
+nothing runs. So the same backend set, same converged tree, with the elision
+switched off and then on again:
+
+```
+MXCLI_ALWAYS_WRITE=1   72 units changed bytes
+normal run after it     0 units changed bytes
+```
+
+72 is §50's number back again, so the probe can see a failure. And the second
+line is the stronger result: after every `$ID` in 72 documents had been
+re-minted, the next normal run recognised all 72 as equal and wrote none of
+them. That is canonical comparison working, not byte comparison getting lucky.
+
+### The 7 files that did change, and why they are the good news
+
+Both apps had drift between the scripts and the committed model, which the old
+behaviour made invisible — when every re-run rewrites 143 documents, a real
+change is one needle in that haystack.
+
+- **`Read_TeamSeason` (+4,340 bytes).** The script at HEAD declares a `$Round`
+  pushdown and a `$Round != 0` branch; the committed `.mxunit` has neither. Both
+  were committed in `bd03f44` — the script was edited after the last run and
+  never re-executed, so the model has been one activity behind its source for a
+  day.
+- **Four `Rest$ConsumedODataService` units (−48 bytes each).** `MetadataUrl` was
+  stored as `file:///home/user/mxcli-formula1/Formula1Frontend/contracts/…` and
+  is now the `./contracts/…` the script actually says. An older build
+  absolutized it; the current one stores it verbatim. Exactly 48 bytes of
+  absolute host path per client, gone from a committed model.
+
+Both are one-time convergences: reset to HEAD, run the set once, and the same 7
+files appear — deterministically, and never an eighth. `mx check` reports **0
+errors** on both apps afterwards.
+
+### What this changes about working here
+
+`git status` becomes a real answer to "is the model in sync with the scripts?".
+That question had no cheap answer before — §50's whole point was that the diff
+was noise, so the honest workflow was to regenerate and trust the semantic
+fingerprint. Now a clean tree after a re-run *means* something, and a dirty one
+points at the drift instead of burying it. The `Read_TeamSeason` gap above was
+found by exactly that, on the first pass, without looking for it.
+
+The corollary for `model/README.md`'s "Re-running is not free": re-running is
+now free in the repository. It still is not free in *time* — the scripts still
+execute, still parse, still compare — and the one-shot scripts still halt rather
+than no-op, which is a separate and still-open shape of the same problem.

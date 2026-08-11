@@ -56,17 +56,33 @@ numeric suffix, every time it runs, without bound — two per run here. This rep
 had silently accumulated `season_2` … `season_15` before a rebuild exposed it.
 FINDINGS §50.
 
-## Re-running is not free
+## Re-running is free, and `git status` now means something
 
-A rebuild converges, but re-running the scripts on an already-built project is
-**not** a no-op in version control. It is a no-op in the *model* — the semantic
-fingerprint does not move — but every `create or modify` regenerates the
-internal element ids of the document it rewrites, so 143 `.mxunit` files change
-and their bytes differ on every run. A constant re-declared identically changes
-exactly 16 bytes: one UUID.
+Re-running the scripts on an already-built project leaves the `.mpr` and
+`mprcontents/` **byte-identical**. mxcli compares each unit against the stored
+one in canonical form — element ids normalised away — and skips the write when
+they match, so a pass that changes nothing writes nothing. Verified across the
+whole re-runnable set, both apps, consecutive passes: zero files. FINDINGS §53.
 
-Practically: do not expect `git diff` to tell you whether a script did anything,
-and do not commit the churn from a re-run that changed nothing. FINDINGS §50.
+This inverts the old advice. `git status` after a re-run is now a real answer to
+*is the model in sync with the scripts?*, and a dirty tree is a finding rather
+than noise — that is how the `Read_TeamSeason` drift in §53 was caught. Until
+PR 125 landed, every re-run rewrote 143 documents with fresh element ids and a
+real change was one needle in that haystack (FINDINGS §50).
+
+Two caveats. Re-running is free in the repository, not in *time* — the scripts
+still parse and execute. And five scripts still **halt** on a second run rather
+than no-op, so "re-run everything" means the re-runnable set, not
+`model/*/*.mdl`:
+
+| Script | Halts on |
+|---|---|
+| `backend/00-dependencies.mdl` | `ADD JAR DEPENDENCY` |
+| `backend/03-persistent-entities.mdl` | `entity already exists: Formula1Backend.Season` |
+| `backend/07-demo-users.mdl`, `frontend/06-demo-user.mdl` | `demo user already exists: fan` |
+| `frontend/02-external-entities.mdl` | must run once by construction — see above |
+
+Only the last is dangerous; the other four are safe to re-run and simply stop.
 
 ## Verified, not asserted
 

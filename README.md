@@ -398,7 +398,7 @@ times is twenty-eight times wider.
 Both are end to end: the consumed OData client propagates trace context, so one
 stack descends from the browser's `POST /xas/`, through the frontend's
 `Retrieve by microflow`, across the service call, into the backend microflow and
-down to the DuckDB scan. FINDINGS §52 is what the first run of this found.
+down to the DuckDB scan.
 
 **Regenerating the screenshots.** With both apps up:
 
