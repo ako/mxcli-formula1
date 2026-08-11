@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52 on **PR 125 head `9ab9afa`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on **PR 125 head `9ab9afa`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1667,6 +1667,43 @@ the scripts quietly stop being the source of truth.
    argument is rejected by `mxcli check`. Also `not contains(…)` does not parse
    where `contains(…) = false` does. A `check` that validated microflow
    expressions against Mendix's grammar would catch all four at write time.
+16. **A marketplace module install collapses MPR v2 into v1** (§53) — one
+   `mx module-import`, nothing else, turns 94 KB + 466 `.mxunit` files into a
+   single 16 MB blob. That removes the diffable model, `diff-local`, mergeable
+   units and the whole property PR 125 just established. `mx convert` only
+   targets Mendix versions and mxcli has no convert command, so there is no way
+   back. Any headless install path must preserve v2 or refuse; silently
+   downgrading the storage format is the worst of the three.
+17. **A module flagged `IsThemeModule` cannot be installed headlessly at all**
+   (§53) — Conversational UI 7.2.0 carries `Projects$ModuleImpl.IsThemeModule =
+   true` while its own `manifest.json` says `"type": "Module"`, and
+   `mx module-import` refuses it (exit 112). Flipping that one boolean imports
+   the identical package cleanly, so the flag is the sole gate. This blocks the
+   only Mendix-supplied chat UI from any CLI-driven project. mxcli could at
+   minimum detect the flag and say *why* instead of surfacing `exit status 112`.
+18. **Installing a marketplace module resolves no dependencies** (§53) — the four
+   Agents Kit 2 modules pull in `CommunityCommons`, `AgentCommons`, `Encryption`
+   and two widgets, none of them named in the install output or the module docs.
+   They are found by installing, reading CE1613s, and repeating; and the error
+   count rises as often as it falls (156 → 16 → 227 → 211 → 1 → 0) because
+   fixing a reference makes new documents checkable. `mxcli marketplace install`
+   knows the content id — resolving or at least *listing* the dependency set
+   would remove the loop.
+19. **No mxcli equivalent for `update-widgets` or `rename-design-properties`**
+   (§53) — after a headless widget install the project reports 210 × CE0463,
+   which reads exactly like the malformed-template defect that has its own
+   diagnosis skill. It is not: `mx update-widgets` takes it to 1 and
+   `mx rename-design-properties` to 0. Either wrap both, or have
+   `marketplace install` run `update-widgets` itself and say so.
+20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53) —
+   `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
+   the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
+   Mistral) cannot be expressed in MDL. A project not on Mendix Cloud GenAI
+   cannot keep its model document as code.
+21. **The agent doctypes have no version-registry entry** (§53) — `show features`
+   on 11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()`
+   pre-check and no actionable error on an older project, though
+   `mxcli syntax agents` states the requirement as Mendix 11.9+.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -3668,3 +3705,133 @@ The corollary for `model/README.md`'s "Re-running is not free": re-running is
 now free in the repository. It still is not free in *time* — the scripts still
 execute, still parse, still compare — and the one-shot scripts still halt rather
 than no-op, which is a separate and still-open shape of the same problem.
+
+## 53. An MCP chat feature: buildable, and the install path collapses MPR v2
+
+*Investigated 2026-08-11 on Mendix 11.13.0. The question was whether a fan-facing
+chat over F1 data could be built with a **Mendix MCP server on the backend and a
+Mendix MCP client on the frontend**. It can, entirely from supported components.
+Getting them installed is where it goes wrong.*
+
+### Both halves ship as Mendix modules
+
+Agents Kit 2 covers exactly the split proposed. Everything below installed
+against this project and reached `mx check` **0 errors on both apps**.
+
+| Where | Module | Version | Min Mendix |
+|---|---|---|---|
+| Backend | MCP Server | 5.1.0 | 11.12.1 |
+| Frontend | MCP Client | 4.1.1 | 11.12.2 |
+| Frontend | GenAI Commons | 7.2.0 | 11.12.2 |
+| Frontend | Conversational UI | 7.2.0 | 11.12.2 |
+| Frontend | OpenAI Connector | 9.2.0 | 11.12.2 |
+
+The server exposes microflows as tools — inputs are primitives or `MCPServer.Tool`
+objects, the return must be `String` or `TextContent`, and an optional auth
+microflow takes `System.HttpRequest` and returns a `System.User`, so ordinary
+entity access still applies. Both modules speak `v2025-03-26` over streamable
+HTTP, so they interoperate; the client also speaks `v2024-11-05`. `Request: Add
+all tools from MCP server` hands discovered tools straight to a chat-completions
+call, so there is no glue to write between MCP and the LLM.
+
+**Three dependencies are not in that table and not in the docs**, and each one is
+found only by installing and reading the errors: `CommunityCommons` (11.5.1),
+`AgentCommons` (4.2.0) and `Encryption` (11.1.1), plus the `Markdown viewer`
+(1.0.3) and `Events` (1.3.1) widgets. The error count does not decrease
+monotonically while you chase them — 156 → 16 → **227** → 211 → 1 → 0 — because
+resolving a broken reference makes a previously unreachable document checkable.
+An install that resolved its own dependency graph would remove the whole
+exercise.
+
+### The headline: `mx module-import` rewrites MPR v2 as v1
+
+One import, on a pristine worktree checked out at HEAD, nothing else run:
+
+```
+before   .mpr     94,208 bytes  +  466 .mxunit files
+after    .mpr 16,019,456 bytes  +    0 .mxunit files
+```
+
+The `mprcontents/` tree is gone and the whole model is a single SQLite blob. The
+frontend went the same way at 46 MB. Attribution is clean: the backend received
+**only** `mx module-import` — no `update-widgets`, no `rename-design-properties`
+— and collapsed identically.
+
+The `_MetaData` row shows the format change directly. v2 carries a leading format
+version and a `_Transaction` table; v1 has neither:
+
+```
+v2   (2, '11.13.0', '11.13.0', '{SHA256}5Fk3…')      tables: _MetaData, Unit, _Transaction
+v1   (   '11.13.0', '11.13.0', '{SHA256}5Fk3…', 0)   tables: _MetaData, Unit
+```
+
+This is not cosmetic. It takes out the diffable model, the idempotent-re-run
+property §52 had just established, `mxcli diff-local`, and any hope of merging
+`.mxunit` files. Nothing in the Mendix documentation mentions it, `mx convert`
+only targets *Mendix versions* rather than storage format, and mxcli has no
+convert command — so there is no way back that we found. **Any headless
+module-install path has to either preserve v2 or refuse.**
+
+### Mendix ships its own chat UI flagged as a theme module
+
+`mx module-import` rejects Conversational UI outright:
+
+```
+Importing theme module is not supported          (exit 112 = param error, arg 1, "is Theme module")
+```
+
+The package disagrees with the refusal — `manifest.json` says `"type": "Module"`.
+Deleting all 50 `themesource/` entries did not help; nor did also stripping their
+44 references from `package.xml` and `manifest.json`. The gate is a single BSON
+boolean on the module document itself:
+
+```
+Projects$ModuleImpl → IsThemeModule = true
+```
+
+Flipping that one byte to `false` and re-importing the otherwise **identical**
+package — theme files included — imports cleanly and checks clean. So the flag is
+the sole cause, and the only Mendix-supplied chat UI for Agents Kit 2 cannot be
+installed by any headless path. Studio Pro is required, which for a CLI-driven
+project means the model can no longer be rebuilt from `model/*.mdl`.
+
+### CE0463 × 210 after installing widgets is a false alarm
+
+Installing the two widgets produced 210 × CE0463 "widget definition changed" —
+the error whose usual diagnosis is a malformed template. Here it means only that
+the project's stored widget type definitions have not been resynced. Two commands
+clear it, and both are `mx` verbs with no mxcli equivalent:
+
+```
+mx update-widgets <project.mpr>              210 CE0463 → 1
+mx rename-design-properties <project.mpr>    renamed 158 design properties across 44 documents → 0
+```
+
+Worth knowing before anyone spends a day in `diagnose-ce0463.md`: **after any
+headless widget install, run `update-widgets` before believing the error list.**
+
+### OpenRouter works without a custom connector
+
+The OpenAI Connector's Configuration entity has an `Endpoint` field, and
+OpenRouter is OpenAI-compatible: a `POST /api/v1/chat/completions` carrying a
+`tools` array returns **401, not 404**. So pointing the stock connector at
+`https://openrouter.ai/api/v1` should be a URL and a key, with duplicating the
+connector as the documented fallback.
+
+Tool-calling is the constraint that matters, since an MCP agent without it is
+just a chatbot. Of OpenRouter's 405 models, 18 are free and **15 of those
+advertise `tools`** — `openai/gpt-oss-20b:free` (131k), `google/gemma-4-31b-it:free`
+(262k), `nvidia/nemotron-3-ultra-550b-a55b:free` (1M). Free-tier reliability at
+chaining tool calls is another question, and the tier is rate-limited.
+
+### Two mxcli gaps in the agent doctypes
+
+- **`CREATE MODEL` can only author one provider.** `agenteditor_write.go:70` and
+  `:90` both assign `m.Provider = "MxCloudGenAI"` unconditionally, and the
+  grammar comment offers no alternative. Agents Kit 2 supports OpenAI, Bedrock,
+  Gemini, Mistral and Mendix Cloud GenAI; MDL can express one of the five. Any
+  project not on Mendix Cloud GenAI cannot author its model document as code.
+- **The agent doctypes are absent from the version registry.** `show features` on
+  11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()` gate
+  and no actionable error on an older project — even though `mxcli syntax agents`
+  documents the requirement as "AgentEditorCommons, Mendix 11.9+".
