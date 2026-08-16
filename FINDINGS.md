@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on **PR 125 head `9ab9afa`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on **`a8dc083`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1704,6 +1704,16 @@ the scripts quietly stop being the source of truth.
    on 11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()`
    pre-check and no actionable error on an older project, though
    `mxcli syntax agents` states the requirement as Mendix 11.9+.
+22. **A skill pack cannot carry Java source** (§54) — `Installs` has only
+   `widgets` and `mdl`, pack files land inside `.claude/skills/<pack>/`, and
+   MDL's `CREATE JAVA ACTION … AS $$ … $$` takes a method body with no
+   standalone-class form. So `mendix-odata-pushdown` — the third pack the skill-
+   packs proposal asks for by name — can ship its MDL and its prose but not the
+   882 lines of parser its four action bodies delegate to, and the reader still
+   copies a directory by hand. An `installs.java` target writing into
+   `javasource/<module_path>/`, with the placeholder/whitelist/drift discipline
+   the widget path already has, closes it. Pack drafted and validated in
+   `.claude/skills/packs/mendix-odata-pushdown/`.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -3835,3 +3845,122 @@ chaining tool calls is another question, and the tier is rate-limited.
   11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()` gate
   and no actionable error on an older project — even though `mxcli syntax agents`
   documents the requirement as "AgentEditorCommons, Mendix 11.9+".
+
+## 54. The pushdown module as a skill pack: everything fits except the Java
+
+*Investigated 2026-08-16 on mxcli `a8dc083` (main). The question was whether the
+`ODataPushdown` module — four Java actions and 882 lines of parser — can become
+one of the new skill packs. It can, and mxcli's own proposal already asks for it
+by name. One manifest target is missing and it is the one this module needs.*
+
+### The proposal names this module
+
+`docs/11-proposals/PROPOSAL_skill_packs.md` (status `partial`) lists the two
+packs it was built for, then:
+
+> A third is wanted (`mendix-odata-pushdown`, Java actions that push `$filter` /
+> `$orderby` / `$top` / `$skip` into database-connector SQL) and there will be
+> more.
+
+The module was already built to travel — "nothing in it is Formula 1, or DuckDB,
+or the app it was extracted from" — and that holds up under grep: the only
+`duckdb` mentions are as one of five dialects, and `Formula 1` appears once, in
+the sentence saying nothing in it is Formula 1. The pieces map onto the pack
+layout with no rework:
+
+| Module | Pack slot |
+|---|---|
+| `module.mdl`, 272 lines | `mdl/` + `installs.mdl` — the `mendix-bulk-oql-dml` shape exactly |
+| `README.md` | `SKILL.md` + `references/*.md` |
+| the four Java actions | already `CREATE JAVA ACTION … AS $$ … $$`, which mxcli writes out itself |
+
+### The one thing that does not fit
+
+Every action body is a two-line delegation:
+
+```
+AS $$
+return odatapushdown.QueryObject.parse(getContext(), Uri, Columns, Dialect, …);
+$$;
+```
+
+The work is in three helper classes — `ODataQueryParser` (633 lines),
+`RoutineCall` (185), `QueryObject` (64) — that MDL cannot author and a pack
+cannot deliver. Three independent mechanisms say so, and they were checked
+separately rather than inferred from one another:
+
+1. **`Installs` has exactly two fields.** `cmd/mxcli/skillpack/skillpack.go`:
+   `Widgets []string`, `MDL []string`.
+2. **Pack files land inside the skills directory.** `Install` writes to
+   `destDir/<pack-name>/`. Verified rather than read: installing
+   `mendix-bulk-oql-dml` into an empty directory put all five files under
+   `.claude/skills/mendix-bulk-oql-dml/` and nothing outside it.
+3. **MDL has no standalone-class form.** `createJavaActionStatement` in
+   `MDLMicroflow.g4` accepts `AS DOLLAR_STRING` and nothing else — a *method
+   body*, with no class declaration and no imports clause.
+
+So a pack today ships the prose and the MDL, and the reader still copies a
+directory by hand — which is **exactly what this module's README already tells
+them to do**. A pack that reproduces the manual step is not an improvement over
+the README, and that is the sharpest statement of the gap.
+
+### The fix is one target, and the discipline already exists
+
+```yaml
+installs:
+  java:
+    - java          # -> javasource/<module_path>/, preserving actions/
+```
+
+What makes this more than a file copy is that it needs the *same* treatment the
+widget path already has, for the same reason. A widget id is its identity, so
+the source ships with `{{NAMESPACE}}` and `skill add` substitutes the
+destination project's. **A Java `package` declaration is the exact analogue** —
+two projects whose classes share a package are two projects claiming the same
+class — so all three of the proposal's properties transfer unchanged: placeholders
+rather than a real namespace (an unsubstituted token fails to compile, loudly,
+where a harvested name ships silently), a whitelist rather than a scan, and drift
+in either direction refusing the install.
+
+One branch worth deciding rather than defaulting into: `java/actions/` is worth
+shipping for review, but on `--apply` mxcli generates those four classes from the
+MDL, so writing both means overwriting the pack's copy immediately.
+
+Both alternatives are worse. **Inlining** the helpers into the action bodies
+means duplicating 882 lines four times, because Java local classes cannot be
+shared between methods; the one-fat-action-plus-microflow-wrappers variant avoids
+the duplication by distorting the public API to fit the packaging. **Shipping the
+`.java` as inert assets** with a copy step in `SKILL.md` works today and is what
+the drafted pack does meanwhile, but gets none of the three things that make a
+pack better than a tarball: no pruning when v2 drops a file, no digest fence
+refusing a locally-edited one, no namespace rewrite.
+
+### The pack, drafted and validated
+
+`.claude/skills/packs/mendix-odata-pushdown/` — 13 files, laid out to mirror the
+mxcli repo's own `packs/` directory so it lifts across unchanged. `pack.yaml`
+declares `installs.java` as a *proposed* target, commented as not-yet-implemented
+rather than quietly assumed to work.
+
+Three checks, because a pack that has not been round-tripped is a pack that has
+not been tested:
+
+- **The MDL round-trips exactly.** Substituting `{{MODULE}}` / `{{MODULE_PATH}}`
+  back to this project's names reproduces `model/odatapushdown/module.mdl`
+  byte-for-byte apart from the install block, which was rewritten on purpose.
+- **All seven `.java` files round-trip byte-identical.**
+- **`mxcli check` passes** on the substituted MDL — 8 statements, syntax OK.
+- The manifest's own invariants hold both ways: every file in `rewrite.files`
+  exists and carries a token, and every tokenised file the pack ships is
+  declared.
+
+### One more thing, which the proposal already flags
+
+> A pack whose own verifier is not run in CI is a pack that rots.
+
+This pack wants a `verify:` more than the other two. It is 882 lines of parser
+across five dialects, and it has a genuinely cheap test surface:
+`ODataQueryParser` takes no Mendix types in its signature, so it runs under
+`jshell` or plain JUnit with no runtime around it — which is how the grammar was
+established term by term in §45. A dialect regression there is invisible to
+`mx check` and to every test that needs an app.
