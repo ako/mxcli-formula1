@@ -706,32 +706,14 @@ create or replace page Formula1Frontend.Driver_Career
           dynamictext careerSub (content: 'points and championship finish',
                                  class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartCareer (
-          advancedOptions: true,
-          showLegend: false,
-          gridLines: 'horizontal',
-          customLayout: '{"margin":{"l":46,"r":40,"t":8,"b":34},"yaxis2":{"overlaying":"y","side":"right","autorange":"reversed","showgrid":false,"zeroline":false,"dtick":1}}',
-          customConfigurations: '{"displayModeBar":false}'
-        ) {
-          series sCareerPoints (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
-            StaticXAttribute: year,
-            StaticYAttribute: points,
-            StaticName: 'Points',
-            AggregationType: 'none',
-            StaticBarColor: '''#3671C6''',
-            CustomSeriesOptions: '{"marker":{"cornerradius":2}}'
-          )
-          series sCareerFinish (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
-            StaticXAttribute: year,
-            StaticYAttribute: standingOrder,
-            StaticName: 'Championship finish',
-            AggregationType: 'none',
-            CustomSeriesOptions: '{"type":"scatter","mode":"lines+markers","yaxis":"y2","line":{"color":"#A78BFA","width":2},"marker":{"color":"#A78BFA","size":6}}'
-          )
+        dataview dvChartCareer (datasource: MICROFLOW Formula1Frontend.DSJ_Career(Driver: $Driver)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCareer (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":250,"resolve":{"scale":{"y":"independent"}},"layer":[{"transform":[{"filter":"datum.s === ''Points''"}],"mark":{"type":"bar","color":"#3671C6","cornerRadiusEnd":2},"encoding":{"x":{"field":"year","type":"ordinal","title":null},"y":{"field":"v","type":"quantitative","title":"Points","axis":{"format":"~s"},"scale":{"zero":false,"nice":false}},"tooltip":[{"field":"year","title":"Season"},{"field":"v","title":"Points"}]}},{"transform":[{"filter":"datum.s === ''Finish''"}],"mark":{"type":"line","color":"#A78BFA","strokeWidth":2,"point":{"filled":true,"color":"#A78BFA","size":40}},"encoding":{"x":{"field":"year","type":"ordinal"},"y":{"field":"v","type":"quantitative","title":"Finish","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"year","title":"Season"},{"field":"v","title":"Championship finish"}]}}]}')
         }
       }
 
@@ -746,24 +728,14 @@ create or replace page Formula1Frontend.Driver_Career
          * trace mode is markers only. The dotted diagonal is a layout shape, so
          * "gained places" is everything under it.
          */
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartQualRace (
-          enableAdvancedOptions: true,
-          showLegend: false,
-          gridLines: 'both',
-          xAxisLabel: 'Qualifying',
-          yAxisLabel: 'Race',
-          customLayout: '{"margin":{"l":48,"r":16,"t":8,"b":54},"yaxis":{"autorange":"reversed","zeroline":false},"xaxis":{"zeroline":false},"shapes":[{"type":"line","xref":"x","yref":"y","x0":1,"y0":1,"x1":22,"y1":22,"line":{"color":"#6E7681","width":1,"dash":"dot"}}]}',
-          customConfigurations: '{"displayModeBar":false}'
-        ) {
-          line lQualRace (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver),
-            StaticXAttribute: qualifyingPosition,
-            StaticYAttribute: finishPosition,
-            StaticName: 'Round',
-            LineStyle: 'custom',
-            CustomSeriesOptions: '{"mode":"markers","marker":{"color":"#3671C6","size":9,"opacity":0.85}}'
-          )
+        dataview dvChartQualRace (datasource: MICROFLOW Formula1Frontend.DSJ_QualRace(Driver: $Driver)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartQualRace (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":250,"layer":[{"mark":{"type":"line","color":"#6E7681","strokeDash":[3,3],"strokeWidth":1},"encoding":{"x":{"field":"q","type":"quantitative","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"q","type":"quantitative","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}}}},{"mark":{"type":"point","filled":true,"size":70,"color":"#3671C6"},"encoding":{"x":{"field":"q","type":"quantitative","title":"Qualifying","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"r","type":"quantitative","title":"Race","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"race","title":"Race"},{"field":"q","title":"Qualified"},{"field":"r","title":"Finished"}]}}]}')
         }
       }
     }
@@ -978,63 +950,14 @@ create or replace page Formula1Frontend.Season_Summary
         dynamictext chartSub (content: 'cumulative, top five of the final standings',
                               class: 'panel-sub')
       }
-      pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartProgress (
-        enableAdvancedOptions: true,
-        showLegend: false,
-        gridLines: 'horizontal',
-        customLayout: '{"margin":{"l":46,"r":14,"t":8,"b":38},"xaxis":{"title":{"text":"Round"},"zeroline":false},"yaxis":{"zeroline":false}}',
-        customConfigurations: '{"displayModeBar":false}'
-      ) {
-        line lineP1 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
-          StaticXAttribute: round,
-          StaticYAttribute: d1Points,
-          StaticName: '1st',
-          Interpolation: 'linear',
-          StaticLineColor: '''#58A6FF''',
-          StaticTooltipHoverText: '1st · {d1Name} — {d1Points} pts after round {round}'
-        )
-        line lineP2 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
-          StaticXAttribute: round,
-          StaticYAttribute: d2Points,
-          StaticName: '2nd',
-          Interpolation: 'linear',
-          StaticLineColor: '''#FF8000''',
-          StaticTooltipHoverText: '2nd · {d2Name} — {d2Points} pts after round {round}'
-        )
-        line lineP3 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
-          StaticXAttribute: round,
-          StaticYAttribute: d3Points,
-          StaticName: '3rd',
-          Interpolation: 'linear',
-          StaticLineColor: '''#3FB950''',
-          StaticTooltipHoverText: '3rd · {d3Name} — {d3Points} pts after round {round}'
-        )
-        line lineP4 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
-          StaticXAttribute: round,
-          StaticYAttribute: d4Points,
-          StaticName: '4th',
-          Interpolation: 'linear',
-          StaticLineColor: '''#F85149''',
-          StaticTooltipHoverText: '4th · {d4Name} — {d4Points} pts after round {round}'
-        )
-        line lineP5 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_SeasonProgress(Season: $Season),
-          StaticXAttribute: round,
-          StaticYAttribute: d5Points,
-          StaticName: '5th',
-          Interpolation: 'linear',
-          StaticLineColor: '''#A78BFA''',
-          StaticTooltipHoverText: '5th · {d5Name} — {d5Points} pts after round {round}'
-        )
+      dataview dvChartProgress (datasource: MICROFLOW Formula1Frontend.DSJ_SeasonProgress(Season: $Season)) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartProgress (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"line","strokeWidth":2,"interpolate":"monotone"},"encoding":{"x":{"field":"round","type":"quantitative","title":"Round","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pts","type":"quantitative","title":"Points","axis":{"format":"~s"}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"range":["#58A6FF","#FF8000","#3FB950","#F778BA","#D29922"]},"legend":{"orient":"top","columns":3,"offset":4}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"round","title":"Round"},{"field":"pts","title":"Points"}]}}')
       }
       /*
        * Who the five lines are.
@@ -1078,31 +1001,14 @@ create or replace page Formula1Frontend.Season_Summary
                                       class: 'panel-title')
           dynamictext consChartSub (content: 'final points', class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chartCons (
-          enableAdvancedOptions: true,
-          showLegend: false,
-          gridLines: 'vertical',
-          customLayout: '{"margin":{"l":112,"r":26,"t":8,"b":32},"yaxis":{"autorange":"reversed","type":"category"},"xaxis":{"zeroline":false}}',
-          customConfigurations: '{"displayModeBar":false}'
-        ) {
-          /*
-           * A dynamic series, not a static one, and only because of the
-           * colour: a static series' bar colour is one expression for the
-           * whole series, so it resolves against the first row and every bar
-           * comes out McLaren orange. Grouping by the team makes each team its
-           * own trace, and a trace has its own colour.
-           */
-          series sCons (
-            DataSet: 'dynamic',
-            DataSource: microflow Formula1Frontend.DS_SeasonTeamRows(Season: $Season),
-            GroupByAttribute: ConstructorName,
-            DynamicXAttribute: Points,
-            DynamicYAttribute: ConstructorName,
-            DynamicName: '{ConstructorName}',
-            AggregationType: 'none',
-            DynamicBarColor: '$currentObject/Colour',
-            DynamicTooltipHoverText: '{ConstructorName} — {Points} pts'
-          )
+        dataview dvChartCons (datasource: MICROFLOW Formula1Frontend.DSJ_SeasonTeams(Season: $Season)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCons (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":300,"mark":{"type":"bar","cornerRadiusEnd":2},"encoding":{"y":{"field":"team","type":"nominal","sort":"-x","title":null},"x":{"field":"pts","type":"quantitative","title":"Points","axis":{"format":"d","tickMinStep":1}},"color":{"field":"colour","type":"nominal","scale":null,"legend":null},"tooltip":[{"field":"team","title":"Constructor"},{"field":"pts","title":"Points"}]}}')
         }
       }
     }
@@ -1319,32 +1225,14 @@ create or replace page Formula1Frontend.Constructor_Detail
           dynamictext pprSub (content: 'stacked · the season most recently raced',
                               class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartPpr (
-          advancedOptions: true,
-          showLegend: true,
-          gridLines: 'horizontal',
-          barmode: 'stack',
-          customLayout: '{"margin":{"l":42,"r":12,"t":24,"b":38},"legend":{"orientation":"h","y":1.16,"x":0,"font":{"size":11}},"xaxis":{"type":"category"}}',
-          customConfigurations: '{"displayModeBar":false}'
-        ) {
-          series sPprOne (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
-            StaticXAttribute: code,
-            StaticYAttribute: driver1Points,
-            StaticName: 'Seat 1',
-            AggregationType: 'none',
-            StaticBarColor: '''#F97316'''
-          )
-          series sPprTwo (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
-            StaticXAttribute: code,
-            StaticYAttribute: driver2Points,
-            StaticName: 'Seat 2',
-            AggregationType: 'none',
-            StaticBarColor: '''#8A4B12'''
-          )
+        dataview dvChartPpr (datasource: MICROFLOW Formula1Frontend.DSJ_TeamPoints(Constructor: $Constructor)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPpr (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":250,"mark":{"type":"bar"},"encoding":{"x":{"field":"code","type":"nominal","title":null,"sort":{"field":"round","op":"min"}},"y":{"field":"pts","type":"quantitative","title":"Points","axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"range":["#F97316","#8A4B12","#D97706","#7C2D12"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Round"},{"field":"driver","title":"Driver"},{"field":"pts","title":"Points"}]}}')
         }
       }
 
@@ -1354,22 +1242,14 @@ create or replace page Formula1Frontend.Constructor_Detail
                                 class: 'panel-title')
           dynamictext posSub (content: 'after every round', class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartPos (
-          enableAdvancedOptions: true,
-          showLegend: false,
-          gridLines: 'horizontal',
-          customLayout: '{"margin":{"l":42,"r":12,"t":8,"b":38},"yaxis":{"autorange":"reversed","dtick":1,"zeroline":false},"xaxis":{"type":"category"}}',
-          customConfigurations: '{"displayModeBar":false}'
-        ) {
-          line lPos (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_TeamSeason(Constructor: $Constructor),
-            StaticXAttribute: code,
-            StaticYAttribute: standingPosition,
-            StaticName: 'Position',
-            LineStyle: 'custom',
-            CustomSeriesOptions: '{"mode":"lines+markers","line":{"color":"#F97316","width":2,"shape":"hv"},"marker":{"color":"#F97316","size":5}}'
-          )
+        dataview dvChartPos (datasource: MICROFLOW Formula1Frontend.DSJ_TeamPosition(Constructor: $Constructor)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPos (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":200,"mark":{"type":"line","color":"#3FB950","strokeWidth":2,"point":{"filled":true,"color":"#3FB950","size":36}},"encoding":{"x":{"field":"code","type":"nominal","title":null,"sort":{"field":"round","op":"min"}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false,"padding":12},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"race","title":"Race"},{"field":"pos","title":"Championship position"}]}}')
         }
       }
     }
@@ -1498,14 +1378,14 @@ create or replace page Formula1Frontend.Constructor_Detail
           dynamictext dnfChartSub (content: 'retirements by recorded cause',
                                    class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartDnf {
-          series dnfSeries (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_Retirements(Constructor: $Constructor),
-            StaticXAttribute: reasonRetired,
-            StaticYAttribute: retirements,
-            StaticName: 'Retirements'
-          )
+        dataview dvChartDnf (datasource: MICROFLOW Formula1Frontend.DSJ_Retirements(Constructor: $Constructor)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartDnf (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":{"step":19},"mark":{"type":"bar","color":"#F85149","cornerRadiusEnd":2},"encoding":{"y":{"field":"reason","type":"nominal","sort":"-x","title":null},"x":{"field":"n","type":"quantitative","title":"Retirements","axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"reason","title":"Reason"},{"field":"n","title":"Retirements"},{"field":"share","title":"Share of entries %"}]},"transform":[{"window":[{"op":"rank","as":"rk"}],"sort":[{"field":"n","order":"descending"}]},{"filter":"datum.rk <= 12"}],"width":"container"}')
         }
       }
 

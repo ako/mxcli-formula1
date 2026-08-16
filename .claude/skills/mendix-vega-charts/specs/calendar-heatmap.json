@@ -1,0 +1,24 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "config": {"view": {"stroke": null}, "axis": {"domain": false, "tickSize": 0}},
+  "transform": [
+    {"calculate": "toDate(datum.d)", "as": "date"},
+    {"calculate": "week(datum.date)", "as": "wk"},
+    {"calculate": "day(datum.date)", "as": "dow"}
+  ],
+  "mark": {"type": "rect", "cornerRadius": 1, "width": 13, "height": 13},
+  "encoding": {
+    "x": {"field": "wk", "type": "ordinal", "title": null, "axis": null},
+    "y": {"field": "dow", "type": "ordinal", "title": null,
+          "axis": {"labelExpr": "['S','M','T','W','T','F','S'][datum.value]"}},
+    "color": {"field": "v", "type": "quantitative", "aggregate": "sum",
+              "title": null, "scale": {"scheme": "greens"},
+              "legend": {"format": ",.0f"}},
+    "tooltip": [
+      {"field": "date", "type": "temporal", "title": "Day", "format": "%e %b %Y"},
+      {"field": "v", "type": "quantitative", "aggregate": "sum", "title": "Spend", "format": ",.2f"}
+    ]
+  }
+}

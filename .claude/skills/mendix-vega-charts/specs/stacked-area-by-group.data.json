@@ -1,0 +1,842 @@
+[
+{
+"t": "2026-01-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-01-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-01-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-01-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-01-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-01-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-01-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-01-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-01-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-01-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-02-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-02-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-02-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-02-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-02-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-02-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-02-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-02-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-02-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-02-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-03-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-03-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-03-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-03-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-03-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-03-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-03-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-03-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-03-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-03-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-04-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-04-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-04-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-04-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-04-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-04-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-04-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-04-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-04-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-04-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-05-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-05-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-05-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-05-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-05-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-05-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-05-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-05-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-05-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-05-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-06-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-06-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-06-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-06-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-06-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-06-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-06-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-06-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-06-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-06-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-07-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-07-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-07-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-07-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-07-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-07-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-07-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-07-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-07-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-07-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-08-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-08-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-08-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-08-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-08-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-08-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-08-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-08-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-08-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-08-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-09-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-09-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-09-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-09-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-09-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-09-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-09-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 435
+},
+{
+"t": "2026-09-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 410
+},
+{
+"t": "2026-09-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 325
+},
+{
+"t": "2026-09-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 300
+},
+{
+"t": "2026-10-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-10-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-10-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-10-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-10-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-10-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-10-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 475
+},
+{
+"t": "2026-10-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 450
+},
+{
+"t": "2026-10-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 365
+},
+{
+"t": "2026-10-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 340
+},
+{
+"t": "2026-11-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-11-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-11-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-11-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-11-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-11-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-11-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 515
+},
+{
+"t": "2026-11-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 490
+},
+{
+"t": "2026-11-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 405
+},
+{
+"t": "2026-11-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 380
+},
+{
+"t": "2026-12-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-12-01",
+"grp": "Housing",
+"cat": "Rent",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-12-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-12-01",
+"grp": "Housing",
+"cat": "Utilities",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-12-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-12-01",
+"grp": "Daily living",
+"cat": "Groceries",
+"acc": "Revolut",
+"v": 420
+},
+{
+"t": "2026-12-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "ING",
+"v": 395
+},
+{
+"t": "2026-12-01",
+"grp": "Daily living",
+"cat": "Transport",
+"acc": "Revolut",
+"v": 370
+},
+{
+"t": "2026-12-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "ING",
+"v": 445
+},
+{
+"t": "2026-12-01",
+"grp": "Lifestyle",
+"cat": "Shopping",
+"acc": "Revolut",
+"v": 420
+}
+]

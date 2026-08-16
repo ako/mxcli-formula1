@@ -1,0 +1,32 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "width": "container",
+  "height": 220,
+  "config": {"view": {"stroke": null}},
+  "layer": [
+    {
+      "mark": {"type": "line", "color": "#1B4D4B", "strokeWidth": 1.5, "interpolate": "monotone"},
+      "encoding": {"y": {"field": "v", "type": "quantitative", "aggregate": "sum",
+                         "title": null, "axis": {"format": ",.0f", "tickCount": 4}}}
+    },
+    {
+      "description": "Endpoint dot. A sparkline-style emphasis on the latest value.",
+      "transform": [
+        {"joinaggregate": [{"op": "max", "field": "t", "as": "tMax"}]},
+        {"filter": "datum.t === datum.tMax"}
+      ],
+      "mark": {"type": "point", "color": "#1B4D4B", "size": 30, "filled": true},
+      "encoding": {"y": {"field": "v", "type": "quantitative", "aggregate": "sum"}}
+    }
+  ],
+  "encoding": {
+    "x": {"field": "t", "type": "temporal", "title": null,
+          "axis": {"format": "%b %y", "tickCount": 8, "grid": false}},
+    "tooltip": [
+      {"field": "t", "type": "temporal", "title": "Month", "format": "%b %Y"},
+      {"field": "v", "type": "quantitative", "aggregate": "sum", "title": "Total", "format": ",.2f"}
+    ]
+  }
+}

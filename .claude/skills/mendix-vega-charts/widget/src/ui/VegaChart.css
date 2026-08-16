@@ -1,0 +1,36 @@
+.vega-chart {
+    /* A chart wired to onClick should look clickable. */
+
+    width: 100%;
+}
+
+.vega-chart .vega-embed {
+    width: 100%;
+}
+
+/* Vega sets its own font on text marks; the app's type scale should win. */
+.vega-chart text {
+    font-family: inherit;
+}
+
+.vega-chart-error {
+    padding: 12px 14px;
+    font-family: var(--mxt-font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #a8321e;
+    background: rgba(168, 50, 30, 0.06);
+    border: 1px solid rgba(168, 50, 30, 0.25);
+    border-radius: 2px;
+    white-space: pre-wrap;
+}
+
+/* Marks only — the background and axes are not selections, so the cursor
+   should not promise that they are. */
+.vega-chart-clickable .mark-symbol path,
+.vega-chart-clickable .mark-rect path,
+.vega-chart-clickable .mark-arc path,
+.vega-chart-clickable .mark-area path,
+.vega-chart-clickable .mark-rule path {
+    cursor: pointer;
+}

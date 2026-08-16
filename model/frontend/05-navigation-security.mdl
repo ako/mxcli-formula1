@@ -105,6 +105,23 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Fronte
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;
 
+/*
+ * Vega charts. Each of these wraps one of the DS_ microflows above and returns
+ * the same facts as a JSON string, so the grants come in pairs — the reader
+ * still needs the underlying resource.
+ */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.Chart (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_Career TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_QualRace TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonProgress TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonTeams TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TeamPoints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TeamPosition TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_Retirements TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendShape TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LapChart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendPace TO Formula1Frontend.Enthusiast;
+
 
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveSession TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveOrder TO Formula1Frontend.Enthusiast;

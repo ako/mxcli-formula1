@@ -1,0 +1,39 @@
+# Skill pack manifest. See docs/11-proposals/PROPOSAL_skill_packs.md.
+name: mendix-vega-charts
+version: 1.0.0
+description: >-
+  Vega-Lite charting through a pluggable widget that takes the specification and
+  the data as separate properties, so the model emits rows and never assembles a
+  chart payload. Seven working spec templates with sample data, a headless spec
+  checker, and a catalogue of the failure modes that cost real time.
+
+# vega-embed needs a browser the Mendix 10.18+ client provides. The widget is
+# built with @mendix/pluggable-widgets-tools 11.x; older projects need the tools
+# version matched to their own major, which SKILL.md spells out.
+min_mendix_version: 10.18.0
+
+# The widget id carries whoever built it first, so the source ships with the
+# namespace as a placeholder and `mxcli skill add` substitutes the destination
+# project's. Only these files are touched — the specs and the built bundles are
+# left exactly as they are.
+#
+# Tokens: {{NAMESPACE}}, {{NAMESPACE_PATH}}, {{PROJECT_PATH}}.
+rewrite:
+  files:
+    - widget/package.json
+    - widget/src/package.xml
+    - widget/src/VegaChart.xml
+
+installs:
+  # The widget is shipped as SOURCE, not as a built .mpk. Two reasons: the built
+  # package is 3.1 MB of bundled Vega, which has no business in a source repo or
+  # in the mxcli binary; and the namespace has to be right BEFORE the build, so
+  # shipping a prebuilt package would mean rewriting paths inside a zip and
+  # hoping — where rewriting source is the path the ledger actually verified end
+  # to end. `npm run build` in the installed widget/ directory produces the .mpk.
+  widgets:
+    - widget
+
+verify: scripts/check-spec.mjs
+
+source: https://github.com/ako/mxcli-ledger/tree/main/.claude/skills/mendix-vega-charts

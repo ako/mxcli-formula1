@@ -177,87 +177,14 @@ create or replace page Formula1Frontend.Race_Weekend
           dynamictext shapeSub (content: 'FP1 → FP2 → FP3 → Qualifying → Race, top 10',
                                 class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartShape {
-          line shape1 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s1value,
-            StaticName: 'P1',
-            Interpolation: 'linear'
-          )
-          line shape2 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s2value,
-            StaticName: 'P2',
-            Interpolation: 'linear'
-          )
-          line shape3 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s3value,
-            StaticName: 'P3',
-            Interpolation: 'linear'
-          )
-          line shape4 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s4value,
-            StaticName: 'P4',
-            Interpolation: 'linear'
-          )
-          line shape5 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s5value,
-            StaticName: 'P5',
-            Interpolation: 'linear'
-          )
-          line shape6 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s6value,
-            StaticName: 'P6',
-            Interpolation: 'linear'
-          )
-          line shape7 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s7value,
-            StaticName: 'P7',
-            Interpolation: 'linear'
-          )
-          line shape8 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s8value,
-            StaticName: 'P8',
-            Interpolation: 'linear'
-          )
-          line shape9 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s9value,
-            StaticName: 'P9',
-            Interpolation: 'linear'
-          )
-          line shape10 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s10value,
-            StaticName: 'P10',
-            Interpolation: 'linear'
-          )
+        dataview dvChartShape (datasource: MICROFLOW Formula1Frontend.DSJ_WeekendShape(Race: $Race)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartShape (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"line","strokeWidth":2,"point":{"filled":true,"size":40}},"encoding":{"x":{"field":"session","type":"nominal","title":null,"sort":{"field":"i","op":"min"}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"tableau10"},"legend":{"orient":"right","symbolLimit":10}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"session","title":"Session"},{"field":"pos","title":"Position"}]}}')
         }
       }
 
@@ -267,87 +194,14 @@ create or replace page Formula1Frontend.Race_Weekend
           dynamictext lapSub (content: 'lap-by-lap traces · 2024 only',
                               class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartLaps {
-          line lap1 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s1value,
-            StaticName: 'P1',
-            Interpolation: 'linear'
-          )
-          line lap2 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s2value,
-            StaticName: 'P2',
-            Interpolation: 'linear'
-          )
-          line lap3 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s3value,
-            StaticName: 'P3',
-            Interpolation: 'linear'
-          )
-          line lap4 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s4value,
-            StaticName: 'P4',
-            Interpolation: 'linear'
-          )
-          line lap5 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s5value,
-            StaticName: 'P5',
-            Interpolation: 'linear'
-          )
-          line lap6 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s6value,
-            StaticName: 'P6',
-            Interpolation: 'linear'
-          )
-          line lap7 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s7value,
-            StaticName: 'P7',
-            Interpolation: 'linear'
-          )
-          line lap8 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s8value,
-            StaticName: 'P8',
-            Interpolation: 'linear'
-          )
-          line lap9 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s9value,
-            StaticName: 'P9',
-            Interpolation: 'linear'
-          )
-          line lap10 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s10value,
-            StaticName: 'P10',
-            Interpolation: 'linear'
-          )
+        dataview dvChartLaps (datasource: MICROFLOW Formula1Frontend.DSJ_LapChart(Race: $Race)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartLaps (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":300,"mark":{"type":"line","strokeWidth":1.5,"interpolate":"step-after"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"tableau10"},"legend":{"orient":"right","symbolLimit":10}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
         }
         container lapLegend (class: 'legend') {
           dynamictext lapCredit (
@@ -363,42 +217,14 @@ create or replace page Formula1Frontend.Race_Weekend
         dynamictext paceSub (content: 'gap to that session''s best, in seconds',
                              class: 'panel-sub')
       }
-      pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartPace {
-        series paceFp1 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp1Gap,
-          StaticName: 'FP1'
-        )
-        series paceFp2 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp2Gap,
-          StaticName: 'FP2'
-        )
-        series paceFp3 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp3Gap,
-          StaticName: 'FP3'
-        )
-        series paceQual (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: qualGap,
-          StaticName: 'Qualifying'
-        )
-        series paceLap (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: bestLapGap,
-          StaticName: 'Best race lap'
-        )
+      dataview dvChartPace (datasource: MICROFLOW Formula1Frontend.DSJ_WeekendPace(Race: $Race)) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPace (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"bar"},"encoding":{"x":{"field":"drv","type":"nominal","title":null,"sort":null},"y":{"field":"gap","type":"quantitative","title":"Gap to best (s)","axis":{"format":".2f"}},"xOffset":{"field":"session","type":"nominal"},"color":{"field":"session","type":"nominal","title":null,"scale":{"range":["#58A6FF","#3FB950","#D29922","#F778BA","#FF8000"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"drv","title":"Driver"},{"field":"session","title":"Session"},{"field":"gap","title":"Gap (s)"}]}}')
       }
     }
 

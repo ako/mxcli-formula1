@@ -1,0 +1,66 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "config": {"view": {"stroke": null}, "concat": {"spacing": 14}, "facet": {"spacing": 3}},
+  "hconcat": [
+    {
+      "description": "Row labels as a text mark in a panel of their own. Flush bounds does not measure a facet header, so a real header comes to rest at its own text width and the labels go ragged.",
+      "transform": [{"filter": "datum.k === 's'"}],
+      "bounds": "flush",
+      "facet": {"row": {"field": "cat", "type": "nominal", "title": null,
+                        "sort": {"op": "max", "field": "ord", "order": "descending"},
+                        "header": {"labels": false}}},
+      "spec": {
+        "width": 118, "height": 26,
+        "mark": {"type": "text", "align": "right", "fontSize": 10, "color": "#17181A"},
+        "encoding": {
+          "x": {"datum": 118, "axis": null, "scale": {"domain": [0, 118]}},
+          "text": {"field": "cat", "type": "nominal"}
+        }
+      }
+    },
+    {
+      "description": "One sparkline per row. Flush bounds on EVERY panel — a panel whose marks overflow its declared height gets taller rows than a panel of plain text beside it, and the columns drift apart.",
+      "transform": [{"filter": "datum.k === 'm'"}],
+      "bounds": "flush",
+      "facet": {"row": {"field": "cat", "type": "nominal", "title": null,
+                        "sort": {"op": "max", "field": "ord", "order": "descending"},
+                        "header": {"labels": false}}},
+      "resolve": {"scale": {"y": "independent"}},
+      "spec": {
+        "width": 300, "height": 26,
+        "transform": [
+          {"description": "Aggregate first. The model emits a row per period per account; a line mark does not aggregate, it joins them in order and draws a sawtooth. ord stays in the groupby only to keep the row sort alive.",
+           "aggregate": [{"op": "sum", "field": "v", "as": "v"}], "groupby": ["cat", "t", "ord"]}
+        ],
+        "mark": {"type": "line", "color": "#1B4D4B", "strokeWidth": 1},
+        "encoding": {
+          "x": {"field": "t", "type": "temporal", "axis": null},
+          "y": {"field": "v", "type": "quantitative", "axis": null},
+          "tooltip": [
+            {"field": "cat", "type": "nominal", "title": "Category"},
+            {"field": "t", "type": "temporal", "title": "Month", "format": "%b %Y"},
+            {"field": "v", "type": "quantitative", "aggregate": "sum", "title": "Amount", "format": ",.2f"}
+          ]
+        }
+      }
+    },
+    {
+      "description": "A numeric column, right-aligned, same row height and same sort so it lines up with the panels beside it.",
+      "transform": [{"filter": "datum.k === 's'"}],
+      "bounds": "flush",
+      "facet": {"row": {"field": "cat", "type": "nominal", "title": null,
+                        "sort": {"op": "max", "field": "ord", "order": "descending"},
+                        "header": {"labels": false}}},
+      "spec": {
+        "width": 74, "height": 26,
+        "mark": {"type": "text", "align": "right", "fontSize": 10, "color": "#17181A"},
+        "encoding": {
+          "x": {"datum": 74, "axis": null, "scale": {"domain": [0, 74]}},
+          "text": {"field": "current", "type": "quantitative", "format": ",.0f"}
+        }
+      }
+    }
+  ]
+}
