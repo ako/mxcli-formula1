@@ -1,0 +1,9 @@
+# Written by `mxcli skill add`. Records the values substituted into this
+# install so `mxcli skill upgrade` repeats them rather than re-deriving —
+# a changed widget id would orphan every page that references it.
+pack: mendix-vega-charts
+version: 1.0.0
+vars:
+    NAMESPACE: f1
+    NAMESPACE_PATH: f1
+    PROJECT_PATH: ../../../../Formula1Frontend

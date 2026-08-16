@@ -22,6 +22,37 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Four tokens the generated Console palette rounds off.
+//
+// `mxcli theme apply` produced Console v1 from the design comp, and it got the
+// palette almost exactly right: ground, surface, line, ink, brand, accent,
+// radius and row height all match the comp's literals to the digit. Four do
+// not, and each is used enough that the drift is visible:
+//
+//   comp        Console v1   used for
+//   #8B949E     #9aa6b4      muted ink — 33 `color:` declarations, the single
+//                            most-used colour in the whole design
+//   #6E7681     #6e7b8b      faint ink — captions, column headers, 17 uses
+//   #21262D     #1c2129      the alternate surface behind inset panels
+//   #12171E     #0a0d11      the rail and the header bar
+//
+// Console's values are all slightly bluer and, for the rail, much darker. They
+// are a reasonable generic palette; they are not this design. Corrected here
+// rather than in custom-variables.scss because that file's token block sits
+// inside the `mxcli:theme` fence and is regenerated — its own header says to
+// edit outside the block.
+//
+// Overriding on `:root` after the fence wins on order, and re-declares only the
+// four; everything else keeps coming from the generated palette.
+// ---------------------------------------------------------------------------
+:root {
+  --mxt-ink-muted: #8b949e;
+  --mxt-ink-faint: #6e7681;
+  --mxt-surface-alt: #21262d;
+  --mxt-rail: #12171e;
+}
+
+// ---------------------------------------------------------------------------
 // Charts.
 //
 // The line chart widget renders through Plotly, which paints its own paper: a

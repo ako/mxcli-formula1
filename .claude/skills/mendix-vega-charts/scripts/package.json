@@ -1,0 +1,13 @@
+{
+  "name": "vega-spec-check",
+  "private": true,
+  "type": "module",
+  "description": "Compile and render Vega-Lite specs headless, so a chart can be checked without a Mendix build or a browser.",
+  "scripts": {
+    "check": "node check-spec.mjs ../specs/*.json"
+  },
+  "dependencies": {
+    "vega": "6.3.1",
+    "vega-lite": "6.4.3"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "width": 126,
+  "height": 26,
+  "padding": 2,
+  "autosize": {"type": "fit", "contains": "padding"},
+  "config": {"view": {"stroke": null}},
+  "layer": [
+    {
+      "description": "The gap between the value and its reference, shaded. Filtered to periods that have a value: an area whose y is null still closes one step past the last point, which draws a block into the following period that looks like data.",
+      "transform": [{"filter": "isValid(datum.a)"}],
+      "mark": {"type": "area", "color": "#1B4D4B", "opacity": 0.08},
+      "encoding": {"y": {"field": "a", "type": "quantitative"}, "y2": {"field": "b"}}
+    },
+    {
+      "description": "The reference, as a step. A level held for a period is not a trajectory between periods, and a one-period override drawn linearly looks like a ramp.",
+      "mark": {"type": "line", "color": "#B9B1A1", "strokeWidth": 1, "interpolate": "step-after"},
+      "encoding": {"y": {"field": "b", "type": "quantitative"}}
+    },
+    {
+      "description": "The value. Nulls break the line rather than drawing it to zero.",
+      "mark": {"type": "line", "color": "#1B4D4B", "strokeWidth": 1.2},
+      "encoding": {"y": {"field": "a", "type": "quantitative"}}
+    },
+    {
+      "description": "Flagged periods, the only strong colour on the row. The flag is computed by the model, never as a > b in the spec — above the reference is good news on an income row.",
+      "transform": [{"filter": "isValid(datum.a) && datum.u === 1"}],
+      "mark": {"type": "point", "color": "#A8321E", "size": 12, "filled": true},
+      "encoding": {"y": {"field": "a", "type": "quantitative"}}
+    }
+  ],
+  "encoding": {
+    "x": {"field": "m", "type": "quantitative", "scale": {"domain": [1, 12], "nice": false}, "axis": null},
+    "y": {"axis": null, "scale": {"zero": false, "nice": false}},
+    "tooltip": [{"field": "t", "type": "nominal", "title": "Cell"}]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "width": "container",
+  "height": 320,
+  "config": {"view": {"stroke": null}},
+  "params": [
+    {"name": "brush", "select": {"type": "interval", "encodings": ["x"]}}
+  ],
+  "mark": {"type": "circle", "size": 26, "opacity": 0.55},
+  "encoding": {
+    "x": {"field": "t", "type": "temporal", "title": null, "axis": {"format": "%b %y", "grid": false}},
+    "y": {"field": "v", "type": "quantitative", "title": null,
+          "scale": {"type": "sqrt"}, "axis": {"format": ",.0f"}},
+    "color": {
+      "condition": {"param": "brush", "field": "grp", "type": "nominal", "title": null},
+      "value": "#D9D4C7"
+    },
+    "tooltip": [
+      {"field": "merchant", "type": "nominal", "title": "Merchant"},
+      {"field": "cat", "type": "nominal", "title": "Category"},
+      {"field": "t", "type": "temporal", "title": "Date", "format": "%e %b %Y"},
+      {"field": "v", "type": "quantitative", "title": "Amount", "format": ",.2f"}
+    ]
+  }
+}

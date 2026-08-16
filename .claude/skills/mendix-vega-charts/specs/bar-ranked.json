@@ -1,0 +1,18 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "width": "container",
+  "height": {"step": 22},
+  "config": {"view": {"stroke": null}, "axis": {"grid": false, "domain": false, "tickSize": 0}},
+  "mark": {"type": "bar", "cornerRadiusEnd": 1, "color": "#1B4D4B"},
+  "encoding": {
+    "y": {"field": "cat", "type": "nominal", "sort": "-x", "title": null},
+    "x": {"field": "v", "type": "quantitative", "aggregate": "sum", "title": null,
+          "axis": {"format": ",.0f"}},
+    "tooltip": [
+      {"field": "cat", "type": "nominal", "title": "Category"},
+      {"field": "v", "type": "quantitative", "aggregate": "sum", "title": "Total", "format": ",.2f"}
+    ]
+  }
+}

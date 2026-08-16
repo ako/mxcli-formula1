@@ -1,0 +1,842 @@
+[
+{
+"t": "2026-01-01",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 42.0
+},
+{
+"t": "2026-02-02",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 2029.71
+},
+{
+"t": "2026-03-03",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 261.0
+},
+{
+"t": "2026-04-04",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 50.14
+},
+{
+"t": "2026-05-05",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 69.0
+},
+{
+"t": "2026-06-06",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 1268.57
+},
+{
+"t": "2026-07-07",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 153.0
+},
+{
+"t": "2026-08-08",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 27.0
+},
+{
+"t": "2026-01-09",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 96.0
+},
+{
+"t": "2026-02-10",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 1839.43
+},
+{
+"t": "2026-03-11",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 234.0
+},
+{
+"t": "2026-04-12",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 44.36
+},
+{
+"t": "2026-05-13",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 60.0
+},
+{
+"t": "2026-06-14",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 1078.29
+},
+{
+"t": "2026-07-15",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 126.0
+},
+{
+"t": "2026-08-16",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 61.71
+},
+{
+"t": "2026-01-17",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 87.0
+},
+{
+"t": "2026-02-18",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 1649.14
+},
+{
+"t": "2026-03-19",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 207.0
+},
+{
+"t": "2026-04-20",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 38.57
+},
+{
+"t": "2026-05-21",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 51.0
+},
+{
+"t": "2026-06-22",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 888.0
+},
+{
+"t": "2026-07-23",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 288.0
+},
+{
+"t": "2026-08-24",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 55.93
+},
+{
+"t": "2026-01-25",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 78.0
+},
+{
+"t": "2026-02-26",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 1458.86
+},
+{
+"t": "2026-03-27",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 180.0
+},
+{
+"t": "2026-04-01",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 32.79
+},
+{
+"t": "2026-05-02",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 42.0
+},
+{
+"t": "2026-06-03",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 2029.71
+},
+{
+"t": "2026-07-04",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 261.0
+},
+{
+"t": "2026-08-05",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 50.14
+},
+{
+"t": "2026-01-06",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 69.0
+},
+{
+"t": "2026-02-07",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 1268.57
+},
+{
+"t": "2026-03-08",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 153.0
+},
+{
+"t": "2026-04-09",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 27.0
+},
+{
+"t": "2026-05-10",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 96.0
+},
+{
+"t": "2026-06-11",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 1839.43
+},
+{
+"t": "2026-07-12",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 234.0
+},
+{
+"t": "2026-08-13",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 44.36
+},
+{
+"t": "2026-01-14",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 60.0
+},
+{
+"t": "2026-02-15",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 1078.29
+},
+{
+"t": "2026-03-16",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 126.0
+},
+{
+"t": "2026-04-17",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 61.71
+},
+{
+"t": "2026-05-18",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 87.0
+},
+{
+"t": "2026-06-19",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 1649.14
+},
+{
+"t": "2026-07-20",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 207.0
+},
+{
+"t": "2026-08-21",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 38.57
+},
+{
+"t": "2026-01-22",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 51.0
+},
+{
+"t": "2026-02-23",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 888.0
+},
+{
+"t": "2026-03-24",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 288.0
+},
+{
+"t": "2026-04-25",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 55.93
+},
+{
+"t": "2026-05-26",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 78.0
+},
+{
+"t": "2026-06-27",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 1458.86
+},
+{
+"t": "2026-07-01",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 180.0
+},
+{
+"t": "2026-08-02",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 32.79
+},
+{
+"t": "2026-01-03",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 42.0
+},
+{
+"t": "2026-02-04",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 2029.71
+},
+{
+"t": "2026-03-05",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 261.0
+},
+{
+"t": "2026-04-06",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 50.14
+},
+{
+"t": "2026-05-07",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 69.0
+},
+{
+"t": "2026-06-08",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 1268.57
+},
+{
+"t": "2026-07-09",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 153.0
+},
+{
+"t": "2026-08-10",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 27.0
+},
+{
+"t": "2026-01-11",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 96.0
+},
+{
+"t": "2026-02-12",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 1839.43
+},
+{
+"t": "2026-03-13",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 234.0
+},
+{
+"t": "2026-04-14",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 44.36
+},
+{
+"t": "2026-05-15",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 60.0
+},
+{
+"t": "2026-06-16",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 1078.29
+},
+{
+"t": "2026-07-17",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 126.0
+},
+{
+"t": "2026-08-18",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 61.71
+},
+{
+"t": "2026-01-19",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 87.0
+},
+{
+"t": "2026-02-20",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 1649.14
+},
+{
+"t": "2026-03-21",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 207.0
+},
+{
+"t": "2026-04-22",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 38.57
+},
+{
+"t": "2026-05-23",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 51.0
+},
+{
+"t": "2026-06-24",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 888.0
+},
+{
+"t": "2026-07-25",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 288.0
+},
+{
+"t": "2026-08-26",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 55.93
+},
+{
+"t": "2026-01-27",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 78.0
+},
+{
+"t": "2026-02-01",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 1458.86
+},
+{
+"t": "2026-03-02",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 180.0
+},
+{
+"t": "2026-04-03",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 32.79
+},
+{
+"t": "2026-05-04",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 42.0
+},
+{
+"t": "2026-06-05",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 2029.71
+},
+{
+"t": "2026-07-06",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 261.0
+},
+{
+"t": "2026-08-07",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 50.14
+},
+{
+"t": "2026-01-08",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 69.0
+},
+{
+"t": "2026-02-09",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 1268.57
+},
+{
+"t": "2026-03-10",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 153.0
+},
+{
+"t": "2026-04-11",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 27.0
+},
+{
+"t": "2026-05-12",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 96.0
+},
+{
+"t": "2026-06-13",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 1839.43
+},
+{
+"t": "2026-07-14",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 234.0
+},
+{
+"t": "2026-08-15",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 44.36
+},
+{
+"t": "2026-01-16",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 60.0
+},
+{
+"t": "2026-02-17",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 1078.29
+},
+{
+"t": "2026-03-18",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 126.0
+},
+{
+"t": "2026-04-19",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 61.71
+},
+{
+"t": "2026-05-20",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 0",
+"v": 87.0
+},
+{
+"t": "2026-06-21",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 1",
+"v": 1649.14
+},
+{
+"t": "2026-07-22",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 2",
+"v": 207.0
+},
+{
+"t": "2026-08-23",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 3",
+"v": 38.57
+},
+{
+"t": "2026-01-24",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 4",
+"v": 51.0
+},
+{
+"t": "2026-02-25",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 0",
+"v": 888.0
+},
+{
+"t": "2026-03-26",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 1",
+"v": 288.0
+},
+{
+"t": "2026-04-27",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 2",
+"v": 55.93
+},
+{
+"t": "2026-05-01",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 3",
+"v": 78.0
+},
+{
+"t": "2026-06-02",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 4",
+"v": 1458.86
+},
+{
+"t": "2026-07-03",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 0",
+"v": 180.0
+},
+{
+"t": "2026-08-04",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 1",
+"v": 32.79
+},
+{
+"t": "2026-01-05",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 2",
+"v": 42.0
+},
+{
+"t": "2026-02-06",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 3",
+"v": 2029.71
+},
+{
+"t": "2026-03-07",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 4",
+"v": 261.0
+},
+{
+"t": "2026-04-08",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 0",
+"v": 50.14
+},
+{
+"t": "2026-05-09",
+"cat": "Groceries",
+"grp": "Daily living",
+"merchant": "Groceries shop 1",
+"v": 69.0
+},
+{
+"t": "2026-06-10",
+"cat": "Rent",
+"grp": "Housing",
+"merchant": "Rent shop 2",
+"v": 1268.57
+},
+{
+"t": "2026-07-11",
+"cat": "Shopping",
+"grp": "Lifestyle",
+"merchant": "Shopping shop 3",
+"v": 153.0
+},
+{
+"t": "2026-08-12",
+"cat": "Transport",
+"grp": "Daily living",
+"merchant": "Transport shop 4",
+"v": 27.0
+}
+]

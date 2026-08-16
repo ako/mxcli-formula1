@@ -46,6 +46,7 @@ Auto-generated. See individual files for property details, child slots, and obje
 | `PLUGGABLEWIDGET` | TOOLTIP | `com.mendix.widget.web.tooltip.Tooltip` | Tooltip | 7 |
 | `PLUGGABLEWIDGET` | TREENODE | `com.mendix.widget.web.treenode.TreeNode` | Tree node | 14 |
 | `PLUGGABLEWIDGET` | VIDEOPLAYER | `com.mendix.widget.web.videoplayer.VideoPlayer` | Video Player | 15 |
+| `PLUGGABLEWIDGET` | VEGACHART | `f1.widget.web.vegachart.VegaChart` | Vega Chart | 8 |
 
 **Usage in MDL:**
 ```sql

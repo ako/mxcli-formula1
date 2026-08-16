@@ -1,0 +1,11 @@
+{
+    "extends": "./node_modules/@mendix/pluggable-widgets-tools/configs/tsconfig.base.json",
+    "compilerOptions": {
+        // vega-embed 7 exposes its types only through package.json "exports",
+        // which the base config's node10 resolution does not read. Rollup itself
+        // resolves the package fine — this is a type-resolution fix, not a
+        // bundling one.
+        "moduleResolution": "bundler"
+    },
+    "include": ["./src", "./typings"]
+}

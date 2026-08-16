@@ -1,0 +1,28 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "data": {"name": "table"},
+  "background": null,
+  "width": "container",
+  "height": 280,
+  "config": {"view": {"stroke": null}},
+  "layer": [
+    {
+      "description": "Bands by group, detailed by category so each keeps its own band while the colour stays at group level. Thirteen hues is a puzzle; five is a legend you can hold in your head.",
+      "mark": {"type": "area", "interpolate": "linear", "opacity": 0.9},
+      "encoding": {
+        "y": {"field": "v", "type": "quantitative", "aggregate": "sum", "stack": "zero",
+              "title": null, "axis": {"format": ",.0f", "tickCount": 4}},
+        "color": {"field": "grp", "type": "nominal", "title": null,
+                  "scale": {"scheme": "tableau10"}},
+        "detail": {"field": "cat", "type": "nominal"},
+        "tooltip": [
+          {"field": "cat", "type": "nominal", "title": "Category"},
+          {"field": "t", "type": "temporal", "title": "Month", "format": "%b %Y"},
+          {"field": "v", "type": "quantitative", "aggregate": "sum", "title": "Amount", "format": ",.2f"}
+        ]
+      }
+    }
+  ],
+  "encoding": {"x": {"field": "t", "type": "temporal", "title": null,
+                     "axis": {"format": "%b %y", "grid": false}}}
+}

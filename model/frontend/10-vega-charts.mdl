@@ -1,0 +1,489 @@
+/*
+ * Vega charts: the data side.
+ * ===========================
+ *
+ * The Vega widget takes two things — a specification, authored once and
+ * committed, and a *string* holding a JSON array of rows. That split is the
+ * reason to move: the model emits a table of facts and the specification
+ * decides what the table looks like, so a chart change is a spec edit and not
+ * a microflow edit.
+ *
+ * It also fixes three things the Mendix chart widgets could not do here, all
+ * recorded in FINDINGS §51:
+ *
+ *   * a legend could not carry data, because `StaticName` is the one series
+ *     text template that is not bound to the series datasource. The resources
+ *     have carried `d1Name`…`d5Name` and `s1name`…`s10name` all along and no
+ *     chart could read them. In long form the label IS a column;
+ *   * per-bar colour needed a *dynamic* series, because `StaticBarColor` is an
+ *     expression bound to the datasource that resolves once, against the first
+ *     row;
+ *   * a wide resource cost one datasource call per series. `WeekendShape` and
+ *     `LapChart` are ten series each and were fetched ten times each; the pace
+ *     chart five. Thirty-eight datasource invocations across ten charts become
+ *     ten microflow calls, which is most of the 28× re-fetch §52 measured on
+ *     the race weekend page.
+ *
+ * Long format is what makes all three fall out: one row per (x, series, value)
+ * rather than one row per x with a column per series.
+ *
+ * Numbers are written with `formatDecimal($x, '0.##')` — a plain decimal with
+ * no grouping separator, which is the only form JSON accepts. A value that
+ * could be empty is emitted as `null` and never as `0`: a zero plots as a real
+ * measurement at the bottom of the scale, which is a lie the chart tells
+ * convincingly.
+ */
+
+create or modify non-persistent entity Formula1Frontend.Chart (
+  json: string
+);
+
+/* -------------------------------------------------------------- driver -- */
+
+/*
+ * Career: points per season, and championship finish on its own scale.
+ *
+ * Two measures that share an x and nothing else — points climb, finishing
+ * position is better when lower. They travel as one long table and the spec
+ * layers them with independent y scales, which is what the second Plotly axis
+ * used to do.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_Career (
+  $Driver: F1Live.Drivers)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Seasons = CALL MICROFLOW Formula1Frontend.DS_DriverSeasons (Driver = $Driver);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $S IN $Seasons BEGIN
+    SET $Json = $Json + $Sep
+      + '{"year":' + toString($S/year)
+      + ',"s":"Points","v":' + formatDecimal($S/points, '0.##') + '}';
+    SET $Sep = ',';
+    /*
+     * Only a season that was actually classified gets a Finish point. f1db
+     * carries an unclassified season as a sentinel standing in the high
+     * hundreds, and plotting that draws a career arc out of "no position" —
+     * the axis ran to 1,000 before this guard, which reads as a real ranking.
+     */
+    IF $S/standingOrder != empty AND $S/standingPosition != empty
+       AND $S/standingPosition != '-' AND $S/standingOrder < 100 THEN
+      SET $Json = $Json + ',{"year":' + toString($S/year)
+        + ',"s":"Finish","v":' + toString($S/standingOrder) + '}';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Qualifying against race, one point per round.
+ *
+ * The diagonal is the identity line and everything under it is places gained,
+ * so both axes are reversed — position 1 belongs at the top left. In Plotly
+ * that was a layout shape plus a reversed axis; here the rule is a spec layer
+ * and the round comes along so the tooltip can name the race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_QualRace (
+  $Driver: F1Live.Drivers)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Races = CALL MICROFLOW Formula1Frontend.DS_DriverLatestRaces (Driver = $Driver);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $R IN $Races BEGIN
+    IF $R/qualifyingPosition != empty AND $R/finishPosition != empty THEN
+      SET $Json = $Json + $Sep
+        + '{"q":' + toString($R/qualifyingPosition)
+        + ',"r":' + toString($R/finishPosition)
+        + ',"race":"' + $R/raceName + '"'
+        + ',"round":' + toString($R/round) + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/* -------------------------------------------------------------- season -- */
+
+/*
+ * Championship progression, five drivers, cumulative points by round.
+ *
+ * This is the chart FINDINGS §51 could not finish. The five names were in
+ * `d1Name`…`d5Name` the whole time and `StaticName` could not read them, so
+ * the legend said "1st".."5th" and an explicit name strip was built beside the
+ * chart to say who they were. In long form the name is the series column, so
+ * the legend and the tooltip both carry it and the strip is redundant.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_SeasonProgress (
+  $Season: F1Cached.Seasons)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $P IN $Rows BEGIN
+    IF $P/d1Name != empty AND $P/d1Points != empty THEN
+      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
+        + ',"driver":"' + $P/d1Name + '","pts":' + formatDecimal($P/d1Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $P/d2Name != empty AND $P/d2Points != empty THEN
+      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
+        + ',"driver":"' + $P/d2Name + '","pts":' + formatDecimal($P/d2Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $P/d3Name != empty AND $P/d3Points != empty THEN
+      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
+        + ',"driver":"' + $P/d3Name + '","pts":' + formatDecimal($P/d3Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $P/d4Name != empty AND $P/d4Points != empty THEN
+      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
+        + ',"driver":"' + $P/d4Name + '","pts":' + formatDecimal($P/d4Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $P/d5Name != empty AND $P/d5Points != empty THEN
+      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
+        + ',"driver":"' + $P/d5Name + '","pts":' + formatDecimal($P/d5Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Constructors' championship, one bar per team, in the team's own colour.
+ *
+ * `DS_SeasonTeamRows` already carries the colour per row — it had to, because
+ * the only way to get twelve colours out of one Mendix series was a *dynamic*
+ * series grouped by name. Here the colour is just a column and the scale reads
+ * it, so the grouping is no longer load-bearing.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_SeasonTeams (
+  $Season: F1Cached.Seasons)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonTeamRows (Season = $Season);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $T IN $Rows BEGIN
+    SET $Json = $Json + $Sep
+      + '{"team":"' + $T/ConstructorName + '"'
+      + ',"pts":' + formatDecimal($T/Points, '0.##')
+      + ',"colour":"' + $T/Colour + '"}';
+    SET $Sep = ',';
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/* --------------------------------------------------------- constructor -- */
+
+/*
+ * Points per round, split by seat, with the driver who scored them.
+ *
+ * The seats were two static series called "Seat 1" and "Seat 2" because the
+ * name could not come from the data. `driver1Name`/`driver2Name` are on every
+ * row, so the stack is now labelled with who was actually in the car — which
+ * changes mid-season more often than the old chart could admit.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_TeamPoints (
+  $Constructor: F1Cached.Constructors)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_TeamSeason (Constructor = $Constructor);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $R IN $Rows BEGIN
+    IF $R/driver1Name != empty AND $R/driver1Points != empty THEN
+      SET $Json = $Json + $Sep
+        + '{"code":"' + $R/code + '","round":' + toString($R/round)
+        + ',"driver":"' + $R/driver1Name + '","seat":"Seat 1"'
+        + ',"pts":' + formatDecimal($R/driver1Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $R/driver2Name != empty AND $R/driver2Points != empty THEN
+      SET $Json = $Json + $Sep
+        + '{"code":"' + $R/code + '","round":' + toString($R/round)
+        + ',"driver":"' + $R/driver2Name + '","seat":"Seat 2"'
+        + ',"pts":' + formatDecimal($R/driver2Points, '0.##') + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Championship position through the season. Lower is better, so the scale is
+ * reversed and the domain starts at 1 rather than 0.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_TeamPosition (
+  $Constructor: F1Cached.Constructors)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_TeamSeason (Constructor = $Constructor);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $R IN $Rows BEGIN
+    IF $R/standingPosition != empty THEN
+      SET $Json = $Json + $Sep
+        + '{"code":"' + $R/code + '","round":' + toString($R/round)
+        + ',"race":"' + $R/raceName + '"'
+        + ',"pos":' + toString($R/standingPosition) + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Why the cars stopped. One bar per reason, with the share as a tooltip figure
+ * so the bar length and the percentage cannot disagree.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_Retirements (
+  $Constructor: F1Cached.Constructors)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_Retirements (Constructor = $Constructor);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $R IN $Rows BEGIN
+    SET $Json = $Json + $Sep
+      + '{"reason":"' + $R/reasonRetired + '"'
+      + ',"n":' + toString($R/retirements)
+      + ',"share":' + formatDecimal($R/sharePercent, '0.##') + '}';
+    SET $Sep = ',';
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/* -------------------------------------------------------- race weekend -- */
+
+/*
+ * How the weekend's order changed session by session — ten drivers, five
+ * sessions.
+ *
+ * This resource was fetched **ten times** to draw one chart, once per series,
+ * and the legend said P1..P10 because the names in `s1name`…`s10name` could
+ * not reach it. One call now, and the lines are labelled with drivers.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_WeekendShape (
+  $Race: F1Fan.Calendar)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendShape (Race = $Race);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $W IN $Rows BEGIN
+    IF $W/s1name != empty AND $W/s1value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s1name
+        + '","pos":' + toString($W/s1value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s2name != empty AND $W/s2value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s2name
+        + '","pos":' + toString($W/s2value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s3name != empty AND $W/s3value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s3name
+        + '","pos":' + toString($W/s3value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s4name != empty AND $W/s4value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s4name
+        + '","pos":' + toString($W/s4value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s5name != empty AND $W/s5value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s5name
+        + '","pos":' + toString($W/s5value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s6name != empty AND $W/s6value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s6name
+        + '","pos":' + toString($W/s6value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s7name != empty AND $W/s7value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s7name
+        + '","pos":' + toString($W/s7value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s8name != empty AND $W/s8value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s8name
+        + '","pos":' + toString($W/s8value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s9name != empty AND $W/s9value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s9name
+        + '","pos":' + toString($W/s9value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $W/s10name != empty AND $W/s10value != empty THEN
+      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
+        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s10name
+        + '","pos":' + toString($W/s10value) + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * The lap chart — position by lap, ten drivers. The other resource that was
+ * fetched ten times for one picture.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_LapChart (
+  $Race: F1Fan.Calendar)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LapChart (Race = $Race);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $L IN $Rows BEGIN
+    IF $L/s1name != empty AND $L/s1value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s1name + '","pos":' + toString($L/s1value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s2name != empty AND $L/s2value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s2name + '","pos":' + toString($L/s2value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s3name != empty AND $L/s3value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s3name + '","pos":' + toString($L/s3value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s4name != empty AND $L/s4value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s4name + '","pos":' + toString($L/s4value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s5name != empty AND $L/s5value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s5name + '","pos":' + toString($L/s5value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s6name != empty AND $L/s6value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s6name + '","pos":' + toString($L/s6value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s7name != empty AND $L/s7value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s7name + '","pos":' + toString($L/s7value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s8name != empty AND $L/s8value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s8name + '","pos":' + toString($L/s8value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s9name != empty AND $L/s9value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s9name + '","pos":' + toString($L/s9value) + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $L/s10name != empty AND $L/s10value != empty THEN
+      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
+        + ',"driver":"' + $L/s10name + '","pos":' + toString($L/s10value) + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Pace across the weekend — gap to the session's best, per driver, per session.
+ *
+ * Five static series over one resource, fetched five times. The session is a
+ * column now, so it is one call and the spec decides whether the sessions sit
+ * side by side or stack.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_WeekendPace (
+  $Race: F1Fan.Calendar)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendSessions (Race = $Race);
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $S IN $Rows BEGIN
+    IF $S/fp1Gap != empty THEN
+      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
+        + '","session":"FP1","gap":' + formatDecimal($S/fp1Gap, '0.###') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $S/fp2Gap != empty THEN
+      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
+        + '","session":"FP2","gap":' + formatDecimal($S/fp2Gap, '0.###') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $S/fp3Gap != empty THEN
+      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
+        + '","session":"FP3","gap":' + formatDecimal($S/fp3Gap, '0.###') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $S/qualGap != empty THEN
+      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
+        + '","session":"Qualifying","gap":' + formatDecimal($S/qualGap, '0.###') + '}';
+      SET $Sep = ',';
+    END IF;
+    IF $S/bestLapGap != empty THEN
+      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
+        + '","session":"Best race lap","gap":' + formatDecimal($S/bestLapGap, '0.###') + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;

@@ -1,0 +1,1958 @@
+[
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 1091.53
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 1091.53
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 1321.15
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 1321.15
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 1339.66
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 1339.66
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 1130.03
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 1130.03
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 885.01
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 885.01
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 829.85
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 829.85
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 1015.28
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 1015.28
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 1270.8
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 1270.8
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 1361.5
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 1361.5
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 1203.98
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 1203.98
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 943.07
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 943.07
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 818.65
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 818.65
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 945.1
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 945.1
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 1206.18
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 1206.18
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 1361.84
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 1361.84
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 1268.98
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 1268.98
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 1012.96
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 1012.96
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 829.18
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 829.18
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 886.59
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 886.59
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 1132.42
+},
+{
+"k": "m",
+"cat": "Salary",
+"ord": 43661,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 1132.42
+},
+{
+"k": "s",
+"cat": "Salary",
+"ord": 43661,
+"current": 43661
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 357.45
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 357.45
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 362.46
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 362.46
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 305.74
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 305.74
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 239.45
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 239.45
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 224.53
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 224.53
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 274.7
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 274.7
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 343.83
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 343.83
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 368.37
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 368.37
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 325.75
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 325.75
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 255.16
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 255.16
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 221.49
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 221.49
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 255.71
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 255.71
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 326.35
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 326.35
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 368.46
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 368.46
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 343.34
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 343.34
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 274.07
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 274.07
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 224.34
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 224.34
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 239.88
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 239.88
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 306.39
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 306.39
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 362.73
+},
+{
+"k": "m",
+"cat": "Rent",
+"ord": 11813,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 362.73
+},
+{
+"k": "s",
+"cat": "Rent",
+"ord": 11813,
+"current": 11813
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 136.57
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 136.57
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 115.2
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 115.2
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 90.22
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 90.22
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 84.6
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 84.6
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 103.5
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 103.5
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 129.55
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 129.55
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 138.8
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 138.8
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 122.74
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 122.74
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 96.14
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 96.14
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 83.46
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 83.46
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 96.35
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 96.35
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 122.96
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 122.96
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 138.83
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 138.83
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 129.37
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 129.37
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 103.27
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 103.27
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 84.53
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 84.53
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 90.38
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 90.38
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 115.44
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 115.44
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 136.67
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 136.67
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 134.55
+},
+{
+"k": "m",
+"cat": "Groceries",
+"ord": 4451,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 134.55
+},
+{
+"k": "s",
+"cat": "Groceries",
+"ord": 4451,
+"current": 4451
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 66.26
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 66.26
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 51.89
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 51.89
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 48.66
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 48.66
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 59.53
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 59.53
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 74.51
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 74.51
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 79.83
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 79.83
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 70.59
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 70.59
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 55.3
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 55.3
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 48.0
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 48.0
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 55.41
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 55.41
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 70.72
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 70.72
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 79.85
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 79.85
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 74.4
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 74.4
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 59.39
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 59.39
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 48.62
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 48.62
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 51.98
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 51.98
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 66.4
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 66.4
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 78.61
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 78.61
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 77.39
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 77.39
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 63.86
+},
+{
+"k": "m",
+"cat": "Insurance",
+"ord": 2560,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 63.86
+},
+{
+"k": "s",
+"cat": "Insurance",
+"ord": 2560,
+"current": 2560
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 26.29
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 26.29
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 24.65
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 24.65
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 30.16
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 30.16
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 37.75
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 37.75
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 40.44
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 40.44
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 35.77
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 35.77
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 28.02
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 28.02
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 24.32
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 24.32
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 28.08
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 28.08
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 35.83
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 35.83
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 40.46
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 40.46
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 37.7
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 37.7
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 30.09
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 30.09
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 24.63
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 24.63
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 26.34
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 26.34
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 33.64
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 33.64
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 39.83
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 39.83
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 39.21
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 39.21
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 32.35
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 32.35
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 25.57
+},
+{
+"k": "m",
+"cat": "Transport",
+"ord": 1297,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 25.57
+},
+{
+"k": "s",
+"cat": "Transport",
+"ord": 1297,
+"current": 1297
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-01-01",
+"acc": "ING",
+"v": 9.77
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-01-01",
+"acc": "Revolut",
+"v": 9.77
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-02-01",
+"acc": "ING",
+"v": 11.95
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-02-01",
+"acc": "Revolut",
+"v": 11.95
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-03-01",
+"acc": "ING",
+"v": 14.96
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-03-01",
+"acc": "Revolut",
+"v": 14.96
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-04-01",
+"acc": "ING",
+"v": 16.03
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-04-01",
+"acc": "Revolut",
+"v": 16.03
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-05-01",
+"acc": "ING",
+"v": 14.17
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-05-01",
+"acc": "Revolut",
+"v": 14.17
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-06-01",
+"acc": "ING",
+"v": 11.1
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-06-01",
+"acc": "Revolut",
+"v": 11.1
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-07-01",
+"acc": "ING",
+"v": 9.64
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-07-01",
+"acc": "Revolut",
+"v": 9.64
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-08-01",
+"acc": "ING",
+"v": 11.13
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-08-01",
+"acc": "Revolut",
+"v": 11.13
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-09-01",
+"acc": "ING",
+"v": 14.2
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-09-01",
+"acc": "Revolut",
+"v": 14.2
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-10-01",
+"acc": "ING",
+"v": 16.03
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-10-01",
+"acc": "Revolut",
+"v": 16.03
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-11-01",
+"acc": "ING",
+"v": 14.94
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-11-01",
+"acc": "Revolut",
+"v": 14.94
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-12-01",
+"acc": "ING",
+"v": 11.93
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2025-12-01",
+"acc": "Revolut",
+"v": 11.93
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-01-01",
+"acc": "ING",
+"v": 9.76
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-01-01",
+"acc": "Revolut",
+"v": 9.76
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-02-01",
+"acc": "ING",
+"v": 10.44
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-02-01",
+"acc": "Revolut",
+"v": 10.44
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-03-01",
+"acc": "ING",
+"v": 13.33
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-03-01",
+"acc": "Revolut",
+"v": 13.33
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-04-01",
+"acc": "ING",
+"v": 15.78
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-04-01",
+"acc": "Revolut",
+"v": 15.78
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-05-01",
+"acc": "ING",
+"v": 15.54
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-05-01",
+"acc": "Revolut",
+"v": 15.54
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-06-01",
+"acc": "ING",
+"v": 12.82
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-06-01",
+"acc": "Revolut",
+"v": 12.82
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-07-01",
+"acc": "ING",
+"v": 10.13
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-07-01",
+"acc": "Revolut",
+"v": 10.13
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-08-01",
+"acc": "ING",
+"v": 9.94
+},
+{
+"k": "m",
+"cat": "Subscriptions",
+"ord": 514,
+"t": "2026-08-01",
+"acc": "Revolut",
+"v": 9.94
+},
+{
+"k": "s",
+"cat": "Subscriptions",
+"ord": 514,
+"current": 514
+}
+]

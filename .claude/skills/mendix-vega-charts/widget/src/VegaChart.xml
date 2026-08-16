@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget id="f1.widget.web.vegachart.VegaChart" pluginWidget="true" needsEntityContext="true"
+        offlineCapable="false" supportedPlatform="Web"
+        xmlns="http://www.mendix.com/widget/1.0/"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.mendix.com/widget/1.0/ ../node_modules/mendix/custom_widget.xsd">
+    <name>Vega Chart</name>
+    <description>Renders a Vega-Lite or Vega specification. The spec is authored once and held here; only the data comes from the model.</description>
+    <icon />
+    <properties>
+        <propertyGroup caption="Chart">
+            <property key="spec" type="string" required="true" multiline="true">
+                <caption>Specification</caption>
+                <description>Vega-Lite or Vega JSON. Which language is used is decided by the spec's own $schema, so both are accepted here. Any "data" in the spec is replaced by the Data property below when that is set.</description>
+            </property>
+            <property key="chartData" type="attribute" required="false">
+                <caption>Data</caption>
+                <description>A JSON array of row objects, bound to the spec's named dataset (or to its top-level data when no name is given). Kept separate from the spec so the model never has to generate layout.</description>
+                <attributeTypes>
+                    <attributeType name="String" />
+                </attributeTypes>
+            </property>
+            <property key="datasetName" type="string" required="false" defaultValue="table">
+                <caption>Dataset name</caption>
+                <description>The name the spec uses to refer to the data (Vega-Lite: {"data": {"name": "table"}}). Leave empty to replace the spec's top-level data instead.</description>
+            </property>
+        </propertyGroup>
+        <propertyGroup caption="Interaction">
+            <property key="selection" type="attribute" required="false">
+                <caption>Selection</caption>
+                <description>Written with the clicked mark's datum as JSON. Only the datum's own scalar fields are included — Vega's internal bookkeeping is stripped, so what arrives is the row the model emitted.</description>
+                <attributeTypes>
+                    <attributeType name="String" />
+                </attributeTypes>
+            </property>
+            <property key="onClick" type="action" required="false">
+                <caption>On click</caption>
+                <description>Runs after the selection attribute is written. Leave empty to make the chart read-only; clicks are then ignored entirely rather than being written and discarded.</description>
+            </property>
+        </propertyGroup>
+        <propertyGroup caption="Appearance">
+            <property key="chartHeight" type="integer" required="true" defaultValue="360">
+                <caption>Height (px)</caption>
+                <description>Height of the chart container. Zero lets the container take the height the chart renders at, which is what a chart sized by its data needs — a facet row per category or a legend entry per series has no height the page can know in advance.</description>
+            </property>
+            <property key="renderer" type="enumeration" required="true" defaultValue="svg">
+                <caption>Renderer</caption>
+                <description>SVG keeps marks selectable and styleable by CSS; canvas is faster for very dense charts.</description>
+                <enumerationValues>
+                    <enumerationValue key="svg">SVG</enumerationValue>
+                    <enumerationValue key="canvas">Canvas</enumerationValue>
+                </enumerationValues>
+            </property>
+            <property key="showActions" type="boolean" required="true" defaultValue="false">
+                <caption>Show actions menu</caption>
+                <description>Vega's own export / view-source menu. Off by default so the chart carries no chrome of its own.</description>
+            </property>
+        </propertyGroup>
+    </properties>
+</widget>

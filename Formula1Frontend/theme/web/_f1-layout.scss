@@ -11,16 +11,61 @@
 //
 //   .pagehead / .pagehead-* a title block with an eyebrow, a subtitle and a
 //                           right-hand badge
+//   .chips-row / .chip-pick the peer selector along the top of a detail page
+//   .hero / .hero-*         the banner card: a mark, an identity, and the
+//                           headline numbers on one line
 //   .kpis / .kpi            the tile row: label above a large mono number
 //   .panel                  a surface with a header line — title, then a muted
 //                           subtitle on the same baseline
 //   .split, .split-even     the two-column arrangements (1.6fr/1fr and 1fr/1fr)
 //   .grid-dense             28px rows, uppercase 11px header, mono numerals
+//   .strip-*                the round-by-round result strip and its key
+//   .bar-cell               a value drawn against its maximum, inside a cell
 //   .abbr, .legend, .chip   the small marks
+//   .data-note              the sourcing footnote every screen ends on
 //
 // Imported from main.scss outside the mxcli:theme fence, so `mxcli theme apply`
 // leaves it alone.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The result palette.
+//
+// Five outcomes — won, podium, in the points, out of them, retired — each with
+// its own fill and its own ink, because the strip is read at 11px in a 34px
+// cell and contrast has to carry it.
+//
+// Six of the ten values are already tokens: the comp's win #E3B341 is
+// --mxt-tone-warn, its podium #2DD4BF is --mxt-brand, its "no points" #21262D
+// is --mxt-tint-neutral, its DNF ink #F85149 is --mxt-danger, and the two dark
+// inks are --mxt-ground and --mxt-ink-muted. The four below have no token to
+// resolve to, so they are named here rather than inlined at each use.
+// ---------------------------------------------------------------------------
+:root {
+  --f1-points-fill: #1b2c36;   // in the points: a teal so dark it reads as a tint
+  --f1-points-ink: #7dd3c8;
+  --f1-podium-ink: #06231f;    // on the brand fill, not the ground
+  --f1-dnf-fill: #3b1513;
+}
+
+// Unwrap a Mendix list view so the class on the container can lay the items out
+// directly. A list view renders .mx-listview > ul > li, and Atlas pads the <li>
+// by 16px through a three-part selector, so the reset has to match that depth
+// or the padding survives and every item is 32px wider than its content.
+@mixin f1-listview-reset {
+  > .mx-listview,
+  > .mx-listview > ul { margin: 0; padding: 0; }
+
+  > .mx-listview > ul > li {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+}
 
 // A shared surface. Everything on these pages is one of these.
 @mixin f1-surface {
@@ -37,6 +82,25 @@
   letter-spacing: $tracking;
   text-transform: uppercase;
   color: var(--mxt-ink-muted);
+}
+
+/* ------------------------------------------------------------- page gutter -- */
+
+// The content region has no padding of its own, so a page's first container
+// starts hard against the rail on the left and the window edge on the right.
+// Atlas leaves this to the page template; ours are built from bare containers,
+// so the gutter belongs to the region.
+//
+// Set on the placeholder rather than on the region, because the region is also
+// the scroll container — padding there scrolls the right-hand gutter away.
+.region-content > .mx-scrollcontainer-wrapper > .mx-placeholder {
+  padding: 18px 20px 28px;
+}
+
+@media (max-width: 767px) {
+  .region-content > .mx-scrollcontainer-wrapper > .mx-placeholder {
+    padding: 12px 12px 20px;
+  }
 }
 
 /* ----------------------------------------------------------------- header -- */
@@ -93,6 +157,181 @@
   white-space: nowrap;
 }
 
+/* ------------------------------------------------------------------ chips -- */
+
+// The peer selector: one small mono chip per sibling, the current one outlined
+// in the brand. It sits above the hero on every detail screen, so a page can be
+// left sideways rather than only backwards.
+//
+// The row is a list view, which renders <ul><li>, so the flex goes on the <ul>
+// and the <li> is unwrapped — same shape as the strip below. Setting it on the
+// outer container instead lays out one child, and the chips come back stacked.
+.chips-row {
+  margin-bottom: 14px;
+  @include f1-listview-reset;
+
+  > .mx-listview > ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+// Mendix renders a link button as an <a> inside a wrapper, so the paint has to
+// reach both or the chip is a bordered box with a blue link inside it.
+.chip-pick,
+.chip-pick .mx-link,
+.chip-pick a {
+  padding: 5px 9px;
+  border-radius: var(--mxt-radius);
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+  border: 1px solid var(--mxt-line);
+  color: var(--mxt-ink-muted);
+  background: transparent;
+  text-decoration: none;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+// The wrapper carries the border; the inner anchor must not draw a second one.
+.chip-pick .mx-link,
+.chip-pick a {
+  border: 0;
+  padding: 0;
+}
+
+.chip-pick:hover,
+.chip-pick:hover .mx-link,
+.chip-pick:hover a {
+  border-color: var(--mxt-brand);
+  color: var(--mxt-ink);
+  text-decoration: none;
+}
+
+// Where you already are. A tinted ground rather than a filled one — the chip
+// row is navigation, not a scoreboard.
+.chip-pick.is-picked {
+  border-color: var(--mxt-brand);
+  background: color-mix(in srgb, var(--mxt-brand) 10%, var(--mxt-ground));
+}
+
+.chip-pick.is-picked,
+.chip-pick.is-picked .mx-link,
+.chip-pick.is-picked a {
+  color: var(--mxt-ink);
+}
+
+/* ------------------------------------------------------------------- hero -- */
+
+// The banner card. One line carries the mark, the name and every headline
+// number, so the numbers are read against the subject rather than under it.
+//
+// The gradient fades the brand into the surface across the first 55%, which is
+// what stops a 3px accent edge from reading as a stray rule.
+.hero {
+  @include f1-surface;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mxt-brand) 13%, var(--mxt-surface)),
+    var(--mxt-surface) 55%
+  );
+  border-left: 3px solid var(--mxt-brand);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.hero-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+// A car number, a team's initials: the one filled shape on the page.
+.hero-mark {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: var(--mxt-radius);
+  background: var(--mxt-brand);
+  color: var(--mxt-brand-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mxt-font-mono);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.hero-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hero-name {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--mxt-ink);
+}
+
+.hero-sub {
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+// margin-left:auto pushes the numbers to the far edge; auto-fit rather than the
+// comp's fixed repeat(5) because the same block carries four on a constructor.
+//
+// A data view renders a wrapper div and puts the children one level down, so
+// the grid's only item is that wrapper and the numbers come back stacked
+// inside it. `display: contents` takes the wrapper out of layout entirely and
+// the five stats become the grid's own items — one rule, and the block works
+// whether it is a data view or a plain container.
+// grid-auto-flow: column rather than the comp's fixed repeat(5), because the
+// same block carries four stats on a constructor and five on a driver — and
+// because auto-fit cannot count: inside a flex row the available width is
+// indefinite, so `repeat(auto-fit, …)` resolves to one track and the numbers
+// stack. Auto columns take however many there are.
+.hero-stats {
+  margin-left: auto;
+  display: grid;
+  grid-auto-flow: column;
+  // minmax(84px, auto) rather than the comp's fixed 92px: a career total is
+  // five digits and two decimals where a season's is three, and a fixed track
+  // runs "11338.00" straight into the next label.
+  grid-auto-columns: minmax(84px, auto);
+  gap: 18px;
+
+  > .mx-dataview-content { display: contents; }
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hero-stat-label {
+  @include f1-label;
+  display: block;
+}
+
+.hero-stat-value {
+  display: block;
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--mxt-ink);
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------------ tiles -- */
 
 // Auto-fit rather than the mockup's fixed repeat(5): the same row carries four
@@ -102,6 +341,11 @@
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+
+  // The row is a data view when its numbers are computed rather than bound —
+  // see .hero-stats. Same unwrap: without it the grid's only item is the data
+  // view's content div and the five cards come back stacked.
+  > .mx-dataview-content { display: contents; }
 }
 
 .kpi {
@@ -257,6 +501,477 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
   }
+}
+
+/* ------------------------------------------------------------------ strip -- */
+
+// A season on one line: one cell per round, coloured by how it ended, the
+// finishing position inside it. It answers "how did the year go" before any
+// table is read, and every cell opens that weekend.
+//
+// The list is a Mendix list view, which renders <ul><li>; the grid is laid on
+// the <ul> and the <li> is unwrapped. auto-fill rather than the comp's fixed
+// repeat(24), and auto-fill rather than auto-fit, because a season is 24 rounds
+// now and was 16 in 1980 — auto-fit would stretch a short season's cells across
+// the whole row and make 1980 look like a different chart.
+.strip-grid {
+  @include f1-listview-reset;
+
+  > .mx-listview > ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 4px;
+  }
+
+  > .mx-listview > ul > li { min-width: 0; }
+}
+
+.strip-cell {
+  height: 30px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+
+  // The position sits inside the cell; the cell is the colour, so the text
+  // must not carry its own.
+  > * { color: inherit; }
+}
+
+.strip-win     { background: var(--mxt-tone-warn);    color: var(--mxt-ground); }
+.strip-podium  { background: var(--mxt-brand);        color: var(--f1-podium-ink); }
+.strip-points  { background: var(--f1-points-fill);   color: var(--f1-points-ink); }
+.strip-none    { background: var(--mxt-tint-neutral); color: var(--mxt-ink-muted); }
+.strip-dnf     { background: var(--f1-dnf-fill);      color: var(--mxt-danger); }
+
+// The key under the strip. Each entry is a swatch of the fill it names, at the
+// same 10px the comp uses — small enough to read as a mark, not a button.
+.legend-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+
+  &::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--mxt-tint-neutral);
+  }
+}
+
+.legend-win::before    { background: var(--mxt-tone-warn); }
+.legend-podium::before { background: var(--mxt-brand); }
+.legend-points::before { background: var(--f1-points-fill); }
+.legend-none::before   { background: var(--mxt-tint-neutral); }
+.legend-dnf::before    { background: var(--f1-dnf-fill); }
+
+/* -------------------------------------------------------------- bar cells -- */
+
+// A value drawn against its own maximum, inside a table cell — points against
+// the season's best, a driver's share of the team's score. The number alone
+// cannot be compared across eras; the bar can.
+//
+// Drawn as two containers rather than with the Progress Bar widget, because the
+// widget's dynamic mode wants an attribute for the minimum as well as the
+// maximum and there is no zero column to bind. Two divs and a width also leave
+// the DOM ours, which is the same reason the strip is a list view.
+//
+// A page cannot compute an inline style — `style:` is a literal — but it can
+// compute a class name, so the share names its own width and the hundred and
+// one rules below carry them. Bucketing to 5% first would be tidier, but
+// Mendix's `div` did not floor a Long the way integer division should, and a
+// class that does not exist is a bar at full width — a wrong reading, not a
+// coarse one. One rule per whole percent needs no arithmetic to be wrong.
+.bar-track {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-tint-neutral);
+  overflow: hidden;
+}
+
+// The value rides inside the fill so the container is never an empty leaf, and
+// is collapsed to nothing visually — the bar is the reading, the number beside
+// it would be a second one.
+.bar-fill {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-info);
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  overflow: hidden;
+}
+
+@for $i from 0 through 100 {
+  .w-#{$i} { width: percentage($i * 0.01); }
+}
+
+// Where the number is part of the reading — a share of a team's points — the
+// track and the value sit on one line and the value keeps its ink.
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-row .bar-value {
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------- round nav -- */
+
+// Two step buttons and then the season as chips. The chip row is the same
+// component as the driver and constructor pages; `chips-inline` only stops it
+// claiming the margin below, since the nav is one line.
+.round-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.chips-inline { margin-bottom: 0; min-width: 0; }
+
+// Atlas paints a button; this un-paints it back to the chip the comp draws, so
+// the two steps and the twenty-four rounds read as one control.
+.nav-step,
+.nav-step.btn {
+  padding: 5px 10px;
+  border-radius: var(--mxt-radius);
+  border: 1px solid var(--mxt-line);
+  background: var(--mxt-surface);
+  color: var(--mxt-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: none;
+
+  &:hover { border-color: var(--mxt-brand); background: var(--mxt-surface-hover); }
+}
+
+/* -------------------------------------------------- highlight cards -- */
+
+// The three cards along the right of the weekend banner. Each is tinted by
+// what it is about — practice on the plain surface, pole on the accent, the win
+// on the brand — which is the one place in the design where a fill carries
+// meaning rather than just separating a panel from the page.
+.hl-cards {
+  margin-left: auto;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(190px, 240px);
+  gap: 12px;
+}
+
+.hl-card {
+  @include f1-surface;
+  background: var(--mxt-ground);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.hl-card-pole {
+  background: color-mix(in srgb, var(--mxt-accent) 12%, var(--mxt-ground));
+  border-color: color-mix(in srgb, var(--mxt-accent) 40%, var(--mxt-line));
+}
+
+.hl-card-win {
+  background: color-mix(in srgb, var(--mxt-brand) 12%, var(--mxt-ground));
+  border-color: color-mix(in srgb, var(--mxt-brand) 40%, var(--mxt-line));
+}
+
+.hl-label {
+  @include f1-label;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.hl-value {
+  display: block;
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--mxt-ink);
+  white-space: nowrap;
+}
+
+// A winner is a name, not a lap time; tabular figures at 19px would truncate it.
+.hl-value-name {
+  font-family: var(--mxt-font);
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hl-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The banner's eyebrow, above the Grand Prix name.
+.hero-eyebrow {
+  @include f1-label;
+  display: block;
+  margin-bottom: 2px;
+}
+
+@media (max-width: 1199px) {
+  .hl-cards {
+    margin-left: 0;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------- deltas -- */
+
+// Places gained and lost in the race. The arrow is drawn by the rule so the
+// cell keeps a plain number, which is what makes the column sortable.
+.delta-up,
+.delta-up .td-text { color: var(--mxt-tone-ok); }
+
+.delta-down,
+.delta-down .td-text { color: var(--mxt-tone-risk); }
+
+.delta-up::before { content: "▲ "; }
+.delta-down::before { content: "▼ "; }
+
+// Nothing moved. Collapsing the digit and drawing a dash in its place is the
+// comp's reading: a zero here is an absence, not a measurement.
+.delta-flat {
+  font-size: 0;
+  color: var(--mxt-ink-faint);
+
+  &::before {
+    content: "–";
+    font-size: 12px;
+    font-family: var(--mxt-font-mono);
+  }
+}
+
+/* --------------------------------------------------------------- cards -- */
+
+// A season's calendar as one card per round rather than as a table: the whole
+// year is visible at once and a round is a target, not a row to scan for.
+// Same list-view unwrap as the chip row and the strip.
+.card-grid {
+  @include f1-listview-reset;
+
+  > .mx-listview > ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px;
+  }
+}
+
+.cal-card {
+  background: var(--mxt-ground);
+  border: 1px solid var(--mxt-line);
+  border-radius: var(--mxt-radius);
+  padding: 7px 9px;
+  cursor: pointer;
+  min-width: 0;
+
+  &:hover { border-color: var(--mxt-brand); }
+}
+
+.cal-card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cal-round {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
+}
+
+.cal-code {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mxt-ink);
+}
+
+// The winner is the card's payload; it is truncated rather than wrapped so
+// every card in the grid is the same height.
+.cal-winner {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--mxt-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------- head to head -- */
+
+// Two bars growing away from a centre label — the comp's five-column grid:
+// value, bar, label, bar, value. The left bar is anchored to its right edge so
+// the pair reads outward from the middle.
+.h2h-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 150px 1fr 64px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+
+.h2h-label {
+  @include f1-label(0.05em);
+  text-align: center;
+}
+
+.h2h-value {
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--mxt-ink);
+}
+
+.h2h-value-left { text-align: right; }
+
+.h2h-track {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-tint-neutral);
+  overflow: hidden;
+}
+
+// Anchoring the fill to the right edge is what makes the pair grow apart
+// instead of both running left to right.
+.h2h-track-left { justify-content: flex-end; }
+
+.h2h-fill {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mxt-info);
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  overflow: hidden;
+}
+
+// The two names under the bars, each under its own side.
+.h2h-names { margin-top: 2px; margin-bottom: 0; }
+
+.h2h-name {
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+.h2h-name-left { text-align: right; }
+
+@media (max-width: 767px) {
+  .h2h-row { grid-template-columns: 40px 1fr 96px 1fr 40px; gap: 6px; }
+}
+
+/* -------------------------------------------------------------- data note -- */
+
+// The footnote every screen ends on: what is sourced, what is derived. Set on
+// the rail rather than the surface so it reads as apparatus, not content.
+.data-note {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: var(--mxt-rail);
+  border: 1px solid var(--mxt-surface-alt);
+  border-radius: var(--mxt-radius);
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+  line-height: 1.55;
+  max-width: 1100px;
+}
+
+.data-note-lead {
+  color: var(--mxt-ink);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------- series keys -- */
+
+// The five progression lines, and the swatches that name them.
+//
+// A chart series' legend label is `staticName`, and `staticName` is the one
+// text template on a series that is *not* bound to the series' datasource — so
+// it cannot carry a driver's name, only a literal. The lines are therefore
+// labelled by championship position, which is what makes one page serve every
+// season, and the names are printed underneath by a strip that reads the same
+// resource. The colours are declared on both sides so the two agree.
+:root {
+  --f1-series-1: #58a6ff;
+  --f1-series-2: #ff8000;
+  --f1-series-3: #3fb950;
+  --f1-series-4: #f85149;
+  --f1-series-5: #a78bfa;
+}
+
+.series-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+.series-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  &::before {
+    content: "";
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+    flex: none;
+  }
+}
+
+.series-1::before { background: var(--f1-series-1); }
+.series-2::before { background: var(--f1-series-2); }
+.series-3::before { background: var(--f1-series-3); }
+.series-4::before { background: var(--f1-series-4); }
+.series-5::before { background: var(--f1-series-5); }
+
+.series-rank {
+  font-family: var(--mxt-font-mono);
+  font-size: 11px;
+  color: var(--mxt-ink-faint);
 }
 
 /* ------------------------------------------------------------------ marks -- */

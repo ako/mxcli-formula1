@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on **`c76d4b7`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on **`a8dc083`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1564,7 +1564,23 @@ the scripts quietly stop being the source of truth.
 ## Suggested mxcli issues
 
 ### Still open
-1. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
+1. **`create external entities from` duplicates suffixed associations, unbounded**
+   (§50) — an external entity's navigation property becomes an association named
+   after it, and three F1Cached entities have a `season` property, so Mendix
+   names them `season`, `season_2`, `season_3`. On a re-run the unsuffixed ones
+   are matched and left alone; the suffixed ones never match, because the dedup
+   compares association *names* and the generator computes a fresh suffix before
+   it looks. Two more appear per run, for ever. This repo had accumulated
+   `season_2` … `season_15` before anyone noticed — `mx check` is clean, every
+   test passes, and the only symptom is duplicate links in Studio Pro's domain
+   model. Reproduction and byte counts in §50.
+2. ~~**Re-running a script rewrites the document with different bytes** (§50)~~ —
+   **fixed by PR 125, verified here in §52.** A unit whose new content is
+   canonically equal to the stored one is no longer written. The re-runnable
+   script set now leaves both apps byte-identical across consecutive passes, and
+   the control (`MXCLI_ALWAYS_WRITE=1`, 72 units churning, then 0 on the next
+   normal run) shows the measurement can see a failure.
+3. **`FilterRestrictions`/`SortRestrictions` have two shapes and only one is read**
    (§48) — `27ea1da` fixed exactly this for `TopSupported`/`SkipSupported`; the
    filter and sort terms have the same problem. `mdl/types/edmx.go:446` takes
    `NonFilterableProperties` out of the record and ignores the record's own
@@ -1575,19 +1591,25 @@ the scripts quietly stop being the source of truth.
    NO attribute of a resource is filterable, and the list form when some are —
    both appear in one document. Generating external entities from this repo's
    `F1OpsApi` gives 28 × CE6630. Reproduction in §48.
-2. **`create or modify odata client` does not re-fetch `$metadata`** (§42) — the
-   fetch is in the create path only, so after a published service changes shape
-   the client keeps its cached contract, reports "Modified OData client", and
-   `create external entities` regenerates from stale metadata without saying so.
-   Recovery is drop-and-recreate, which cascades into every page and grant that
-   binds those entities.
-3. **A published resource hand-rolls its whole query surface** (§20, §22) — five
+4. **`create or modify odata client` does not re-fetch `$metadata`** (§42, §51)
+   — the fetch is in the create path only, so after a published service changes
+   shape the client keeps its cached contract, reports "Modified OData client",
+   and `create external entities` regenerates from stale metadata without
+   saying so. Re-confirmed on `38a1137` while adding two attributes to an
+   existing resource: `create or modify external entities from` then reports
+   "10 updated" and adds nothing, and neither `alter entity … add attribute`
+   (CE6612, no remote-name mapping) nor the explicit `create or modify external
+   entity … from odata client …` form (CE6611, contract binding lost) can patch
+   it by hand. Recovery is drop-and-recreate the client, which works — entities
+   rebind in place — but takes every entity access rule on the module with it.
+   A `REFRESH ODATA CLIENT Mod.Client` would make this a one-liner.
+5. **A published resource hand-rolls its whole query surface** (§20, §22) — five
    Java actions doing regex over a URI to recover `$top`, `$skip`, `$orderby`,
    `$filter` and keys, re-implemented per resource, and every one of them a place
    to forget a case. Declaring what is filterable already happens in `expose (…)`;
    handing the microflow the parsed values rather than the raw request would
    remove the class instead of the instance.
-4. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
+6. **`--hub` makes the app unverifiable in a headless browser** (§38) — the hub
    sets `__Host-`/`Secure` cookies, so a headless browser over plain http can
    never hold a session (`--unsafely-treat-insecure-origin-as-secure` does not
    help). This is why five rendering defects survived — a white chart under every
@@ -1595,32 +1617,113 @@ the scripts quietly stop being the source of truth.
    `check`, the build, the log or `curl` can see. Whatever the mechanism (a
    loopback exemption, an http-safe cookie under `--hub`), being able to render
    the real app is the highest-leverage check missing here.
-5. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
+7. **A killed `mxcli run` leaves the mxbuild child holding the serve port** — the
    next boot then refuses, correctly, on the previous run's corpse: *"port 6643
    is already in use"*. The guard is right; the diagnosis is misleading, because
    the process it names is one you already killed. Reap the child on exit, or
    print the offending pid so the fix is one command rather than three.
-6. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
+8. **`theme apply` cannot help with the header logo** (§33) — `Atlas_Core.Layout.logo`
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-7. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+9. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
    here are still stamped two days earlier, so a rebuild alone does not carry it.
-8. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
+10. **Lint idea:** `KEY` on a persistable attribute with no `unique` validation is always
    a build error (§17). `mxcli check` could catch it instead of `mxbuild`.
-9. **Design-property lint does not know the theme** (§29) — `check` green-lights
+11. **Design-property lint does not know the theme** (§29) — `check` green-lights
    `Row size` / `Hover style`, the build rejects them as unsupported by the applied
    theme. mxcli generates the theme, so it can read its `design-properties.json`.
 
 
-10. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
+12. **A dangling `AfterStartupMicroflow` passes every check** (§41) — a setting
    naming a microflow that no longer exists throws on every startup and blocks
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
    statically: `check`/`lint` can compare the name against the model.
+13. **Five page-widget properties are parsed, dropped and not reported** (§51) —
+   `sort by` on a LISTVIEW's database datasource, `OnClick` on a LISTVIEW,
+   `PageSize` on a GALLERY, and chart-level `CustomLayout` /
+   `CustomConfigurations` when spelled with a capital. All four pass
+   `mxcli check` with no MDL-WIDGET07 warning and are simply absent from the
+   model afterwards. The chart case is the sharpest: series-level properties
+   *are* matched case-insensitively, so one document can have
+   `StaticBarColor` honoured and `CustomLayout` discarded on the capital letter
+   alone — which reads as "custom layout is unsupported" rather than "you
+   spelled it wrong". MDL-WIDGET07 already exists for exactly this; whatever
+   path drops these should route through it.
+14. **`LISTVIEW`'s `PageSize` does not round-trip** (§51) — the writer honours
+   it (`TestBuildListViewV3_PageSize` guards that), but `describe page` never
+   prints it back, so the round-trip this repo uses to verify every other
+   change reports it as dropped. The default is 20, which silently ends a
+   24-round season in a "Load more" button.
+15. **Two expression traps that only `mx check` catches** (§51) — division is
+   `div`, not `/` (CE0117 for any operand types, Decimal included), and `div`
+   does *not* floor, so `77 div 5` is 15.4; and there is no cast from Decimal
+   to Long, so a rounded percentage has to go through
+   `parseInteger(formatDecimal($x, '0'))`. Neither `/` nor `round($x)` with one
+   argument is rejected by `mxcli check`. Also `not contains(…)` does not parse
+   where `contains(…) = false` does. A `check` that validated microflow
+   expressions against Mendix's grammar would catch all four at write time.
+16. **A marketplace module install collapses MPR v2 into v1** (§53) — one
+   `mx module-import`, nothing else, turns 94 KB + 466 `.mxunit` files into a
+   single 16 MB blob. That removes the diffable model, `diff-local`, mergeable
+   units and the whole property PR 125 just established. `mx convert` only
+   targets Mendix versions and mxcli has no convert command, so there is no way
+   back. Any headless install path must preserve v2 or refuse; silently
+   downgrading the storage format is the worst of the three. **Second instance
+   found in §56:** `mx update-widgets` does the same thing (86 KB + 469 units →
+   19.5 MB + 0 units), which puts it on the only headless path for installing a
+   widget. `mxcli widget init` is the counter-example that preserves v2, so the
+   behaviour is a property of the `mx` binary rather than of writing to a v2
+   project.
+17. **A module flagged `IsThemeModule` cannot be installed headlessly at all**
+   (§53) — Conversational UI 7.2.0 carries `Projects$ModuleImpl.IsThemeModule =
+   true` while its own `manifest.json` says `"type": "Module"`, and
+   `mx module-import` refuses it (exit 112). Flipping that one boolean imports
+   the identical package cleanly, so the flag is the sole gate. This blocks the
+   only Mendix-supplied chat UI from any CLI-driven project. mxcli could at
+   minimum detect the flag and say *why* instead of surfacing `exit status 112`.
+18. **Installing a marketplace module resolves no dependencies** (§53) — the four
+   Agents Kit 2 modules pull in `CommunityCommons`, `AgentCommons`, `Encryption`
+   and two widgets, none of them named in the install output or the module docs.
+   They are found by installing, reading CE1613s, and repeating; and the error
+   count rises as often as it falls (156 → 16 → 227 → 211 → 1 → 0) because
+   fixing a reference makes new documents checkable. `mxcli marketplace install`
+   knows the content id — resolving or at least *listing* the dependency set
+   would remove the loop.
+19. **`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
+   equivalent** (§53, corrected in §56) — after a headless widget install the
+   project reports 210 × CE0463, which reads exactly like the malformed-template
+   defect that has its own diagnosis skill. It is not: `mx update-widgets` takes
+   it to 1 and `mx rename-design-properties` to 0. *This entry originally said
+   mxcli had no equivalent at all, which was wrong* — `mxcli widget sync` exists,
+   and its own help states it clears 7 of 40 CE0463 on the reference fixture
+   where `mx update-widgets` clears all 40 but destroys `mprcontents/` on MPR v2.
+   So the gap is coverage, not absence: finish `widget sync`, and wrap
+   `rename-design-properties`, whose 158 renames across 44 documents currently
+   require the v2-destroying binary.
+20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53) —
+   `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
+   the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
+   Mistral) cannot be expressed in MDL. A project not on Mendix Cloud GenAI
+   cannot keep its model document as code.
+21. **The agent doctypes have no version-registry entry** (§53) — `show features`
+   on 11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()`
+   pre-check and no actionable error on an older project, though
+   `mxcli syntax agents` states the requirement as Mendix 11.9+.
+22. **A skill pack cannot carry Java source** (§54) — `Installs` has only
+   `widgets` and `mdl`, pack files land inside `.claude/skills/<pack>/`, and
+   MDL's `CREATE JAVA ACTION … AS $$ … $$` takes a method body with no
+   standalone-class form. So `mendix-odata-pushdown` — the third pack the skill-
+   packs proposal asks for by name — can ship its MDL and its prose but not the
+   882 lines of parser its four action bodies delegate to, and the reader still
+   copies a directory by hand. An `installs.java` target writing into
+   `javasource/<module_path>/`, with the placeholder/whitelist/drift discipline
+   the widget path already has, closes it. Pack drafted and validated in
+   `.claude/skills/packs/mendix-odata-pushdown/`.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -3153,7 +3256,726 @@ Reproduction: point an OData client at `/odata/f1-ops/` and
 `Filterable`, which is what makes Mendix emit the whole-set form.
 
 
-## 49. Running the solution in a devcontainer: four host assumptions mxcli makes
+## 49. The rebuild, actually run
+
+§48 ended with a claim worth testing: every document in both apps is created by
+a script, so `model/` is the source of truth. A name-by-name audit said 146 of
+146, zero drift. That audit proves every document is *mentioned*. It does not
+prove the scripts rebuild the app.
+
+So both apps were dropped — all seven modules — and rebuilt from `model/`.
+
+### What "identical" can mean here
+
+Not a byte-identical `.mpr`. Mendix keys every document by UUID, so recreating a
+module mints a fresh id for every entity, attribute, microflow and page;
+`git diff mprcontents/` after a rebuild is thousands of files and proves nothing
+in either direction.
+
+`scripts/fingerprint.sh` compares meaning instead: every document round-tripped
+through `DESCRIBE` (which emits MDL, not ids), the security matrix, the
+settings, the navigation, and the published `$metadata` of all five services.
+13,000 lines per side.
+
+### The result
+
+**All five `$metadata` documents are byte-identical.** The contract a consumer
+binds to — entity types, keys, capabilities, the `ActionImport` — is exactly
+reproduced. 71/71 backend and 23/23 frontend tests pass against the rebuilt
+apps, `mx check` is clean on both, and the cached-service tests still assert
+917 drivers and 27533 results, so the startup job repopulated tables that did
+not exist ten minutes earlier.
+
+166 lines differ, in three classes:
+
+- **`@Position`** on entities the scripts do not place explicitly. Auto-placement
+  follows creation order, so the domain-model canvas differs. Cosmetic, and a
+  real if minor gap: an entity with no `@Position` does not round-trip its
+  layout.
+- **Listing order** in the inventory and security matrix — creation order again.
+- **Stale `User` grants**, below.
+
+### Three real defects, which is why the test was worth running
+
+**1. The set does not run in one pass.** Each file owns its documents *and* the
+grants on them, so grants are forward references across files: `02` grants to a
+module role `06` creates, `06` grants execute on a microflow `10` owns, `13`
+grants on a service `14` declares. `02 → 06 → 10 → 02` is a cycle, so no single
+ordering exists. Two passes converge; the frontend needs three, because its page
+scripts open each other's pages. The README claimed one pass. It now says two,
+and names the clean fix (split `06` into roles-then-grants).
+
+**2. `12-folders.mdl` referenced a microflow deleted in §48.** `Insert_Prediction`
+went when the OData action replaced it, and the folder move for it stayed. This
+never failed a build, because moving a document that does not exist is a no-op
+on a model that already has the layout — it only fails on a rebuild, where the
+error is the first sign the line is dead. Fixed, and `RecordPrediction` and
+`AuthenticateApiClient` now get their folder.
+
+**3. Grants in the `.mpr` that no script creates.** Seven pages and two
+microflows were granted to the default `User` module role — left from an early
+iteration, never written back. The rebuild dropped them. Nothing reachable
+changed: the `User` user role exists but no demo user holds it, and `fan` is
+`Enthusiast`. This is the §34 lesson recurring in the other direction. §34 found
+documents that lived only in the `.mpr`; this found *access rules* that did.
+A name audit cannot catch it — the documents were all present, only their grants
+differed — which is precisely why a rebuild is worth more than an inventory.
+
+### What it settles
+
+`model/` does rebuild both apps, and the published contracts come back
+identical. The residue outside MDL is unchanged and is what §48 listed: three
+hand-written Java classes, two SCSS files, the data and schema scripts, and the
+four cached `$metadata` contracts.
+
+
+## 50. Idempotent in meaning, not in bytes — and one bug that accumulates
+
+§49 proved the scripts rebuild the apps. A different question: re-run them on a
+project that is already built, and is nothing supposed to change? For version
+control the answer needs to be yes, and it is not.
+
+### Two separate problems, and only one of them is cosmetic
+
+**Every re-run rewrites 74 backend and 69 frontend documents with different
+bytes.** Zero added, zero deleted — the documents keep their own ids, so this is
+not the GUID churn a rebuild causes. Three consecutive re-runs, hashing the
+`mprcontents` tree each time:
+
+```
+HEAD          e98b9c80d6a344e7
+after run 1   33c2fcc2e4b97371   74 files differ from HEAD
+after run 2   d90a1cd72a927895   74 files differ from HEAD
+after run 3   38a3cdf48ed636b9   74 files differ from HEAD
+```
+
+The same 74 files, a different hash every time, and the semantic fingerprint
+identical throughout. So the model does not change and the bytes never settle.
+
+**The cause is sub-element ids.** A `create or modify` regenerates the internal
+element id of everything inside the document it rewrites, while the document's
+own id (its filename) is stable. The differing bytes fall into 965 contiguous
+runs averaging 14.2 bytes, 806 of them between 10 and 16 — the signature of
+16-byte UUIDs where some bytes happen to coincide.
+
+The minimal reproduction is a constant:
+
+```
+create or modify constant Formula1Backend.DuckDbUser type string default 'mendix';
+```
+
+Re-declared identically against an unchanged project: **241 bytes on disk,
+exactly 16 differ.** One UUID. The database connection is 139837 bytes and 13733
+differ (~858 ids, one per query parameter and mapping); the domain model is
+232855 bytes and 10074 differ (~630, one per attribute).
+
+What it costs: `git diff` can never answer "did this script change anything",
+two people running the same scripts commit different bytes, and a merge on a
+`.mxunit` is not resolvable by hand. A model-as-code workflow needs re-running a
+script to be a no-op in the repository, not just in the model.
+
+### The one that is not cosmetic
+
+**`create external entities from` duplicates any association whose name needed a
+numeric suffix, on every run, without bound.**
+
+An external entity's navigation property becomes an association named after it.
+Three F1Cached entities have a `season` property — `Races`, `DriverStandings`,
+`ConstructorStandings` — so Mendix names them `season`, `season_2`, `season_3`.
+Correct, and that is the state after exactly one generation.
+
+Re-run it and `circuit`, `constructor`, `driver` and `season` are matched and
+left alone, but `season_2` and `season_3` are not: two more appear as `season_4`
+and `season_5`. The dedup match is by association *name*, and the generator
+computes a fresh suffix before it looks, so a suffixed association can never
+match itself. Two per run, for ever:
+
+```
+one generation      season  season_2  season_3            (correct: 6 in F1Cached)
++1 re-run           …       season_4  season_5
++2 re-runs          …       season_6  season_7
+```
+
+This had been running since the project started. The pre-rebuild `.mpr` carried
+`season_2` … `season_15` — twelve spurious associations, committed, invisible
+in every `mx check` and every test, and visible in Studio Pro's domain model as
+duplicate links. §49's rebuild cut it to four only because that rebuild happened
+to run the script four times, and the fix in this section brought it to zero.
+
+It also means the two-pass rebuild §49 documents is itself harmful:
+`02-external-entities.mdl` must run exactly **once**, and the procedure now says
+so.
+
+### Repaired here
+
+The frontend was rebuilt with `02` run once, giving the correct six F1Cached
+associations. Dropping the extras by hand is not enough on its own — external
+entity access rules reference them by association, so removing one leaves
+CE1613 "The selected association no longer exists" behind, which is how the
+over-deletion showed up.
+
+23/23 frontend tests pass, `mx check` clean.
+
+
+---
+
+## 51. Building the design comp for real: five silent property drops and two expression traps
+
+*Verified 2026-08-09/10, on `ako/mxcli` main @ `38a1137`, Mendix 11.13.0.*
+
+The four screens were already on the comp's palette; what was missing was its
+*arrangement* — chip rows, banner cards with the numbers inline, a colour-coded
+result strip, in-table bars, side-by-side charts, tinted highlight cards. None
+of that is exotic, and almost all of it went in cleanly. What did not is
+recorded here, because every one of these cost a build-and-look cycle and none
+of them said anything at write time.
+
+### The five silent drops
+
+Each of these parses, passes `mxcli check` with no MDL-WIDGET07 warning, writes
+without error, and is simply not in the model afterwards.
+
+| Written | What happens |
+|---|---|
+| `LISTVIEW … (datasource: database from E **sort by** a desc)` | the entity is kept, the sort is dropped. A GALLERY keeps it. |
+| `LISTVIEW … (**PageSize**: 40)` | honoured — but `describe page` never prints it back, so a round-trip looks like it was dropped |
+| `LISTVIEW … (**OnClick**: …)` | dropped. The same property on a CONTAINER inside the list view works. |
+| `GALLERY … (**PageSize**: 20)` | dropped |
+| chart-level `**CustomLayout**` / `**CustomConfigurations**` (capitalised) | dropped. The exact lowercase property key — `customLayout` — is kept. |
+
+The last is the sharpest. Series-level properties are matched
+case-insensitively (`StaticBarColor`, `CustomSeriesOptions` both land), so the
+same document can have one property honoured and its sibling silently discarded
+purely on the capital letter. That produced a chart with per-series colours and
+no axis configuration, which reads as "custom layout is not supported" rather
+than "you spelled it wrong".
+
+**Suggestion:** MDL-WIDGET07 already exists to catch an unrecognised property on
+a built-in widget. It did not fire for any of the five. Whatever path drops
+these should route through the same warning; a property that is parsed, not
+persisted, and not reported is the worst of the three outcomes.
+
+`LISTVIEW`'s `PageSize` deserves its own note: the writer honours it (there is a
+test guarding exactly that, `TestBuildListViewV3_PageSize`), but `describe page`
+omits it, so the round-trip that this repo uses to verify every other change
+cannot see it. The default is 20, which means a 24-round season silently ends in
+a "Load more" button — a truncation that looks like a design decision.
+
+### Two expression traps, both silent until `mx check`
+
+**Division is `div`, and `div` is not integer division.** `$a / $b` is CE0117
+"Error(s) in expression" for any operand types — Decimal by Decimal included.
+Mendix's operator is `div`, and unlike Pascal's it does not floor: `77 div 5`
+is 15.4. A first attempt bucketed a percentage into 5% steps with
+`x div 5 * 5`, which returned the input unchanged.
+
+That mattered more than it should have, because the bucket named a CSS class.
+`w-77` where only `w-75` and `w-80` exist is not a missing rule, it is *no width
+rule*, and a fill with no width fills its track — every bar in the table drew at
+100%. A wrong reading, not a missing one. The page now carries one rule per
+whole percent and does no arithmetic at all.
+
+**There is no cast from Decimal to Long.** `round(x)` is not a function either
+(it is `round(value, precision)`), and even `round(x, 0)` is a Decimal, so
+assigning it to a Long attribute is CE0117. What works:
+
+```
+set $Pct   = $Points div $Best * 100.0;
+set $Share = parseInteger(formatDecimal($Pct, '0'));
+```
+
+**Also:** `not contains(…)` does not parse; `contains(…) = false` does.
+
+### A comparison against `empty` throws, in the browser, at render
+
+Not a parse error and not a build error — `mx check` reports 0 errors and the
+page renders until the first row where the attribute is unset:
+
+```
+[Client] An error occurred while evaluating dynamic classes of
+Formula1Frontend.Driver_Career.stripCell:
+Operator > not supported in expression >(, 0)
+```
+
+`$currentObject/points > 0` is fine for every driver who scored and throws for
+one who did not, and Mendix surfaces it as a modal that then swallows every
+later click. Two of these shipped in one afternoon — a strip cell keyed on
+points, a table cell keyed on positions gained — and both were found only by
+driving the running app, because the data that triggers them is the exception
+row. Every branch of a `dynamicclasses` or `DynamicCellClass` expression over a
+nullable number now tests `= empty` before it compares.
+
+This is the strongest argument in this file for the Playwright pass: `check`,
+`mx check`, the build and the log were all clean, and the page was broken.
+
+### Refreshing an external entity after the service grows a column
+
+This is the workflow gap, not a bug in one command. The backend gained two
+attributes on an existing resource. To get them into the frontend:
+
+- `create external entities from` **skips** an entity that already exists;
+- `create or **modify** external entities from` reports "10 updated" and adds
+  nothing — the new attribute does not appear;
+- `create or modify odata client` with a changed `MetadataUrl` re-reads
+  nothing: `describe contract entity` still shows the old property list.
+
+The cached contract inside the `.mpr` is only ever populated when the client is
+*created*. The working sequence is therefore destructive:
+
+```
+drop odata client Mod.Client;
+create or modify odata client Mod.Client (…);        -- caches $metadata afresh
+create or modify external entities from Mod.Client into Mod;
+<re-run the security script>                          -- grants do not survive
+```
+
+`mx check` is clean afterwards and the pages keep working — the entities are
+rebound in place rather than duplicated — but every entity access rule on the
+module is gone and has to be re-applied. On a real project that is a foot-gun.
+
+**Suggestion:** either make `create or modify odata client` re-read the metadata
+URL, or add an explicit `REFRESH ODATA CLIENT Mod.Client` that re-caches the
+contract without dropping anything.
+
+Trying to sidestep it by hand does not work either. `alter entity … add
+attribute` adds the attribute but not its remote-name mapping (CE6612
+"Attribute … of external entity … is not supported"), and the explicit
+`create or modify external entity … from odata client … (EntitySet: …,
+RemoteName: …)` form loses the contract binding entirely (CE6611 "External
+entity … is not defined in OData service", plus one CE6612 per attribute). Both
+were tried and reverted.
+
+### What the widgets can do that was not obvious
+
+Two things worth writing down because they turned "Mendix cannot draw this" into
+"Mendix can draw this":
+
+**There is no combination chart, but there is a combination.** A Column chart
+series takes raw Plotly trace JSON in `customSeriesOptions`, and the chart takes
+raw layout JSON in `customLayout`. So a second series declared as
+`{"type":"scatter","mode":"lines+markers","yaxis":"y2",…}` against a
+`{"yaxis2":{"overlaying":"y","side":"right","autorange":"reversed"}}` layout is
+bars and a reversed line on one plot. The same two hooks give a scatter (a Line
+chart with `lineStyle: 'custom'` and `{"mode":"markers"}`), a step line
+(`{"line":{"shape":"hv"}}`) and a parity reference line (a layout `shapes`
+entry). Every colour in those strings is a literal, because Plotly reads no CSS
+variable — that is the one place in this app where a colour lives in the model.
+
+**A data-driven bar needs no widget.** `style:` on a page widget is a literal,
+so a width cannot be computed — but `dynamicclasses` can compute a *class name*,
+and a hundred and one `.w-N { width: N% }` rules turn a 0–100 attribute into a
+bar. Two nested containers, no third-party widget, and the DOM stays yours. The
+Progress Bar widget was the obvious choice and is the wrong one: its dynamic
+mode wants an attribute for the minimum as well as the maximum, and there is no
+zero column to bind.
+
+### Two more chart facts, both found by asking why the page looked wrong
+
+**A series' legend label cannot carry data.** Every text template on a chart
+series is bound to the series' datasource except one: `staticName`, which the
+widget definition gives no `dataSource` at all. So five lines over a season's
+progression can be labelled "1st".."5th" and nothing else — a driver's name is
+not available to the legend, and there is no arrangement of parameters that
+makes it so. `staticTooltipHoverText` *is* bound, so the name can be in the
+hover; the names now also print under the chart as a strip that reads the same
+resource, against the same five colours declared on both sides.
+
+**A static series' bar colour is one colour.** `staticBarColor` is an
+expression bound to the series' datasource, which reads as "evaluated per bar"
+and is not: it resolves once, against the first row, and a ten-team
+constructors' chart came out entirely in the leader's orange. Per-bar colour
+needs a **dynamic** series — `dataSet: 'dynamic'` with `groupByAttribute`, so
+each group is its own trace and a trace has its own colour. Same data, same
+resource, one property different.
+
+### Layout notes that are Mendix, not CSS
+
+- A data view renders a wrapper div and puts its children one level down, so a
+  grid declared on the data view lays out *one* item. `> .mx-dataview-content
+  { display: contents }` takes the wrapper out of layout and the children become
+  the grid's own items. This is the fix for every "my cards came back stacked".
+- Atlas pads a list view's `<li>` by 16px through `.mx-listview > ul > li`, so a
+  reset needs that depth or the padding survives.
+- `repeat(auto-fit, …)` cannot count inside a flex item — the available width is
+  indefinite, so it resolves to one track. `grid-auto-flow: column` with
+  `grid-auto-columns` is what a variable-length stat row actually wants.
+- A data grid's `ColumnWidth: manual` + `Size: n` is a *weight*, not pixels.
+  `Size: 230` against eleven unset columns gave the one column 95% of the table
+  and squeezed every caption to an ellipsis.
+- The content region has **no padding of its own**. Atlas leaves the gutter to
+  the page template, and a page built from bare containers therefore starts
+  hard against the nav rail on the left and the window edge on the right. The
+  padding belongs on `.region-content > .mx-scrollcontainer-wrapper >
+  .mx-placeholder` and not on the region, which is also the scroll container —
+  padding there scrolls the right-hand gutter away.
+
+## 52. PR 125 verified: re-running the scripts is now a no-op in the repository
+
+*Verified 2026-08-11 against `ako/mxcli` PR 125, head `9ab9afa`, built from
+source. This closes open issue 2 (§50) — the one where a re-run rewrote 143
+documents with different bytes and never settled.*
+
+### What the PR does
+
+Before writing a unit, mxcli compares the new document against the stored one in
+**canonical form**: every element `$ID` replaced by its index in a deterministic
+containment walk. If they match, the write is skipped. Byte comparison would
+skip nothing, because a rebuild mints a fresh random `$ID` per sub-element —
+which is exactly the churn §50 measured. A microflow's `StableId` is carried
+from the stored document rather than re-minted, since the build derives every
+client-callable microflow's operation id from it.
+
+`MXCLI_ALWAYS_WRITE=1` disables the skipping (not the identity preservation) for
+bisecting, which is what makes the measurement below falsifiable.
+
+### Build the right binary, or measure nothing
+
+The first round of measurements here was worthless and it took a while to notice.
+`scripts/build-mxcli.sh` takes `MXCLI_REF` and defaults it to `main`, then does
+`git fetch --depth 1 origin "$REF"` and `git checkout -q FETCH_HEAD` **inside
+`.mxcli-src`** — so a manual `git checkout pr-125` in that directory is silently
+clobbered before the build. Every number that round was `main` with no elision
+code in it, and it looked exactly like "the PR does not work": 73 files changed
+on both runs, `MXCLI_ALWAYS_WRITE=1` made no difference. The tell was that
+`modelsdk/canon/` did not exist in the source tree.
+
+```sh
+MXCLI_FORCE=1 MXCLI_REF=pull/125/head sh scripts/build-mxcli.sh
+```
+
+Worth stating generally: **before measuring a feature flag, prove the feature is
+compiled in.** Here that meant finding `modelsdk/canon/{canon,identity}.go` on
+disk and `MXCLI_ALWAYS_WRITE` read at `identity.go:60`. A control run that
+behaves identically with and without the flag does not mean the flag is broken —
+it can equally mean neither path exists.
+
+### The measurements
+
+The minimal case from §50, one constant re-declared identically:
+
+| | `38a1137` (main) | `9ab9afa` (PR 125) |
+|---|---|---|
+| run 1 | 2 files | **0** |
+| run 2 | 2 files | **0** |
+| run 3 | 2 files | **0** |
+
+The full re-runnable script set — 12 backend scripts, 8 frontend — starting from
+a clean tree. Excluded as one-shot *by construction*, each verified to halt on a
+second run rather than churn: `00-dependencies.mdl` (`ADD JAR DEPENDENCY`),
+`03-persistent-entities.mdl` ("entity already exists"), `07-demo-users.mdl` and
+frontend `06-demo-user.mdl` ("demo user already exists: fan"), and frontend
+`02-external-entities.mdl` (the association-duplication bug, issue 1).
+
+```
+              pass 1 vs HEAD   pass 2 vs pass 1   pass 3 vs pass 2
+backend        2 files            0                  0
+frontend       5 files            0                  -
+```
+
+Zero. Not "the same files with different bytes" — the same bytes. §50's three
+different tree hashes from three identical runs are gone.
+
+### The control, which is the part that proves anything
+
+A test asserting "nothing changed" passes just as well against a build where
+nothing runs. So the same backend set, same converged tree, with the elision
+switched off and then on again:
+
+```
+MXCLI_ALWAYS_WRITE=1   72 units changed bytes
+normal run after it     0 units changed bytes
+```
+
+72 is §50's number back again, so the probe can see a failure. And the second
+line is the stronger result: after every `$ID` in 72 documents had been
+re-minted, the next normal run recognised all 72 as equal and wrote none of
+them. That is canonical comparison working, not byte comparison getting lucky.
+
+### The 7 files that did change, and why they are the good news
+
+Both apps had drift between the scripts and the committed model, which the old
+behaviour made invisible — when every re-run rewrites 143 documents, a real
+change is one needle in that haystack.
+
+- **`Read_TeamSeason` (+4,340 bytes).** The script at HEAD declares a `$Round`
+  pushdown and a `$Round != 0` branch; the committed `.mxunit` has neither. Both
+  were committed in `bd03f44` — the script was edited after the last run and
+  never re-executed, so the model has been one activity behind its source for a
+  day.
+- **Four `Rest$ConsumedODataService` units (−48 bytes each).** `MetadataUrl` was
+  stored as `file:///home/user/mxcli-formula1/Formula1Frontend/contracts/…` and
+  is now the `./contracts/…` the script actually says. An older build
+  absolutized it; the current one stores it verbatim. Exactly 48 bytes of
+  absolute host path per client, gone from a committed model.
+
+Both are one-time convergences: reset to HEAD, run the set once, and the same 7
+files appear — deterministically, and never an eighth. `mx check` reports **0
+errors** on both apps afterwards.
+
+### What this changes about working here
+
+`git status` becomes a real answer to "is the model in sync with the scripts?".
+That question had no cheap answer before — §50's whole point was that the diff
+was noise, so the honest workflow was to regenerate and trust the semantic
+fingerprint. Now a clean tree after a re-run *means* something, and a dirty one
+points at the drift instead of burying it. The `Read_TeamSeason` gap above was
+found by exactly that, on the first pass, without looking for it.
+
+The corollary for `model/README.md`'s "Re-running is not free": re-running is
+now free in the repository. It still is not free in *time* — the scripts still
+execute, still parse, still compare — and the one-shot scripts still halt rather
+than no-op, which is a separate and still-open shape of the same problem.
+
+## 53. An MCP chat feature: buildable, and the install path collapses MPR v2
+
+*Investigated 2026-08-11 on Mendix 11.13.0. The question was whether a fan-facing
+chat over F1 data could be built with a **Mendix MCP server on the backend and a
+Mendix MCP client on the frontend**. It can, entirely from supported components.
+Getting them installed is where it goes wrong.*
+
+### Both halves ship as Mendix modules
+
+Agents Kit 2 covers exactly the split proposed. Everything below installed
+against this project and reached `mx check` **0 errors on both apps**.
+
+| Where | Module | Version | Min Mendix |
+|---|---|---|---|
+| Backend | MCP Server | 5.1.0 | 11.12.1 |
+| Frontend | MCP Client | 4.1.1 | 11.12.2 |
+| Frontend | GenAI Commons | 7.2.0 | 11.12.2 |
+| Frontend | Conversational UI | 7.2.0 | 11.12.2 |
+| Frontend | OpenAI Connector | 9.2.0 | 11.12.2 |
+
+The server exposes microflows as tools — inputs are primitives or `MCPServer.Tool`
+objects, the return must be `String` or `TextContent`, and an optional auth
+microflow takes `System.HttpRequest` and returns a `System.User`, so ordinary
+entity access still applies. Both modules speak `v2025-03-26` over streamable
+HTTP, so they interoperate; the client also speaks `v2024-11-05`. `Request: Add
+all tools from MCP server` hands discovered tools straight to a chat-completions
+call, so there is no glue to write between MCP and the LLM.
+
+**Three dependencies are not in that table and not in the docs**, and each one is
+found only by installing and reading the errors: `CommunityCommons` (11.5.1),
+`AgentCommons` (4.2.0) and `Encryption` (11.1.1), plus the `Markdown viewer`
+(1.0.3) and `Events` (1.3.1) widgets. The error count does not decrease
+monotonically while you chase them — 156 → 16 → **227** → 211 → 1 → 0 — because
+resolving a broken reference makes a previously unreachable document checkable.
+An install that resolved its own dependency graph would remove the whole
+exercise.
+
+### The headline: `mx module-import` rewrites MPR v2 as v1
+
+One import, on a pristine worktree checked out at HEAD, nothing else run:
+
+```
+before   .mpr     94,208 bytes  +  466 .mxunit files
+after    .mpr 16,019,456 bytes  +    0 .mxunit files
+```
+
+The `mprcontents/` tree is gone and the whole model is a single SQLite blob. The
+frontend went the same way at 46 MB. Attribution is clean: the backend received
+**only** `mx module-import` — no `update-widgets`, no `rename-design-properties`
+— and collapsed identically.
+
+The `_MetaData` row shows the format change directly. v2 carries a leading format
+version and a `_Transaction` table; v1 has neither:
+
+```
+v2   (2, '11.13.0', '11.13.0', '{SHA256}5Fk3…')      tables: _MetaData, Unit, _Transaction
+v1   (   '11.13.0', '11.13.0', '{SHA256}5Fk3…', 0)   tables: _MetaData, Unit
+```
+
+This is not cosmetic. It takes out the diffable model, the idempotent-re-run
+property §52 had just established, `mxcli diff-local`, and any hope of merging
+`.mxunit` files. Nothing in the Mendix documentation mentions it, `mx convert`
+only targets *Mendix versions* rather than storage format, and mxcli has no
+convert command — so there is no way back that we found. **Any headless
+module-install path has to either preserve v2 or refuse.**
+
+### Mendix ships its own chat UI flagged as a theme module
+
+`mx module-import` rejects Conversational UI outright:
+
+```
+Importing theme module is not supported          (exit 112 = param error, arg 1, "is Theme module")
+```
+
+The package disagrees with the refusal — `manifest.json` says `"type": "Module"`.
+Deleting all 50 `themesource/` entries did not help; nor did also stripping their
+44 references from `package.xml` and `manifest.json`. The gate is a single BSON
+boolean on the module document itself:
+
+```
+Projects$ModuleImpl → IsThemeModule = true
+```
+
+Flipping that one byte to `false` and re-importing the otherwise **identical**
+package — theme files included — imports cleanly and checks clean. So the flag is
+the sole cause, and the only Mendix-supplied chat UI for Agents Kit 2 cannot be
+installed by any headless path. Studio Pro is required, which for a CLI-driven
+project means the model can no longer be rebuilt from `model/*.mdl`.
+
+### CE0463 × 210 after installing widgets is a false alarm
+
+Installing the two widgets produced 210 × CE0463 "widget definition changed" —
+the error whose usual diagnosis is a malformed template. Here it means only that
+the project's stored widget type definitions have not been resynced. Two commands
+clear it, and both are `mx` verbs with no mxcli equivalent:
+
+```
+mx update-widgets <project.mpr>              210 CE0463 → 1
+mx rename-design-properties <project.mpr>    renamed 158 design properties across 44 documents → 0
+```
+
+Worth knowing before anyone spends a day in `diagnose-ce0463.md`: **after any
+headless widget install, run `update-widgets` before believing the error list.**
+
+### OpenRouter works without a custom connector
+
+The OpenAI Connector's Configuration entity has an `Endpoint` field, and
+OpenRouter is OpenAI-compatible: a `POST /api/v1/chat/completions` carrying a
+`tools` array returns **401, not 404**. So pointing the stock connector at
+`https://openrouter.ai/api/v1` should be a URL and a key, with duplicating the
+connector as the documented fallback.
+
+Tool-calling is the constraint that matters, since an MCP agent without it is
+just a chatbot. Of OpenRouter's 405 models, 18 are free and **15 of those
+advertise `tools`** — `openai/gpt-oss-20b:free` (131k), `google/gemma-4-31b-it:free`
+(262k), `nvidia/nemotron-3-ultra-550b-a55b:free` (1M). Free-tier reliability at
+chaining tool calls is another question, and the tier is rate-limited.
+
+### Two mxcli gaps in the agent doctypes
+
+- **`CREATE MODEL` can only author one provider.** `agenteditor_write.go:70` and
+  `:90` both assign `m.Provider = "MxCloudGenAI"` unconditionally, and the
+  grammar comment offers no alternative. Agents Kit 2 supports OpenAI, Bedrock,
+  Gemini, Mistral and Mendix Cloud GenAI; MDL can express one of the five. Any
+  project not on Mendix Cloud GenAI cannot author its model document as code.
+- **The agent doctypes are absent from the version registry.** `show features` on
+  11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()` gate
+  and no actionable error on an older project — even though `mxcli syntax agents`
+  documents the requirement as "AgentEditorCommons, Mendix 11.9+".
+
+## 54. The pushdown module as a skill pack: everything fits except the Java
+
+*Investigated 2026-08-16 on mxcli `a8dc083` (main). The question was whether the
+`ODataPushdown` module — four Java actions and 882 lines of parser — can become
+one of the new skill packs. It can, and mxcli's own proposal already asks for it
+by name. One manifest target is missing and it is the one this module needs.*
+
+### The proposal names this module
+
+`docs/11-proposals/PROPOSAL_skill_packs.md` (status `partial`) lists the two
+packs it was built for, then:
+
+> A third is wanted (`mendix-odata-pushdown`, Java actions that push `$filter` /
+> `$orderby` / `$top` / `$skip` into database-connector SQL) and there will be
+> more.
+
+The module was already built to travel — "nothing in it is Formula 1, or DuckDB,
+or the app it was extracted from" — and that holds up under grep: the only
+`duckdb` mentions are as one of five dialects, and `Formula 1` appears once, in
+the sentence saying nothing in it is Formula 1. The pieces map onto the pack
+layout with no rework:
+
+| Module | Pack slot |
+|---|---|
+| `module.mdl`, 272 lines | `mdl/` + `installs.mdl` — the `mendix-bulk-oql-dml` shape exactly |
+| `README.md` | `SKILL.md` + `references/*.md` |
+| the four Java actions | already `CREATE JAVA ACTION … AS $$ … $$`, which mxcli writes out itself |
+
+### The one thing that does not fit
+
+Every action body is a two-line delegation:
+
+```
+AS $$
+return odatapushdown.QueryObject.parse(getContext(), Uri, Columns, Dialect, …);
+$$;
+```
+
+The work is in three helper classes — `ODataQueryParser` (633 lines),
+`RoutineCall` (185), `QueryObject` (64) — that MDL cannot author and a pack
+cannot deliver. Three independent mechanisms say so, and they were checked
+separately rather than inferred from one another:
+
+1. **`Installs` has exactly two fields.** `cmd/mxcli/skillpack/skillpack.go`:
+   `Widgets []string`, `MDL []string`.
+2. **Pack files land inside the skills directory.** `Install` writes to
+   `destDir/<pack-name>/`. Verified rather than read: installing
+   `mendix-bulk-oql-dml` into an empty directory put all five files under
+   `.claude/skills/mendix-bulk-oql-dml/` and nothing outside it.
+3. **MDL has no standalone-class form.** `createJavaActionStatement` in
+   `MDLMicroflow.g4` accepts `AS DOLLAR_STRING` and nothing else — a *method
+   body*, with no class declaration and no imports clause.
+
+So a pack today ships the prose and the MDL, and the reader still copies a
+directory by hand — which is **exactly what this module's README already tells
+them to do**. A pack that reproduces the manual step is not an improvement over
+the README, and that is the sharpest statement of the gap.
+
+### The fix is one target, and the discipline already exists
+
+```yaml
+installs:
+  java:
+    - java          # -> javasource/<module_path>/, preserving actions/
+```
+
+What makes this more than a file copy is that it needs the *same* treatment the
+widget path already has, for the same reason. A widget id is its identity, so
+the source ships with `{{NAMESPACE}}` and `skill add` substitutes the
+destination project's. **A Java `package` declaration is the exact analogue** —
+two projects whose classes share a package are two projects claiming the same
+class — so all three of the proposal's properties transfer unchanged: placeholders
+rather than a real namespace (an unsubstituted token fails to compile, loudly,
+where a harvested name ships silently), a whitelist rather than a scan, and drift
+in either direction refusing the install.
+
+One branch worth deciding rather than defaulting into: `java/actions/` is worth
+shipping for review, but on `--apply` mxcli generates those four classes from the
+MDL, so writing both means overwriting the pack's copy immediately.
+
+Both alternatives are worse. **Inlining** the helpers into the action bodies
+means duplicating 882 lines four times, because Java local classes cannot be
+shared between methods; the one-fat-action-plus-microflow-wrappers variant avoids
+the duplication by distorting the public API to fit the packaging. **Shipping the
+`.java` as inert assets** with a copy step in `SKILL.md` works today and is what
+the drafted pack does meanwhile, but gets none of the three things that make a
+pack better than a tarball: no pruning when v2 drops a file, no digest fence
+refusing a locally-edited one, no namespace rewrite.
+
+### The pack, drafted and validated
+
+`.claude/skills/packs/mendix-odata-pushdown/` — 13 files, laid out to mirror the
+mxcli repo's own `packs/` directory so it lifts across unchanged. `pack.yaml`
+declares `installs.java` as a *proposed* target, commented as not-yet-implemented
+rather than quietly assumed to work.
+
+Three checks, because a pack that has not been round-tripped is a pack that has
+not been tested:
+
+- **The MDL round-trips exactly.** Substituting `{{MODULE}}` / `{{MODULE_PATH}}`
+  back to this project's names reproduces `model/odatapushdown/module.mdl`
+  byte-for-byte apart from the install block, which was rewritten on purpose.
+- **All seven `.java` files round-trip byte-identical.**
+- **`mxcli check` passes** on the substituted MDL — 8 statements, syntax OK.
+- The manifest's own invariants hold both ways: every file in `rewrite.files`
+  exists and carries a token, and every tokenised file the pack ships is
+  declared.
+
+### One more thing, which the proposal already flags
+
+> A pack whose own verifier is not run in CI is a pack that rots.
+
+This pack wants a `verify:` more than the other two. It is 882 lines of parser
+across five dialects, and it has a genuinely cheap test surface:
+`ODataQueryParser` takes no Mendix types in its signature, so it runs under
+`jshell` or plain JUnit with no runtime around it — which is how the grammar was
+established term by term in §45. A dialect regression there is invisible to
+`mx check` and to every test that needs an app.
+
+## 55. Running the solution in a devcontainer: four host assumptions mxcli makes
 
 *Verified 2026-08-12, on `ako/mxcli` main @ `d53691b`, Mendix 11.13.0, Debian
 bookworm, **linux/arm64**, inside a Docker devcontainer. First entry here not run
@@ -3177,7 +3999,7 @@ out of its way; the bootstrap is not duplicated.
 `$filter` all pushed down. It took four workarounds to get there. Three are in
 `.devcontainer/` and should not have to be.
 
-### 49.1 `--ensure-db` shells out to `sudo -u postgres` and dies misleadingly
+### 55.1 `--ensure-db` shells out to `sudo -u postgres` and dies misleadingly
 
 ```
 Ensuring database...
@@ -3213,7 +4035,7 @@ which is the normal devcontainer shape, then needs no sudo at all.
 was refused and that the rule may be `(root)`-only. The current message
 describes the mechanism and not the cause.
 
-### 49.2 The runtime binds `127.0.0.1` and nothing can change it
+### 55.2 The runtime binds `127.0.0.1` and nothing can change it
 
 `mxcli run --local` reports `app serving at http://127.0.0.1:8080/`, and that is
 literal:
@@ -3243,7 +4065,7 @@ desktop SSH session, or a plain `docker start`.
 changes for existing users), passed through to the runtime's listen address.
 Anything containerised, any remote dev box, and any published preview needs it.
 
-### 49.3 `--runtime-setting MicroflowConstants` replaces the map instead of merging
+### 55.3 `--runtime-setting MicroflowConstants` replaces the map instead of merging
 
 The obvious way to make a model portable is to override one constant at boot:
 
@@ -3269,10 +4091,10 @@ which is true of the settings map and not of this setting's contents.
 **Requirement.** `mxcli run --constant Module.Name=value` (repeatable), folded
 into `MicroflowConstants` on top of the model defaults rather than replacing
 them. This is the single highest-value item here: it is what makes a `.mpr`
-runnable in an environment other than the one it was authored in, and §49.5
+runnable in an environment other than the one it was authored in, and §55.5
 below is a direct consequence of its absence.
 
-### 49.4 `mxcli init` writes a per-app devcontainer; a solution needs one
+### 55.4 `mxcli init` writes a per-app devcontainer; a solution needs one
 
 `Formula1Backend/.devcontainer/` and `Formula1Frontend/.devcontainer/` were both
 generated by `init`. Neither is usable here. Each covers one app, and each
@@ -3295,7 +4117,7 @@ the toolchain the project's own scripts need, not only the runtime's.
 will shadow, for the same reason `init` should not write a per-app
 `.claude/settings.json` that a root one shadows.
 
-### 49.5 The documented source build breaks on PEP 668
+### 55.5 The documented source build breaks on PEP 668
 
 `scripts/build-mxcli.sh` does a bare `pip install 'antlr4-tools==0.2.2'`, which
 Debian bookworm refuses: the system interpreter is marked externally-managed, so
@@ -3323,7 +4145,7 @@ ERROR - ExternalDatabaseConnector: IO Error: No files found that match the
 ```
 
 The README describes `ServiceUrl` as "a constant, not a literal, so the address
-is environment-overridable". `DataDir` is a constant too, but with §49.3 open
+is environment-overridable". `DataDir` is a constant too, but with §55.3 open
 nothing can override it, so in practice it is not. The workaround is a symlink
 in `post-create.sh`; it also covers `data/facts/` and `data/laps/`, which
 `DataDir` does not point at and which are reached by their own hardcoded paths.
@@ -3348,13 +4170,116 @@ a client cannot tell it from an answer.
 
 | # | Requirement | Blocks | Size |
 |---|---|---|---|
-| 49.3 | `--constant Module.Name=value`, merged over model defaults | any `.mpr` running outside its authoring environment | small |
-| 49.2 | `--bind <addr>` on `mxcli run` | containers, remote dev boxes, published previews | small |
-| 49.1 | try TCP before `sudo -u postgres`; name the refused target on failure | `--ensure-db` on any non-root host | small |
-| 49.4 | solution-level `.devcontainer/` from `init`, with the project's toolchain | multi-app repos | medium |
-| 49.5 | PEP 668-safe `pip install` in the documented build | new contributors on any 2024+ distro | trivial |
+| 55.3 | `--constant Module.Name=value`, merged over model defaults | any `.mpr` running outside its authoring environment | small |
+| 55.2 | `--bind <addr>` on `mxcli run` | containers, remote dev boxes, published previews | small |
+| 55.1 | try TCP before `sudo -u postgres`; name the refused target on failure | `--ensure-db` on any non-root host | small |
+| 55.4 | solution-level `.devcontainer/` from `init`, with the project's toolchain | multi-app repos | medium |
+| 55.5 | PEP 668-safe `pip install` in the documented build | new contributors on any 2024+ distro | trivial |
 
 None of these needed a change to the model, the theme, or MDL. They are all
 about the gap between "mxcli runs the app on the machine that authored it" and
 "mxcli runs the app somewhere else", which is the same gap a CI job, a cloud
 preview and a teammate's laptop all sit in.
+
+## 56. Every chart onto Vega: long format closes three §51 limitations
+
+*Done 2026-08-16 on mxcli `a8dc083` (main), which ships skill packs that can
+carry a pluggable widget. All ten charts in the app moved from the Mendix chart
+widgets to `mendix-vega-charts`. `mx check` 0 errors, MPR v2 intact, verified in
+a browser on all four pages.*
+
+### The gate, and why it nearly stopped this
+
+`mx update-widgets` is the command you normally run after a headless widget
+install. On a pristine worktree checked out at HEAD, nothing else run:
+
+```
+before   .mpr     86,016 bytes  +  469 .mxunit files
+after    .mpr 19,587,072 bytes  +    0 .mxunit files
+```
+
+The same v2 → v1 collapse §53 measured for `mx module-import`, from a second
+command, and this one sits on the only documented path for installing a widget
+without Studio Pro.
+
+**`mxcli widget init` does not do this.** 86,016 bytes and 469 units before and
+after, and it registers the widget definition — which is what the pack's install
+guide actually tells you to run. That is the whole reason this migration was
+possible at all with the model still diffable.
+
+### A correction to §53
+
+Open issue 19 said there is *no mxcli equivalent for `update-widgets`*. That is
+wrong: `mxcli widget sync` exists, and its own `--help` is franker about the
+problem than this document was —
+
+> PARTIAL — this does not yet fully replace "Update all widgets". On the
+> reference fixture it clears 7 of 40 CE0463 errors; Mendix's own
+> `mx update-widgets` clears all 40 but **destroys the `mprcontents/` folder on
+> MPR v2 projects**, which this does not.
+
+So upstream already knew about the v2 destruction and had already started the
+replacement. The issue is not "no equivalent" but "the equivalent covers 7 of
+40". Corrected in the list below. Worth stating plainly because the wrong
+version pointed the fix at the wrong place.
+
+### What long format bought
+
+The widget takes a spec plus a JSON array in a string attribute. Ten `DSJ_`
+microflows emit long format — one row per (x, series, value) — onto a
+non-persistent `Formula1Frontend.Chart`, and each chart is a data view over one.
+All three of §51's chart limitations fall out of that shape rather than being
+worked around:
+
+| §51 said | Long format |
+|---|---|
+| A legend cannot carry data — `StaticName` is the one series text template not bound to the series datasource | The label is a column. Legends read *Denny Hulme, Jack Brabham, Jim Clark*, and *Lewis Hamilton / Charles Leclerc* instead of "1st".."5th" and "Seat 1"/"Seat 2" |
+| Per-bar colour needs a **dynamic** series, because `StaticBarColor` resolves once against the first row | The colour is a column and the scale reads it (`"scale": null`) |
+| A wide resource costs one datasource call per series | One call per chart |
+
+The third is the measurable one. `WeekendShape` and `LapChart` are ten series
+each and were fetched **ten times each**; the pace chart five. **38 datasource
+invocations across ten charts become 10 microflow calls** — most of the 28×
+page-parameter re-fetch §52 measured on the race weekend page, removed as a side
+effect of the data shape rather than by tuning anything.
+
+The names were never missing. `d1Name`…`d5Name`, `s1name`…`s10name` and
+`driver1Name`/`driver2Name` have been on those resources since they were
+published; no chart could read them.
+
+### Two authoring traps, both invisible until rendered
+
+**A sentinel value plots as a real measurement.** f1db carries an unclassified
+season as a standing in the high hundreds. The career chart's finish axis
+therefore ran to **1,000**, drawing a dramatic career arc out of "no position" —
+a wrong reading rather than a missing one, and one that looks entirely plausible.
+Only a classified season gets a point now.
+
+**`~s` is the wrong axis format for seconds.** A blanket SI format renders a
+0.35 s pace gap as **"350m"** — milli-seconds, read as metres. Formats have to be
+per chart: integers with `tickMinStep: 1` for positions, rounds, laps and counts;
+`.2f` for a gap in seconds.
+
+Both were found by looking at the rendered page. Neither is visible in the spec,
+in `mx check`, or in the headless spec checker — which reported all ten specs
+compiling cleanly with the wrong formats in place. The pack's own instruction —
+*measure the rendered output, do not reason about the spec* — earned itself
+twice in one afternoon.
+
+A third worth knowing: the checker's mark counts group by mark type, so a bar
+chart **with** a colour legend reports `rect:1` where the same chart without one
+reports `rect:3`. That reads as "my bars vanished". Counting `<path>` elements in
+the rendered SVG settled it in one command — 42 paths for the 15-bar chart.
+
+### One-line bug in the pack
+
+`references/install.md` says `npm ci`, and the pack ships no `package-lock.json`,
+so the documented command cannot work:
+
+```
+npm error The `npm ci` command can only install with an existing package-lock.json
+```
+
+`npm install` works. Either ship the lock file or change the instruction — the
+lock file is the better answer for a pack whose whole point is a reproducible
+build.

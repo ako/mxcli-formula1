@@ -104,7 +104,8 @@ MOVE CONSTANT Formula1Backend.OpsDbUser        TO FOLDER 'Ops';
 MOVE CONSTANT Formula1Backend.OpsDbPassword    TO FOLDER 'Ops';
 MOVE MICROFLOW Formula1Backend.Read_DriverForm   TO FOLDER 'Ops';
 MOVE MICROFLOW Formula1Backend.Read_Predictions  TO FOLDER 'Ops';
-MOVE MICROFLOW Formula1Backend.Insert_Prediction TO FOLDER 'Ops';
+MOVE MICROFLOW Formula1Backend.RecordPrediction   TO FOLDER 'Ops';
+MOVE MICROFLOW Formula1Backend.AuthenticateApiClient TO FOLDER 'Ops';
 
 -- Near-live timing from OpenF1, which is a different source with a different
 -- freshness contract — hence its own folder and its own service.

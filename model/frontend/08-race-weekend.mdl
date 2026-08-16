@@ -41,6 +41,46 @@ BEGIN
 END;
 
 /*
+ * The season's rounds, for the chip row across the top: one chip per Grand
+ * Prix, the one being shown outlined. `year` is pushed down, so this is the
+ * season and not the calendar.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_WeekendRounds ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.Calendar AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Race/year SORT BY round ASC;
+  RETURN $Rows;
+END;
+
+/*
+ * Prev and Next. `round` is pushed down on Calendar now, so each is one row
+ * over the wire rather than a season fetched to pick one out of it.
+ *
+ * At either end the neighbour does not exist and the button does nothing —
+ * the comp greys them out, which a Mendix button can only do from a page
+ * variable, and there is none here to hold "is this the first round".
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_PrevRound ($Race: F1Fan.Calendar)
+BEGIN
+  DECLARE $Target Long = $Race/round - 1;
+  RETRIEVE $Prev FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Target LIMIT 1;
+  IF $Prev != empty THEN
+    SHOW PAGE Formula1Frontend.Race_Weekend (Race: $Prev);
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NextRound ($Race: F1Fan.Calendar)
+BEGIN
+  DECLARE $Target Long = $Race/round + 1;
+  RETRIEVE $Next FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Target LIMIT 1;
+  IF $Next != empty THEN
+    SHOW PAGE Formula1Frontend.Race_Weekend (Race: $Next);
+  END IF;
+END;
+
+/*
  * The URL carries the race, so a weekend can be linked to. That only works
  * because Read_Calendar answers a lookup by key — resolving `{Race}` back into
  * an object is exactly the read that used to fall through to the collection
@@ -55,69 +95,76 @@ create or replace page Formula1Frontend.Race_Weekend
 )
 {
   container pageBody {
-    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race)) {
-      container head (class: 'pagehead') {
-        container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: '{1} · Round {2}',
-            contentparams: [{1} = year, {2} = round], class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = name],
-                             rendermode: H2, class: 'pagehead-title')
-          dynamictext sub (content: '{1} · {2} laps · {3} km',
-            contentparams: [{1} = circuitName, {2} = laps, {3} = distance],
-            class: 'pagehead-sub')
-        }
-        container headBadge (class: 'pagehead-badge') {
-          dynamictext rnd (content: 'R{1}', contentparams: [{1} = round])
+    /*
+     * The comp's round nav: two step buttons and then a chip per Grand Prix,
+     * the one on screen outlined. Both are the season in one line, so a
+     * weekend can be left in either direction without going back to a list.
+     */
+    container roundNav (class: 'round-nav') {
+      actionbutton btnPrev (caption: '← Prev', class: 'nav-step',
+        action: microflow Formula1Frontend.ACT_PrevRound(Race: $Race))
+      actionbutton btnNext (caption: 'Next →', class: 'nav-step',
+        action: microflow Formula1Frontend.ACT_NextRound(Race: $Race))
+      container roundChips (class: 'chips-row chips-inline') {
+        listview lvRounds (
+          datasource: MICROFLOW Formula1Frontend.DS_WeekendRounds(Race: $Race),
+          PageSize: 40
+        ) {
+          container chipRound (
+            class: 'chip-pick',
+            dynamicclasses: 'if $currentObject/round = $Race/round then ''is-picked'' else ''''',
+            OnClick: SHOW_PAGE Formula1Frontend.Race_Weekend(Race: $currentObject)
+          ) {
+            dynamictext chipCode (content: '{1}', contentparams: [{1} = code])
+          }
         }
       }
+    }
 
-      /*
-       * The session cards: who led each session and with what lap. Practice is
-       * empty before 1986 and FP3 before 2003, so a card can legitimately read
-       * as a dash.
-       */
-      container sessions (class: 'kpis') {
-        container sFp1 (class: 'kpi') {
-          dynamictext sFp1L (content: 'FP1', class: 'kpi-label')
-          dynamictext sFp1V (content: '{1}', contentparams: [{1} = fp1LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp1S (content: '{1}', contentparams: [{1} = fp1LeaderName],
-                             class: 'kpi-sub')
+    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race),
+                        class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroId (class: 'hero-id') {
+          dynamictext heroRound (content: 'Round {1} of {2}',
+            contentparams: [{1} = round, {2} = year], class: 'hero-eyebrow')
+          dynamictext heroName (content: '{1}', contentparams: [{1} = name],
+                                rendermode: H2, class: 'hero-name')
+          dynamictext heroCircuit (content: '{1}', contentparams: [{1} = circuitName],
+                                   class: 'hero-sub')
+          dynamictext heroLaps (content: '{1} laps · {2} km',
+            contentparams: [{1} = laps, {2} = distance], class: 'hero-sub')
         }
-        container sFp2 (class: 'kpi') {
-          dynamictext sFp2L (content: 'FP2', class: 'kpi-label')
-          dynamictext sFp2V (content: '{1}', contentparams: [{1} = fp2LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp2S (content: '{1}', contentparams: [{1} = fp2LeaderName],
-                             class: 'kpi-sub')
-        }
-        container sFp3 (class: 'kpi') {
-          dynamictext sFp3L (content: 'FP3', class: 'kpi-label')
-          dynamictext sFp3V (content: '{1}', contentparams: [{1} = fp3LeaderTime],
-                             class: 'kpi-value')
-          dynamictext sFp3S (content: '{1}', contentparams: [{1} = fp3LeaderName],
-                             class: 'kpi-sub')
-        }
-        container sPole (class: 'kpi kpi-accent') {
-          dynamictext sPoleL (content: 'Pole', class: 'kpi-label')
-          dynamictext sPoleV (content: '{1}', contentparams: [{1} = poleTime],
-                              class: 'kpi-value')
-          dynamictext sPoleS (content: '{1}', contentparams: [{1} = poleName],
-                              class: 'kpi-sub')
-        }
-        container sFast (class: 'kpi') {
-          dynamictext sFastL (content: 'Fastest lap', class: 'kpi-label')
-          dynamictext sFastV (content: '{1}', contentparams: [{1} = fastestLapTime],
-                              class: 'kpi-value')
-          dynamictext sFastS (content: '{1}', contentparams: [{1} = fastestLapName],
-                              class: 'kpi-sub')
-        }
-        container sWin (class: 'kpi kpi-text') {
-          dynamictext sWinL (content: 'Winner', class: 'kpi-label')
-          dynamictext sWinV (content: '{1}', contentparams: [{1} = winnerName],
-                             class: 'kpi-value')
-          dynamictext sWinS (content: '{1}', contentparams: [{1} = winnerTeam],
-                             class: 'kpi-sub')
+
+        /*
+         * The comp's three highlight cards, each tinted by what it is about:
+         * practice on the plain surface, pole on the accent, the win on the
+         * brand. Practice is empty before 1986 and FP3 before 2003, so a card
+         * can legitimately read as a dash — that is data, not a fault.
+         */
+        container hlCards (class: 'hl-cards') {
+          container hlPractice (class: 'hl-card') {
+            dynamictext hlPracticeL (content: 'Fastest in practice', class: 'hl-label')
+            dynamictext hlPracticeV (content: '{1}', contentparams: [{1} = fp3LeaderTime],
+                                     class: 'hl-value')
+            dynamictext hlPracticeS (content: 'FP3 · {1}',
+                                     contentparams: [{1} = fp3LeaderName],
+                                     class: 'hl-sub')
+          }
+          container hlPole (class: 'hl-card hl-card-pole') {
+            dynamictext hlPoleL (content: 'Pole position', class: 'hl-label')
+            dynamictext hlPoleV (content: '{1}', contentparams: [{1} = poleTime],
+                                 class: 'hl-value')
+            dynamictext hlPoleS (content: '{1}', contentparams: [{1} = poleName],
+                                 class: 'hl-sub')
+          }
+          container hlWin (class: 'hl-card hl-card-win') {
+            dynamictext hlWinL (content: 'Race winner', class: 'hl-label')
+            dynamictext hlWinV (content: '{1}', contentparams: [{1} = winnerName],
+                                class: 'hl-value hl-value-name')
+            dynamictext hlWinS (content: '{1} · fastest lap {2}',
+              contentparams: [{1} = winnerTeam, {2} = fastestLapName],
+              class: 'hl-sub')
+          }
         }
       }
     }
@@ -130,87 +177,14 @@ create or replace page Formula1Frontend.Race_Weekend
           dynamictext shapeSub (content: 'FP1 → FP2 → FP3 → Qualifying → Race, top 10',
                                 class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartShape {
-          line shape1 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s1value,
-            StaticName: 'P1',
-            Interpolation: 'linear'
-          )
-          line shape2 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s2value,
-            StaticName: 'P2',
-            Interpolation: 'linear'
-          )
-          line shape3 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s3value,
-            StaticName: 'P3',
-            Interpolation: 'linear'
-          )
-          line shape4 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s4value,
-            StaticName: 'P4',
-            Interpolation: 'linear'
-          )
-          line shape5 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s5value,
-            StaticName: 'P5',
-            Interpolation: 'linear'
-          )
-          line shape6 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s6value,
-            StaticName: 'P6',
-            Interpolation: 'linear'
-          )
-          line shape7 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s7value,
-            StaticName: 'P7',
-            Interpolation: 'linear'
-          )
-          line shape8 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s8value,
-            StaticName: 'P8',
-            Interpolation: 'linear'
-          )
-          line shape9 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s9value,
-            StaticName: 'P9',
-            Interpolation: 'linear'
-          )
-          line shape10 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_WeekendShape(Race: $Race),
-            StaticXAttribute: sessionIndex,
-            StaticYAttribute: s10value,
-            StaticName: 'P10',
-            Interpolation: 'linear'
-          )
+        dataview dvChartShape (datasource: MICROFLOW Formula1Frontend.DSJ_WeekendShape(Race: $Race)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartShape (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"line","strokeWidth":2,"point":{"filled":true,"size":40}},"encoding":{"x":{"field":"session","type":"nominal","title":null,"sort":{"field":"i","op":"min"}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"tableau10"},"legend":{"orient":"right","symbolLimit":10}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"session","title":"Session"},{"field":"pos","title":"Position"}]}}')
         }
       }
 
@@ -220,87 +194,14 @@ create or replace page Formula1Frontend.Race_Weekend
           dynamictext lapSub (content: 'lap-by-lap traces · 2024 only',
                               class: 'panel-sub')
         }
-        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' chartLaps {
-          line lap1 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s1value,
-            StaticName: 'P1',
-            Interpolation: 'linear'
-          )
-          line lap2 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s2value,
-            StaticName: 'P2',
-            Interpolation: 'linear'
-          )
-          line lap3 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s3value,
-            StaticName: 'P3',
-            Interpolation: 'linear'
-          )
-          line lap4 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s4value,
-            StaticName: 'P4',
-            Interpolation: 'linear'
-          )
-          line lap5 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s5value,
-            StaticName: 'P5',
-            Interpolation: 'linear'
-          )
-          line lap6 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s6value,
-            StaticName: 'P6',
-            Interpolation: 'linear'
-          )
-          line lap7 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s7value,
-            StaticName: 'P7',
-            Interpolation: 'linear'
-          )
-          line lap8 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s8value,
-            StaticName: 'P8',
-            Interpolation: 'linear'
-          )
-          line lap9 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s9value,
-            StaticName: 'P9',
-            Interpolation: 'linear'
-          )
-          line lap10 (
-            DataSet: 'static',
-            DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race),
-            StaticXAttribute: lap,
-            StaticYAttribute: s10value,
-            StaticName: 'P10',
-            Interpolation: 'linear'
-          )
+        dataview dvChartLaps (datasource: MICROFLOW Formula1Frontend.DSJ_LapChart(Race: $Race)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartLaps (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":300,"mark":{"type":"line","strokeWidth":1.5,"interpolate":"step-after"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"tableau10"},"legend":{"orient":"right","symbolLimit":10}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
         }
         container lapLegend (class: 'legend') {
           dynamictext lapCredit (
@@ -316,42 +217,14 @@ create or replace page Formula1Frontend.Race_Weekend
         dynamictext paceSub (content: 'gap to that session''s best, in seconds',
                              class: 'panel-sub')
       }
-      pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' chartPace {
-        series paceFp1 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp1Gap,
-          StaticName: 'FP1'
-        )
-        series paceFp2 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp2Gap,
-          StaticName: 'FP2'
-        )
-        series paceFp3 (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: fp3Gap,
-          StaticName: 'FP3'
-        )
-        series paceQual (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: qualGap,
-          StaticName: 'Qualifying'
-        )
-        series paceLap (
-          DataSet: 'static',
-          DataSource: microflow Formula1Frontend.DS_WeekendSessions(Race: $Race),
-          StaticXAttribute: abbreviation,
-          StaticYAttribute: bestLapGap,
-          StaticName: 'Best race lap'
-        )
+      dataview dvChartPace (datasource: MICROFLOW Formula1Frontend.DSJ_WeekendPace(Race: $Race)) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPace (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"bar"},"encoding":{"x":{"field":"drv","type":"nominal","title":null,"sort":null},"y":{"field":"gap","type":"quantitative","title":"Gap to best (s)","axis":{"format":".2f"}},"xOffset":{"field":"session","type":"nominal"},"color":{"field":"session","type":"nominal","title":null,"scale":{"range":["#58A6FF","#3FB950","#D29922","#F778BA","#FF8000"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"drv","title":"Driver"},{"field":"session","title":"Session"},{"field":"gap","title":"Gap (s)"}]}}')
       }
     }
 
@@ -378,13 +251,28 @@ create or replace page Formula1Frontend.Race_Weekend
           column colQual (attribute: qualPosition, caption: 'Quali', Alignment: right)
           column colQualT (attribute: qualTime, caption: 'Quali lap', Alignment: right)
           column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
-          column colDelta (attribute: positionsGained, caption: 'Δ', Alignment: right)
+          /*
+           * The comp draws the delta as an arrow, green for places gained and
+           * red for places lost, and a dash where nothing moved. The arrow is
+           * a cell class rather than a value, so the number stays a number and
+           * stays sortable; the zero case collapses the digit and the rule
+           * draws the dash in its place.
+           */
+          column colDelta (
+            attribute: positionsGained, caption: 'Δ', Alignment: right,
+            DynamicCellClass: 'if $currentObject/positionsGained = empty then ''delta-flat'' else if $currentObject/positionsGained > 0 then ''delta-up'' else if $currentObject/positionsGained < 0 then ''delta-down'' else ''delta-flat'''
+          )
           column colBest (attribute: bestLapTime, caption: 'Best lap', Alignment: right)
           column colPits (attribute: pitStops, caption: 'Pits', Alignment: right)
           column colPts (attribute: points, caption: 'Pts', Alignment: right)
           column colOut (attribute: reasonRetired, caption: 'Retired')
         }
       }
+    }
+
+    container dataNote (class: 'data-note') {
+      dynamictext noteLead (content: 'Data note.', class: 'data-note-lead')
+      dynamictext noteBody (content: ' Every session classification, lap time and grid slot is f1db, read from the CSVs on each request. Practice columns are empty before the era each session was timed — FP1 and FP2 from 1986, FP3 from 2003 — and a highlight card reads as a dash for the same reason. The lap traces come from Jolpica-F1: f1db has every session result but not a row per lap.')
     }
   }
 }

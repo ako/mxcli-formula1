@@ -189,7 +189,23 @@ create or modify non-persistent entity Formula1Backend.Stg_DriverSeason (
   BestFinish: long,
   AvgQualifying: decimal,
   AvgFinish: decimal,
-  Retirements: long
+  Retirements: long,
+  /*
+   * The winning driver's points in the same season, carried on every row.
+   *
+   * A career page draws each season's points as a bar against the season's
+   * best, and a bar needs its maximum next to its value — the row cannot see
+   * its siblings, and 2024's 437 means nothing beside 1958's 42 without it.
+   * Computing it here rather than in the client is also the only place it is
+   * cheap: one grouped scan of the standings, joined by year.
+   */
+  SeasonBestPoints: decimal,
+  /*
+   * The same comparison as a percentage, 0–100, so a client can draw the bar
+   * without doing arithmetic on two columns. Scoring systems changed six times;
+   * the share is the only number that means the same thing in 1958 and 2024.
+   */
+  PointsShare: long
 );
 
 /*
@@ -253,6 +269,67 @@ create or modify non-persistent entity Formula1Backend.Stg_Retirement (
   SharePercent: decimal,
   FirstYear: long,
   LastYear: long
+);
+
+/*
+ * A constructor's season, round by round: what each of the two cars scored,
+ * what the team scored, and where that left it in the championship.
+ *
+ * The two drivers are seats, not names — seat 1 is whoever scored more over the
+ * season. A chart series binds its Y attribute when the page is authored, so a
+ * column called "Norris" would only work for one team in one year; the names
+ * travel as data and the panel says who they were.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_TeamSeason (
+  TeamSeasonKey: string(100),
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  Year: long,
+  Round: long,
+  Code: string(10),
+  RaceName: string(200),
+  Driver1Name: string(120),
+  Driver1Points: decimal,
+  Driver2Name: string(120),
+  Driver2Points: decimal,
+  TeamPoints: decimal,
+  StandingPosition: long
+);
+
+/*
+ * The same two seats, over a whole season, as four comparisons: who
+ * out-qualified whom, who finished ahead, who scored, who retired.
+ *
+ * One row, not four. The four labels are fixed — a page that draws them can
+ * name them itself — and one row means one scan and no ordering to preserve.
+ *
+ * Every pair carries both values *and* both as a percentage of the pair,
+ * because the page draws two bars growing away from a centre line and a bar
+ * needs its share, not its value. Nineteen against five is a rout; 19px
+ * against 5px is nothing.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_TeamH2H (
+  H2HKey: string(100),
+  ConstructorId: string(60),
+  Year: long,
+  LeftName: string(120),
+  RightName: string(120),
+  QualLeft: long,
+  QualRight: long,
+  QualLeftShare: long,
+  QualRightShare: long,
+  RaceLeft: long,
+  RaceRight: long,
+  RaceLeftShare: long,
+  RaceRightShare: long,
+  PointsLeft: decimal,
+  PointsRight: decimal,
+  PointsLeftShare: long,
+  PointsRightShare: long,
+  DnfLeft: long,
+  DnfRight: long,
+  DnfLeftShare: long,
+  DnfRightShare: long
 );
 
 /*
@@ -761,11 +838,17 @@ begin
                 min(rr.positionNumber) AS bestFinish,
                 round(avg(rr.qualificationPositionNumber), 1) AS avgQualifying,
                 round(avg(rr.positionNumber), 1) AS avgFinish,
-                sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements
+                sum(CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END) AS retirements,
+                COALESCE(max(sb.bestPoints), 0) AS seasonBestPoints,
+                CAST(round(COALESCE(max(ds.points), sum(COALESCE(rr.points, 0)))
+                     / NULLIF(max(sb.bestPoints), 0) * 100) AS BIGINT) AS pointsShare
          FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
          LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
          LEFT JOIN read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'') ds
                 ON ds.year = rr.year AND ds.driverId = rr.driverId
+         LEFT JOIN (SELECT year, max(points) AS bestPoints
+                    FROM read_csv({dataDir} || ''/f1db-seasons-driver-standings.csv'')
+                    GROUP BY year) sb ON sb.year = rr.year
          GROUP BY rr.year, rr.driverId
          ORDER BY rr.year DESC
          LIMIT 1'
@@ -776,7 +859,8 @@ begin
           standingOrder as StandingOrder, points as Points, starts as Starts,
           wins as Wins, podiums as Podiums, poles as Poles, bestFinish as BestFinish,
           avgQualifying as AvgQualifying, avgFinish as AvgFinish,
-          retirements as Retirements );
+          retirements as Retirements, seasonBestPoints as SeasonBestPoints,
+          pointsShare as PointsShare );
 
   query GetDriverRaces
     sql 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey, rr.driverId AS driverId,
@@ -999,6 +1083,45 @@ begin
           s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
           s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
 
+
+  query GetTeamSeason
+    sql 'SELECT '''' AS teamSeasonKey, '''' AS constructorId,
+                '''' AS constructorName, 0 AS year, 0 AS round,
+                '''' AS code, '''' AS raceName,
+                '''' AS driver1Name, 0.0 AS driver1Points,
+                '''' AS driver2Name, 0.0 AS driver2Points,
+                0.0 AS teamPoints, 0 AS standingPosition
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_TeamSeason
+    map ( teamSeasonKey as TeamSeasonKey, constructorId as ConstructorId,
+          constructorName as ConstructorName, year as Year, round as Round,
+          code as Code, raceName as RaceName,
+          driver1Name as Driver1Name, driver1Points as Driver1Points,
+          driver2Name as Driver2Name, driver2Points as Driver2Points,
+          teamPoints as TeamPoints, standingPosition as StandingPosition );
+
+  query GetTeamH2H
+    sql 'SELECT '''' AS h2hKey, '''' AS constructorId, 0 AS year,
+                '''' AS leftName, '''' AS rightName,
+                0 AS qualLeft, 0 AS qualRight, 0 AS qualLeftShare, 0 AS qualRightShare,
+                0 AS raceLeft, 0 AS raceRight, 0 AS raceLeftShare, 0 AS raceRightShare,
+                0.0 AS pointsLeft, 0.0 AS pointsRight,
+                0 AS pointsLeftShare, 0 AS pointsRightShare,
+                0 AS dnfLeft, 0 AS dnfRight, 0 AS dnfLeftShare, 0 AS dnfRightShare
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_TeamH2H
+    map ( h2hKey as H2HKey, constructorId as ConstructorId, year as Year,
+          leftName as LeftName, rightName as RightName,
+          qualLeft as QualLeft, qualRight as QualRight,
+          qualLeftShare as QualLeftShare, qualRightShare as QualRightShare,
+          raceLeft as RaceLeft, raceRight as RaceRight,
+          raceLeftShare as RaceLeftShare, raceRightShare as RaceRightShare,
+          pointsLeft as PointsLeft, pointsRight as PointsRight,
+          pointsLeftShare as PointsLeftShare, pointsRightShare as PointsRightShare,
+          dnfLeft as DnfLeft, dnfRight as DnfRight,
+          dnfLeftShare as DnfLeftShare, dnfRightShare as DnfRightShare );
 
   /* -------------------------------------------------------------------------
    * The live snapshot. Columns are declared rather than sniffed: these files

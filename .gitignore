@@ -52,3 +52,22 @@
 /Formula1Frontend/userlib/*.jar
 /Formula1Backend/out.mda
 /Formula1Frontend/out.mda
+
+# Semantic fingerprints from scripts/fingerprint.sh — a local before/after
+# comparison, not an artefact worth versioning.
+/fingerprint/
+
+# Runtime observation output from scripts/run-observed.sh — collected spans,
+# the collector's own log and each app's boot log. Minutes of browsing is tens
+# of MB of JSONL, and it describes one run of one machine.
+/.mxcli-obs/
+
+# Vega widget: the pack's source is committed, its dependencies and build
+# output are not. The built .mpk is a different matter — it lands in
+# Formula1Frontend/widgets/ and IS committed, because a gitignored widgets/
+# folder makes every other clone of this repo unbuildable: the project
+# references a widget nobody else has, and the error names a missing widget
+# rather than a missing file.
+/.claude/skills/*/node_modules/
+/.claude/skills/*/*/node_modules/
+/.claude/skills/*/widget/dist/

@@ -1,0 +1,274 @@
+/*
+ * {{MODULE}} — serve an OData resource from SQL you did not write.
+ *
+ * Mendix can publish any entity over OData, including one that has no table
+ * behind it: you declare the resource non-persistable and give it a read
+ * microflow. What the documentation does not say, and what costs a day to find
+ * out, is that Mendix then applies NONE of the query options to your answer.
+ * `$filter`, `$orderby`, `$top`, `$skip`, `$count` and the key lookup all arrive
+ * on the request URI and all stay there. Whatever the microflow returns is
+ * exactly what the client gets.
+ *
+ * That failure mode is the reason this module exists. It is not a 500 and it is
+ * not an empty grid — it is a 200 with the wrong rows. `?$top=5` returns 917
+ * rows and the widget shows five of them, so paging looks fine while every page
+ * ships the whole table. A client re-reading one held row by its key gets the
+ * collection back, adopts the first row as that object's identity, and keeps it:
+ * the season page for 1957 lists the 2024 grid, and nothing anywhere logs a
+ * word. (FINDINGS §37 is the day that one took.)
+ *
+ * So the read microflow has to honour the request itself, and this module is
+ * the part of that which is the same for everybody:
+ *
+ *   {{MODULE}}.Parse(Uri, Columns, Dialect, MaxTop, DefaultTop,
+ *                       DefaultOrderBy, KeyField) -> {{MODULE}}.Query
+ *   {{MODULE}}.Key(Uri, KeyField)              -> String
+ *
+ * Nothing in it is Formula 1, or DuckDB, or this app. Point it at a warehouse
+ * table, a legacy view, a Databricks catalogue or a stored procedure's result
+ * set and it does the same job: a published OData surface over data Mendix
+ * cannot see, with widgets on the far side that filter, sort and page for real.
+ *
+ *
+ * TWO WAYS TO SPEND THE ANSWER
+ *
+ * Which one you get is decided by whether you own the SQL.
+ *
+ *   Splice — you build the statement, so take `FilterSql` (" WHERE …") and
+ *   `OrderBySql` (" ORDER BY … LIMIT … OFFSET …") and concatenate them. One
+ *   parse, one statement, everything pushed down.
+ *
+ *   Bind — the SQL lives somewhere you cannot rewrite: a named query on a
+ *   database connection, a view, a procedure. Take `Key`, `Top`, `Skip`,
+ *   `SortColumn1` and `SortDirection1` and pass them as parameters. The SQL has
+ *   to be written to expect them, but they travel as values, so no string of
+ *   yours ever reaches the parser on the far side.
+ *
+ * The second style is why this is not simply a SQL builder. Most of the data
+ * worth exposing this way is behind SQL somebody else owns.
+ *
+ *
+ * WHAT IT UNDERSTANDS
+ *
+ * The whole grammar Mendix's own OData client emits, captured off the wire from
+ * a running app rather than read off the specification — see FINDINGS §45 for
+ * the capture. Comparisons eq/ne/gt/ge/lt/le, contains/startswith/endswith,
+ * `and`, `or`, `not`, parentheses, `eq null`, booleans, decimals and ISO
+ * instants; `$orderby` with two terms; `$top`, `$skip`, `$count`, and the key in
+ * all three spellings it arrives in. That set is the bar for a widget over an
+ * external entity to work rather than half-work.
+ *
+ * OData itself is far larger — arithmetic, lambdas, `$apply`, date functions,
+ * `any`/`all`. None of it is emitted by a Mendix client, so none of it is here.
+ * A request outside the grammar is REJECTED, not ignored: `Rejected` comes back
+ * true and the caller is expected to fail the request. Dropping a filter you
+ * could not read returns more rows than were asked for and calls it success,
+ * which is the same bug this module exists to stop.
+ *
+ *
+ * INSTALLING IT ELSEWHERE
+ *
+ *   mxcli skill add mendix-odata-pushdown --apply -p App.mpr
+ *
+ * That copies java/ into javasource/{{MODULE_PATH}}/ and runs this script.
+ * Then add {{MODULE}}.User to whichever user roles run your read microflows —
+ * the module cannot do that itself without knowing your role names.
+ *
+ * No jar and no dependency. See SKILL.md and references/.
+ */
+
+create module {{MODULE}};
+
+/*
+ * The parse result.
+ *
+ * Non-persistable: it is a return value, not a record. Nothing commits it and
+ * nothing cleans it up — it lives as long as the microflow that asked for it.
+ *
+ * It is one object because the alternative was ten Java actions, and the app
+ * this came out of had them. Each re-read the URI, re-split the query string and
+ * re-parsed the filter to answer one question about it — seven parses of the
+ * same string in a single read microflow, with nothing holding the seven answers
+ * to one interpretation. One parse now.
+ */
+@Position(100, 100)
+create or modify non-persistent entity {{MODULE}}.Query (
+  /** " WHERE …", or empty when the client asked for the whole collection. */
+  FilterSql: String(4000),
+  /** " ORDER BY … LIMIT n OFFSET m", for callers that build their own SQL. */
+  OrderBySql: String(2000),
+  /** The key the client is re-reading one row by; empty for a collection. */
+  Key: String(200),
+  /** Page size, already clamped to the resource's MaxTop. */
+  Top: Long,
+  Skip: Long,
+  /** $count=true: the client wants the size of the set, not of the page. */
+  WantsCount: Boolean default false,
+  /** The sort, as exposed names, for callers that bind rather than splice. */
+  SortColumn1: String(100),
+  /** 'A' or 'D'. One letter because it is a bind parameter, not a clause. */
+  SortDirection1: String(1) default 'A',
+  SortColumn2: String(100),
+  SortDirection2: String(1) default 'A',
+  /**
+   * The request asked for something this cannot translate.
+   *
+   * Answer it with an error. Returning rows anyway means returning more rows
+   * than were asked for, under a 200, which no client can detect.
+   */
+  Rejected: Boolean default false,
+  RejectReason: String(500)
+);
+
+/*
+ * The full parse.
+ *
+ * Columns is the whitelist and the only thing standing between the client and
+ * your SQL: `exposedName:sqlExpression:type`, comma-separated. Nothing outside
+ * it can be filtered or sorted on, and a filter naming something outside it is
+ * a rejection rather than an omission.
+ *
+ *   'name:d.name:text,wins:d.race_wins:number,active:d.is_active:bool'
+ *
+ * The type is not decoration. Mendix quotes a literal according to what the
+ * widget believes the attribute is, which is not always what the column is — a
+ * combo box on a numeric key sends `year eq '1957'` while the grid header above
+ * it sends `year eq 1957`. Passing the quotes through gives the engine
+ * `year = '1957'` against a BIGINT: zero rows, status 200. The type is what
+ * makes both spellings mean the same thing. An unrecognised type is an error,
+ * because the alternative is a typo that silently returns nothing.
+ *
+ * Dialect is one of postgresql | duckdb | sqlserver | oracle | mysql, and
+ * decides two things only: how to spell a case-insensitive LIKE, and how to
+ * spell a page. Everything else this emits is ordinary SQL.
+ *
+ * DefaultOrderBy is spliced, not escaped — it is yours, not the client's. Give
+ * one: SQL Server and Oracle refuse OFFSET without an ORDER BY, and a page
+ * without a total order is a different set each time it is asked for.
+ *
+ * RejectUnsupported decides what happens to a filter this cannot translate,
+ * and the right answer depends on which style you are in.
+ *
+ *   Splice callers should pass true. Their WHERE comes from FilterSql, so an
+ *   untranslated filter means an empty WHERE, which means every row in the
+ *   table under a 200. Throwing turns that into a 500 the caller can see.
+ *
+ *   Bind callers can pass false. They never look at FilterSql — their SQL
+ *   filters on the key and nothing else — so a filter they were never going to
+ *   apply is not made better by failing the request. Read `Rejected` if you
+ *   want to log it.
+ */
+CREATE OR MODIFY JAVA ACTION {{MODULE}}.Parse(
+  Uri: String,
+  Columns: String NOT NULL,
+  Dialect: String NOT NULL,
+  MaxTop: Long NOT NULL,
+  DefaultTop: Long NOT NULL,
+  DefaultOrderBy: String,
+  KeyField: String,
+  RejectUnsupported: Boolean NOT NULL
+) RETURNS {{MODULE}}.Query
+EXPOSED AS 'Parse OData query options' IN 'OData pushdown'
+AS $$
+return {{MODULE_PATH}}.QueryObject.parse(getContext(), Uri, Columns, Dialect,
+        MaxTop, DefaultTop, DefaultOrderBy, KeyField, RejectUnsupported);
+$$;
+
+/*
+ * The key on its own.
+ *
+ * Plenty of resources are reachable one way only — the sessions of this
+ * weekend, the laps of this race — and their entire contract is one id out of
+ * `$filter`. Making those declare a column map and a dialect to reach one
+ * string would be a tax on the common case, so this is the short form of the
+ * same parse. It reads the key from `$filter <field> eq …`, quoted or not, and
+ * from the `(…)` key segment on the path.
+ */
+CREATE OR MODIFY JAVA ACTION {{MODULE}}.Key(
+  Uri: String,
+  KeyField: String NOT NULL
+) RETURNS String
+EXPOSED AS 'OData key from request' IN 'OData pushdown'
+AS $$
+return {{MODULE_PATH}}.ODataQueryParser.key(Uri, KeyField);
+$$;
+
+/*
+ * A number out of $filter — and not out of the path.
+ *
+ * The same resource is often asked two different questions: "the 2021 season"
+ * (?$filter=year eq 2021) and "this one row" (/Calendar('1036-c')). Key answers
+ * the second and falls back to the path to do it. This answers the first, and
+ * must not: reading 1036 out of that path as if it were a year would answer a
+ * question nobody asked, which is the whole failure mode this module is for.
+ *
+ * The quotes are optional because the client's are — the same numeric column
+ * arrives bare from a grid header and quoted from a combo box.
+ */
+CREATE OR MODIFY JAVA ACTION {{MODULE}}.FilterNumber(
+  Uri: String,
+  Field: String NOT NULL,
+  Fallback: Long NOT NULL
+) RETURNS Long
+EXPOSED AS 'OData $filter number' IN 'OData pushdown'
+AS $$
+return {{MODULE_PATH}}.ODataQueryParser.filterNumber(Uri, Field, Fallback);
+$$;
+
+/*
+ * Invoking a stored routine — a procedure, a table-valued function, a package
+ * body — rather than a query.
+ *
+ * This is where a lot of the logic worth exposing actually lives, and the part
+ * of a legacy system nobody gets to rewrite. Five engines, three kinds of
+ * routine, and almost no two agree on the spelling:
+ *
+ *   postgresql  SELECT * FROM f(a, b)            CALL p(a, b, NULL, NULL)
+ *   sqlserver   SELECT * FROM f(a, b)            EXEC p @x = a, @y = b
+ *   oracle      SELECT * FROM TABLE(f(a, b))     BEGIN p(a, b); END;
+ *   mysql       (no table functions)             CALL p(a, b)
+ *   duckdb      SELECT * FROM macro(a, b)        (no procedures)
+ *
+ * `Parameters` is a comma-separated list of Mendix query-parameter NAMES, in
+ * the routine's own argument order — never values. What comes back is a
+ * statement full of `{placeholders}` for `execute database query` to bind:
+ *
+ *   CallStatement('f1ops.driver_form', 'table', 'driverId,lastN', 'postgresql')
+ *     -> SELECT * FROM f1ops.driver_form({driverId}, {lastN})
+ *
+ * So unlike the $filter translation there is nothing to escape here: a WHERE
+ * clause has to be built as text because its shape comes from the client, but
+ * a routine call's shape is fixed by the routine and only its values vary. The
+ * only text this emits is the routine name, checked against an identifier
+ * pattern, and punctuation.
+ *
+ * The literal `null` is allowed as a parameter and passes through as SQL NULL —
+ * that is how a Postgres procedure's INOUT slots are filled. It answers with
+ * one row carrying them, which is what lets a procedure be read through the
+ * same interface as a SELECT.
+ */
+CREATE OR MODIFY JAVA ACTION {{MODULE}}.CallStatement(
+  Routine: String NOT NULL,
+  Kind: String NOT NULL,
+  Parameters: String,
+  Dialect: String NOT NULL
+) RETURNS String
+EXPOSED AS 'Stored routine call for this engine' IN 'OData pushdown'
+AS $$
+return {{MODULE_PATH}}.RoutineCall.statement(Routine, Kind, Parameters, Dialect);
+$$;
+
+/*
+ * One role, so the read microflows can instantiate a Query.
+ *
+ * A non-persistable entity still needs entity access once project security is
+ * on. Add {{MODULE}}.User to whichever user roles your published service
+ * runs as — the module cannot do that itself without knowing your role names.
+ */
+create or modify module role {{MODULE}}.User;
+
+grant {{MODULE}}.User on {{MODULE}}.Query (
+  create, delete,
+  read  *,
+  write *
+);

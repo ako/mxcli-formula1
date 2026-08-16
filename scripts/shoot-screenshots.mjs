@@ -110,9 +110,10 @@ const steps = [
   ['03-seasons', async () => { await nav('Seasons'); }],
   ['04-season-summary', async () => { await filterAndOpen('Verstappen', 'Summary'); }],
   ['05-race-weekend', async () => {
-    // Exact match: the panel subtitle says "open one for the full weekend" and
-    // a substring locator picks that up instead of the row link.
-    await page.getByText('Weekend', { exact: true }).first().click();
+    // The calendar is a card per round now, not a table with a link column.
+    // Round 18 rather than round 1: a mid-season weekend has every session
+    // populated, which is what the page is for.
+    await page.locator('.cal-card').nth(17).click();
     await page.waitForTimeout(45000);
   }],
   ['06-drivers', async () => { await nav('Drivers'); await nav('Live (CSV)'); }],
