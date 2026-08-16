@@ -1,0 +1,81 @@
+{
+  // Solution-level, not per-app. The two devcontainers mxcli generated under
+  // Formula1Backend/ and Formula1Frontend/ each cover one app and download a
+  // prebuilt mxcli; this repo runs both apps together and builds mxcli from
+  // ako/mxcli main. Same reason .claude/settings.json lives at the root.
+  "name": "Formula1 solution",
+  "build": { "dockerfile": "Dockerfile" },
+
+  // sshd is here so Claude Code Desktop can open a session in this container:
+  // its environment dropdown offers Local, Cloud, SSH and WSL, and SSH is the
+  // only one of those that lands inside a container. VS Code and the CLI do not
+  // need it — see README.md in this directory.
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+
+  // Both apps run in this one container and address each other by name. Docker
+  // regenerates /etc/hosts at run time, so a Dockerfile write would be lost —
+  // and the append in .claude/bootstrap-mxcli.sh is guarded on the file being
+  // writable, which it is not for a non-root user. --add-host is what survives.
+  "runArgs": [
+    "--add-host=backend.local:127.0.0.1",
+    "--add-host=frontend.local:127.0.0.1"
+  ],
+
+  // appPort, not forwardPorts: forwardPorts is editor-managed and only exists
+  // while VS Code is attached, but the desktop app reaches this container over
+  // a real published port. Everything is bound to 127.0.0.1 so a laptop on a
+  // café network is not publishing a trust-auth Postgres to the LAN.
+  //   8080/8090/6543  backend        8180/8190/6643  frontend
+  //   8081/8091/6544  mxcli test --local (kept clear of both apps)
+  "appPort": [
+    "127.0.0.1:2222:2222",
+    "127.0.0.1:8080:8080",
+    "127.0.0.1:8090:8090",
+    "127.0.0.1:6543:6543",
+    "127.0.0.1:8180:8180",
+    "127.0.0.1:8190:8190",
+    "127.0.0.1:6643:6643",
+    "127.0.0.1:8081:8081",
+    "127.0.0.1:8091:8091",
+    "127.0.0.1:6544:6544",
+    "127.0.0.1:5432:5432"
+  ],
+
+  // The container's home is discarded on rebuild. ~/.mxcli holds MxBuild and
+  // the Mendix runtime — hundreds of MB per version — so losing it means
+  // re-downloading both every time. ~/.claude holds the Claude Code
+  // credentials, and CLAUDE_CONFIG_DIR moves ~/.claude.json (the OAuth account,
+  // which lives outside ~/.claude) into the same volume so a rebuild does not
+  // sign you out.
+  "mounts": [
+    "source=f1-claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume",
+    "source=f1-mxcli-cache-${devcontainerId},target=/home/vscode/.mxcli,type=volume"
+  ],
+
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "MXCLI_QUIET": "1",
+    "PLAYWRIGHT_CLI_SESSION": "mendix-app"
+  },
+
+  // post-create runs once and provisions Postgres; post-start runs on every
+  // container start, because there is no init system to bring the cluster up.
+  // Neither one bootstraps the solution itself — .claude/settings.json already
+  // does that on SessionStart, and it is the same script whether or not you are
+  // in a container.
+  "postCreateCommand": "sudo bash .devcontainer/post-create.sh",
+  "postStartCommand": "sudo bash .devcontainer/post-start.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code"],
+      "settings": { "mdl.mxcliPath": "./mxcli" }
+    }
+  },
+
+  // Non-root: Claude Code refuses to start as root with
+  // --dangerously-skip-permissions, which is half the point of the container.
+  "remoteUser": "vscode"
+}

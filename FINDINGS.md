@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on **`a8dc083`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on **`d53691b`** (devcontainer, arm64) |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -3964,3 +3964,209 @@ across five dialects, and it has a genuinely cheap test surface:
 `jshell` or plain JUnit with no runtime around it — which is how the grammar was
 established term by term in §45. A dialect regression there is invisible to
 `mx check` and to every test that needs an app.
+
+## 55. Running the solution in a devcontainer: four host assumptions mxcli makes
+
+*Verified 2026-08-12, on `ako/mxcli` main @ `d53691b`, Mendix 11.13.0, Debian
+bookworm, **linux/arm64**, inside a Docker devcontainer. First entry here not run
+as root and not on amd64 — three of the four findings below are consequences of
+exactly that.*
+
+**Intent.** Make a fresh clone runnable by anyone with Docker and nothing else,
+and drive it from Claude Code Desktop, whose environment dropdown offers Local,
+Cloud, SSH and WSL — SSH being the only one that reaches inside a container.
+One container, not one per app: the two apps address each other as
+`backend.local` / `frontend.local` on `127.0.0.1`, so splitting them across a
+compose network would mean rewriting those names and the `ServiceUrl` constants.
+
+**What was built.** A root `.devcontainer/` — Dockerfile, `devcontainer.json`,
+`post-create.sh`, `post-start.sh`, `authorize-ssh-key.sh`, README. It supplies
+what `.claude/bootstrap-mxcli.sh` already assumes is present and otherwise stays
+out of its way; the bootstrap is not duplicated.
+
+**Outcome.** Both apps boot and serve — backend 200, frontend 200, `/xas/` 401,
+27533 race results counted live off the CSVs, 917 drivers, `$top`/`$skip`/
+`$filter` all pushed down. It took four workarounds to get there. Three are in
+`.devcontainer/` and should not have to be.
+
+### 55.1 `--ensure-db` shells out to `sudo -u postgres` and dies misleadingly
+
+```
+Ensuring database...
+  Creating role "mendix"...
+Error: ensuring database: creating role "mendix": exit status 1
+sudo: a terminal is required to read the password; either use the -S option to
+      read from standard input or configure an askpass helper
+sudo: a password is required
+```
+
+The diagnosis this invites — "sudo is misconfigured" — is wrong. `sudo` *is*
+passwordless: `sudo -n true` succeeds. The devcontainer base image grants
+`vscode ALL=(root) NOPASSWD:ALL`, which is passwordless only when the target
+user is **root**. `sudo -u postgres` targets somebody else, so it falls through
+to a password prompt, and with no tty it fails. Widening the rule to
+`(ALL)` fixes it, which is what `post-create.sh` now does.
+
+Two things follow. First, the role already existed — `post-create.sh` had
+created it — and mxcli still announced "Creating role"; once sudo worked, the
+same command correctly reported only `Creating database "formula1backend" owned
+by "mendix"`. So the existence check itself runs through the sudo path and its
+failure is indistinguishable from "absent". Second, this is not only mxcli's
+problem: `scripts/create-f1ops-db.sh` uses `sudo -u postgres psql` in five
+places and the README's session-clearing command uses it too. All three break
+identically on a stock devcontainer.
+
+**Requirement.** Try the configured connection first — `--db-host/--db-user/
+--db-password` are already flags — and only fall back to `sudo -u postgres`
+when a TCP connection cannot be made. A container with trust auth on loopback,
+which is the normal devcontainer shape, then needs no sudo at all.
+
+**Requirement.** When the sudo path does run and fails, say which target user
+was refused and that the rule may be `(root)`-only. The current message
+describes the mechanism and not the cause.
+
+### 55.2 The runtime binds `127.0.0.1` and nothing can change it
+
+`mxcli run --local` reports `app serving at http://127.0.0.1:8080/`, and that is
+literal:
+
+```
+LISTEN 0  50  [::ffff:127.0.0.1]:8080  *:*
+LISTEN 0  50  [::ffff:127.0.0.1]:8090  *:*
+LISTEN 0  500          127.0.0.1:6543  0.0.0.0:*
+```
+
+Docker publishes a port to the container's **eth0**, never to its loopback. So
+with `-p 127.0.0.1:8080:8080` the app answers 200 from inside the container and
+refuses the connection from the host. `mxcli run --help` has no `--bind`,
+`--listen` or `--host` flag; `--db-host` is the only address flag and it points
+the other way.
+
+The workaround is a `socat` forwarder per port, bound to eth0's address
+specifically — binding `0.0.0.0:8080` collides with the runtime's own
+`127.0.0.1:8080`. `post-start.sh` starts six of them.
+
+VS Code's `forwardPorts` would mask this, because its forwarder runs inside the
+container and dials loopback. That is worth knowing when reading bug reports:
+the same config works under VS Code and fails under `devcontainer exec`, a
+desktop SSH session, or a plain `docker start`.
+
+**Requirement.** `mxcli run --bind <addr>` (default `127.0.0.1`, so nothing
+changes for existing users), passed through to the runtime's listen address.
+Anything containerised, any remote dev box, and any published preview needs it.
+
+### 55.3 `--runtime-setting MicroflowConstants` replaces the map instead of merging
+
+The obvious way to make a model portable is to override one constant at boot:
+
+```
+--runtime-setting "MicroflowConstants={\"Formula1Backend.DataDir\":\"/workspaces/…\"}"
+```
+
+That boots further and then dies:
+
+```
+Could not find value for constant 'Formula1Backend.ApiKey'.
+Input '$Presented != @Formula1Backend.ApiKey' could not be parsed
+ERROR - Module: An error occurred while initializing modules
+```
+
+`MicroflowConstants` is one setting whose value is the whole map, so supplying
+one key drops the other nine — including the ones the custom-auth microflow and
+the two JDBC connections need. Overriding one constant means restating all ten,
+on every `mxcli run`, every `mxcli test`, and in every documented example. The
+`--runtime-setting` help says values are "merged into the boot configuration",
+which is true of the settings map and not of this setting's contents.
+
+**Requirement.** `mxcli run --constant Module.Name=value` (repeatable), folded
+into `MicroflowConstants` on top of the model defaults rather than replacing
+them. This is the single highest-value item here: it is what makes a `.mpr`
+runnable in an environment other than the one it was authored in, and §55.5
+below is a direct consequence of its absence.
+
+### 55.4 `mxcli init` writes a per-app devcontainer; a solution needs one
+
+`Formula1Backend/.devcontainer/` and `Formula1Frontend/.devcontainer/` were both
+generated by `init`. Neither is usable here. Each covers one app, and each
+`postCreateCommand` downloads a prebuilt `mendixlabs/mxcli` — while this repo
+deliberately builds `ako/mxcli` main from source, and the root
+`.claude/settings.json` is what Claude Code actually reads. The same asymmetry
+§4 records for the bootstrap hook: root wins, and the generated per-app copies are
+dead weight that reads like configuration.
+
+The generated Dockerfile is also short of what its own repo needs — no Go, no
+`python3`/`pip`, no Postgres **server** (only `postgresql-client`), so
+`scripts/build-mxcli.sh` and `--ensure-db` both fail in it.
+
+**Requirement.** When `init` runs in a directory holding more than one `.mpr`,
+generate one `.devcontainer/` at the root covering every app — ports offset per
+app, one Postgres, hostnames via `--add-host` — rather than one per app. Ship
+the toolchain the project's own scripts need, not only the runtime's.
+
+**Requirement.** Do not write a per-app `.devcontainer/` that a root-level one
+will shadow, for the same reason `init` should not write a per-app
+`.claude/settings.json` that a root one shadows.
+
+### 55.5 The documented source build breaks on PEP 668
+
+`scripts/build-mxcli.sh` does a bare `pip install 'antlr4-tools==0.2.2'`, which
+Debian bookworm refuses: the system interpreter is marked externally-managed, so
+pip exits rather than installing. §1 already records that the documented build
+path stops short on the ANTLR version; on any modern distro it now stops short
+one step earlier. The Dockerfile pre-installs the package with
+`--break-system-packages` so the script's `command -v antlr4` guard
+short-circuits and that branch never runs.
+
+**Requirement.** `pip install --user` with a venv fallback, or state the
+`--break-system-packages` requirement in the build instructions. Anything that
+tells a new contributor to run `pip install` on a 2024-or-later distro is
+telling them to hit this.
+
+### Not mxcli: two things this repo owns
+
+**`Formula1Backend.DataDir` is not portable.** It defaults to
+`/home/user/mxcli-formula1/data/f1db` — the absolute path of the environment
+this repo was first built in — and the backend fails its after-startup action
+anywhere else:
+
+```
+ERROR - ExternalDatabaseConnector: IO Error: No files found that match the
+        pattern "/home/user/mxcli-formula1/data/f1db/f1db-seasons.csv"
+```
+
+The README describes `ServiceUrl` as "a constant, not a literal, so the address
+is environment-overridable". `DataDir` is a constant too, but with §55.3 open
+nothing can override it, so in practice it is not. The workaround is a symlink
+in `post-create.sh`; it also covers `data/facts/` and `data/laps/`, which
+`DataDir` does not point at and which are reached by their own hardcoded paths.
+The real fix is in the model: default `DataDir` relative to the project
+directory, and give facts and laps constants of their own.
+
+**`/$count` as a path segment returns `-1` on the live services.** The query
+option is right and the path segment is not:
+
+```
+/odata/f1-live/RaceResults?$count=true   -> @odata.count = 27533   correct
+/odata/f1-live/RaceResults/$count        -> -1
+/odata/f1/RaceResults/$count             -> 27533                  (cached, Mendix's own)
+```
+
+§37 records that a resource has two ways to be asked for one row and that both
+must be answered; this is the same shape one level along — two ways to be asked
+for a count, and `ODataPushdown` answers one. `-1` is worse than a 501, because
+a client cannot tell it from an answer.
+
+### Summary for whoever productises this
+
+| # | Requirement | Blocks | Size |
+|---|---|---|---|
+| 55.3 | `--constant Module.Name=value`, merged over model defaults | any `.mpr` running outside its authoring environment | small |
+| 55.2 | `--bind <addr>` on `mxcli run` | containers, remote dev boxes, published previews | small |
+| 55.1 | try TCP before `sudo -u postgres`; name the refused target on failure | `--ensure-db` on any non-root host | small |
+| 55.4 | solution-level `.devcontainer/` from `init`, with the project's toolchain | multi-app repos | medium |
+| 55.5 | PEP 668-safe `pip install` in the documented build | new contributors on any 2024+ distro | trivial |
+
+None of these needed a change to the model, the theme, or MDL. They are all
+about the gap between "mxcli runs the app on the machine that authored it" and
+"mxcli runs the app somewhere else", which is the same gap a CI job, a cloud
+preview and a teammate's laptop all sit in.
