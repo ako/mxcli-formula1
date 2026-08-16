@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on **`d53691b`** (devcontainer, arm64) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on **`a8dc083`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1673,7 +1673,12 @@ the scripts quietly stop being the source of truth.
    units and the whole property PR 125 just established. `mx convert` only
    targets Mendix versions and mxcli has no convert command, so there is no way
    back. Any headless install path must preserve v2 or refuse; silently
-   downgrading the storage format is the worst of the three.
+   downgrading the storage format is the worst of the three. **Second instance
+   found in §56:** `mx update-widgets` does the same thing (86 KB + 469 units →
+   19.5 MB + 0 units), which puts it on the only headless path for installing a
+   widget. `mxcli widget init` is the counter-example that preserves v2, so the
+   behaviour is a property of the `mx` binary rather than of writing to a v2
+   project.
 17. **A module flagged `IsThemeModule` cannot be installed headlessly at all**
    (§53) — Conversational UI 7.2.0 carries `Projects$ModuleImpl.IsThemeModule =
    true` while its own `manifest.json` says `"type": "Module"`, and
@@ -1689,12 +1694,17 @@ the scripts quietly stop being the source of truth.
    fixing a reference makes new documents checkable. `mxcli marketplace install`
    knows the content id — resolving or at least *listing* the dependency set
    would remove the loop.
-19. **No mxcli equivalent for `update-widgets` or `rename-design-properties`**
-   (§53) — after a headless widget install the project reports 210 × CE0463,
-   which reads exactly like the malformed-template defect that has its own
-   diagnosis skill. It is not: `mx update-widgets` takes it to 1 and
-   `mx rename-design-properties` to 0. Either wrap both, or have
-   `marketplace install` run `update-widgets` itself and say so.
+19. **`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
+   equivalent** (§53, corrected in §56) — after a headless widget install the
+   project reports 210 × CE0463, which reads exactly like the malformed-template
+   defect that has its own diagnosis skill. It is not: `mx update-widgets` takes
+   it to 1 and `mx rename-design-properties` to 0. *This entry originally said
+   mxcli had no equivalent at all, which was wrong* — `mxcli widget sync` exists,
+   and its own help states it clears 7 of 40 CE0463 on the reference fixture
+   where `mx update-widgets` clears all 40 but destroys `mprcontents/` on MPR v2.
+   So the gap is coverage, not absence: finish `widget sync`, and wrap
+   `rename-design-properties`, whose 158 renames across 44 documents currently
+   require the v2-destroying binary.
 20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53) —
    `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
    the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
@@ -4170,3 +4180,106 @@ None of these needed a change to the model, the theme, or MDL. They are all
 about the gap between "mxcli runs the app on the machine that authored it" and
 "mxcli runs the app somewhere else", which is the same gap a CI job, a cloud
 preview and a teammate's laptop all sit in.
+
+## 56. Every chart onto Vega: long format closes three §51 limitations
+
+*Done 2026-08-16 on mxcli `a8dc083` (main), which ships skill packs that can
+carry a pluggable widget. All ten charts in the app moved from the Mendix chart
+widgets to `mendix-vega-charts`. `mx check` 0 errors, MPR v2 intact, verified in
+a browser on all four pages.*
+
+### The gate, and why it nearly stopped this
+
+`mx update-widgets` is the command you normally run after a headless widget
+install. On a pristine worktree checked out at HEAD, nothing else run:
+
+```
+before   .mpr     86,016 bytes  +  469 .mxunit files
+after    .mpr 19,587,072 bytes  +    0 .mxunit files
+```
+
+The same v2 → v1 collapse §53 measured for `mx module-import`, from a second
+command, and this one sits on the only documented path for installing a widget
+without Studio Pro.
+
+**`mxcli widget init` does not do this.** 86,016 bytes and 469 units before and
+after, and it registers the widget definition — which is what the pack's install
+guide actually tells you to run. That is the whole reason this migration was
+possible at all with the model still diffable.
+
+### A correction to §53
+
+Open issue 19 said there is *no mxcli equivalent for `update-widgets`*. That is
+wrong: `mxcli widget sync` exists, and its own `--help` is franker about the
+problem than this document was —
+
+> PARTIAL — this does not yet fully replace "Update all widgets". On the
+> reference fixture it clears 7 of 40 CE0463 errors; Mendix's own
+> `mx update-widgets` clears all 40 but **destroys the `mprcontents/` folder on
+> MPR v2 projects**, which this does not.
+
+So upstream already knew about the v2 destruction and had already started the
+replacement. The issue is not "no equivalent" but "the equivalent covers 7 of
+40". Corrected in the list below. Worth stating plainly because the wrong
+version pointed the fix at the wrong place.
+
+### What long format bought
+
+The widget takes a spec plus a JSON array in a string attribute. Ten `DSJ_`
+microflows emit long format — one row per (x, series, value) — onto a
+non-persistent `Formula1Frontend.Chart`, and each chart is a data view over one.
+All three of §51's chart limitations fall out of that shape rather than being
+worked around:
+
+| §51 said | Long format |
+|---|---|
+| A legend cannot carry data — `StaticName` is the one series text template not bound to the series datasource | The label is a column. Legends read *Denny Hulme, Jack Brabham, Jim Clark*, and *Lewis Hamilton / Charles Leclerc* instead of "1st".."5th" and "Seat 1"/"Seat 2" |
+| Per-bar colour needs a **dynamic** series, because `StaticBarColor` resolves once against the first row | The colour is a column and the scale reads it (`"scale": null`) |
+| A wide resource costs one datasource call per series | One call per chart |
+
+The third is the measurable one. `WeekendShape` and `LapChart` are ten series
+each and were fetched **ten times each**; the pace chart five. **38 datasource
+invocations across ten charts become 10 microflow calls** — most of the 28×
+page-parameter re-fetch §52 measured on the race weekend page, removed as a side
+effect of the data shape rather than by tuning anything.
+
+The names were never missing. `d1Name`…`d5Name`, `s1name`…`s10name` and
+`driver1Name`/`driver2Name` have been on those resources since they were
+published; no chart could read them.
+
+### Two authoring traps, both invisible until rendered
+
+**A sentinel value plots as a real measurement.** f1db carries an unclassified
+season as a standing in the high hundreds. The career chart's finish axis
+therefore ran to **1,000**, drawing a dramatic career arc out of "no position" —
+a wrong reading rather than a missing one, and one that looks entirely plausible.
+Only a classified season gets a point now.
+
+**`~s` is the wrong axis format for seconds.** A blanket SI format renders a
+0.35 s pace gap as **"350m"** — milli-seconds, read as metres. Formats have to be
+per chart: integers with `tickMinStep: 1` for positions, rounds, laps and counts;
+`.2f` for a gap in seconds.
+
+Both were found by looking at the rendered page. Neither is visible in the spec,
+in `mx check`, or in the headless spec checker — which reported all ten specs
+compiling cleanly with the wrong formats in place. The pack's own instruction —
+*measure the rendered output, do not reason about the spec* — earned itself
+twice in one afternoon.
+
+A third worth knowing: the checker's mark counts group by mark type, so a bar
+chart **with** a colour legend reports `rect:1` where the same chart without one
+reports `rect:3`. That reads as "my bars vanished". Counting `<path>` elements in
+the rendered SVG settled it in one command — 42 paths for the 15-bar chart.
+
+### One-line bug in the pack
+
+`references/install.md` says `npm ci`, and the pack ships no `package-lock.json`,
+so the documented command cannot work:
+
+```
+npm error The `npm ci` command can only install with an existing package-lock.json
+```
+
+`npm install` works. Either ship the lock file or change the instruction — the
+lock file is the better answer for a pack whose whole point is a reproducible
+build.

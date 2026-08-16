@@ -15,6 +15,23 @@ for f in ../model/frontend/0*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.mpr;
 | `04-pages.mdl` | The seven browsing pages. |
 | `05-navigation-security.mdl` | Roles, entity/page access, the Responsive navigation profile. |
 | `06-demo-user.mdl` | `fan`. Separate because 05 is not re-runnable. |
+| `07-fan-pages.mdl` | Driver career, constructor and season summary, built to the design comp. |
+| `08-race-weekend.mdl` | The weekend page: round nav, highlight cards, session tables. |
+| `09-live-race.mdl` | Near-live timing from `F1Now`. |
+| `10-vega-charts.mdl` | The data behind every chart — `Formula1Frontend.Chart` and ten `DSJ_` microflows emitting long-format JSON. The specs themselves live beside the widgets in 07 and 08. |
+
+**Charts are Vega, not the Mendix chart widgets.** The widget comes from the
+`mendix-vega-charts` skill pack, installed at namespace `f1` and built into
+`Formula1Frontend/widgets/f1.widget.web.VegaChart.mpk` (committed — a gitignored
+`widgets/` makes every other clone unbuildable). Rebuild it with:
+
+```bash
+cd .claude/skills/mendix-vega-charts/widget && npm install && npm run build
+./Formula1Frontend/mxcli widget init -p Formula1Frontend/Formula1Frontend.mpr
+```
+
+Use `mxcli widget init`, **not** `mx update-widgets`: the latter rewrites the
+project as MPR v1 and deletes `mprcontents/` (FINDINGS §56).
 
 ## Two modules, not one
 
