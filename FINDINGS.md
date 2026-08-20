@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on **`a8dc083`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de` |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -4283,3 +4283,183 @@ npm error The `npm ci` command can only install with an existing package-lock.js
 `npm install` works. Either ship the lock file or change the instruction — the
 lock file is the better answer for a pack whose whole point is a reproducible
 build.
+
+## 57. PR 202 verified: four defects fixed, one regression it says it does not have
+
+*Verified 2026-08-20. `ako/mxcli` PR #202 head `e50ddac` built against its own
+parent `48114de`, both from source, so every difference below is attributable to
+the one commit and not to the run of main between it and the build this repo
+carries.
+Built with go1.26.5, not the go1.24.7 in the table above.*
+
+The PR unifies the widget datasource switch — five copies on the read side, six
+on the write side — into one reader and one renderer, and closes #941. Reading
+the diff would not settle whether it works, so both sides were built and pointed
+at real models: **50 before/after pairs over 47 distinct pages**, across this
+solution's frontend (12) and backend (16) and a throwaway project (19) carrying
+the PR's own reproduction MDL.
+
+Measured twice, on two revisions of this repo: first at `946d6f1`, then re-run
+against `bb1d35d` after §56 replaced every chart with Vega. The two disagree
+about the blast radius, and the difference is itself a finding — see below.
+
+### The four defects reproduce here, and the PR fixes all four
+
+| Defect | On `48114de` | On `e50ddac` |
+|---|---|---|
+| pluggable/chart microflow source | `database from Formula1Frontend.DS_LapChart` | `microflow Formula1Frontend.DS_LapChart` |
+| gallery over an association | *(datasource absent)* | `$currentObject/Bug941.Item_Bucket` |
+| combobox on `System.UserRole` | WHERE + SORT dropped | both restored |
+| combobox on `System.TimeZone` | SORT dropped | restored |
+
+**31 datasources** changed across `Race_Weekend` (25), `Season_Summary` (5) and
+`Constructor_Detail` (1) — every one of them `database from` → `microflow`, no
+other kind of edit. That count is at `946d6f1`. Re-run at `bb1d35d` the frontend
+changes **nothing**: §56 wraps each chart in a `dataview` whose microflow
+datasource the old code already read correctly, so there is no pluggable-widget
+datasource left to mis-render. The Vega migration sidestepped this defect
+without meaning to. The backend and the probe project still reproduce it, so the
+bug is live — it is the binding style, not the fix, that decides whether a
+project ever meets it. The reporter's message is reproduced exactly and then goes
+away:
+
+```
+$ mxcli check Race_Weekend.describe.mdl -p Formula1Frontend.mpr --references
+48114de   - entity not found: Formula1Frontend.DS_WeekendShape
+          - entity not found: Formula1Frontend.DS_LapChart
+          - entity not found: Formula1Frontend.DS_WeekendSessions
+e50ddac   ✓ All references valid
+```
+
+The two combobox rows are the interesting ones: they are stock
+`Administration.Account_Edit` / `Account_New`, which ship in **every** project
+from the Mendix template, and they reproduced in two independent projects. This
+defect is not exotic.
+
+The gallery row is the sharpest vindication of the PR's own argument that silent
+loss is worse than a parse error. On `48114de` that page passes
+`check --references` **because** the datasource vanished — there is nothing left
+to fail on. No amount of validation catches it; only a before/after diff does.
+
+`go test ./mdl/executor/` passes on the head (12.2 s), and the new datasource
+tests genuinely exercise association, selection, context-scoped XPath and
+microflow shapes. The reordering of `MDL-WIDGET07` warnings between the two runs
+is nondeterministic map iteration over an identical set — confirmed by hashing
+the sorted sets — not a behaviour change.
+
+### 57.1 The regression: restoring the WHERE makes previously-parseable output unparseable
+
+> The PR body: *"a restored WHERE clause could plausibly have introduced a parse
+> error. It didn't."*
+
+Here it did, on **both** revisions — this is the one result the Vega migration
+does not change, because it lives in a stock Administration page.
+`Administration.Account_New` describes to MDL that parses clean on the parent
+and does not parse at all on the head:
+
+```
+48114de   ✓ Syntax OK (2 statements)
+e50ddac   Syntax errors found:   (27 of them)
+            - line 20:83 extraneous input '[' expecting {',', ')'}
+```
+
+Line 20, column 83, is the bracket in the constraint the PR correctly restored:
+
+```
+DataSource: database from System.UserRole where System.grantableRoles[reversed()]/System.UserRole/System.UserRoles = '[%CurrentUser%]' sort by Name asc,
+```
+
+The clause is right. It is emitted **unquoted** —
+`mdl/executor/cmd_pages_describe_datasource.go:224`:
+
+```go
+expr += " where " + xpath
+```
+
+so defect 4's fix collides with *unquoted XPath containing `[`*, which the PR's
+own "what this does not fix" list already names as an open round-trip defect.
+Restoring the WHERE turned a latent gap into an active parse failure.
+
+Isolated three ways on the emitted file — remove the WHERE: parses; quote the
+XPath: parses; leave `sort by` alone in both cases: parses. The bracket is the
+sole cause, and quoting at that line looks like the whole fix.
+
+Across all 50 pairs:
+
+| | count |
+|---|---|
+| parsed before, fails after | **2** |
+| fails before, parses after | 0 |
+| parses on both | 40 |
+| fails on both (pre-existing) | 8 |
+
+Those are the `946d6f1` pairs. The `bb1d35d` re-run over the backend's sixteen
+pages reproduces the same shape: `Account_New` clean → broken, `Account_Edit`
+broken on both sides, nothing else touched.
+
+Nothing here argues against the change — the reference-validity axis strictly
+improves and 31 wrong datasources become right. But the claim as written does
+not hold, and the two pages it costs are template pages every project has.
+
+### 57.2 Microflow datasources still lose their arguments — §39 one level along
+
+`DS_LapChart` takes `$Race`. The source binds it:
+
+```
+DataSource: microflow Formula1Frontend.DS_LapChart(Race: $Race)
+```
+
+`describe` emits it without the argument, and `check --references` now calls
+that valid:
+
+```
+DataSource: microflow Formula1Frontend.DS_LapChart,
+```
+
+At `946d6f1`, across the frontend's twelve pages and the probe's three: **46
+microflow datasources emitted, 0 carrying an argument**, against 41 source-side
+bindings that do pass one. At `bb1d35d`, across the frontend and backend: **35
+emitted, 0 carrying an argument**, against 29 bindings that pass one. The ratio
+does not move. It is not confined to pluggable widgets — plain `dataview`
+loses them too (`dvWeekend`).
+
+This is **pre-existing**, not a regression: `48114de` loses the arguments as
+well, it merely printed the whole line wrong so the loss was invisible behind a
+larger bug. It is the same defect as §39, which is `SHOW_PAGE` losing
+`(Race: $currentObject)`, one level along — an argument list dropped between the
+model and its description, so the description cannot re-execute into what it
+came from. Worth filing on its own; the renderer is now one function
+(`dataSourceExpr`, `case "microflow", "nanoflow"`), which is the right place to
+fix it once instead of six times.
+
+### 57.3 `strings.Trim(s, "")` is a no-op
+
+Same function, four lines above the WHERE emission:
+
+```go
+if xpath := strings.Trim(ds.XPathConstraint, ""); xpath != "" {
+```
+
+An empty cutset trims nothing. Verified rather than assumed:
+
+```
+Trim(s,"")   = "  [Foo/Bar]  "   (unchanged: true)
+TrimSpace(s) = "[Foo/Bar]"
+```
+
+So a whitespace-only constraint passes the `!= ""` guard and emits `where    `.
+Almost certainly meant `strings.TrimSpace`. Harmless against today's models —
+nothing in these three projects stores a blank constraint — but wrong as
+written, and it sits directly above the line that needs the quoting fix.
+
+### What to file
+
+| # | Finding | Where | Size |
+|---|---|---|---|
+| 57.1 | quote the XPath constraint on emit; it regresses two template pages from parseable to unparseable | `cmd_pages_describe_datasource.go:224` | trivial |
+| 57.2 | microflow/nanoflow datasources drop their arguments, as `SHOW_PAGE` does in §39 | same file, `case "microflow"` | small |
+| 57.3 | `strings.Trim(s, "")` should be `TrimSpace` | same file, line 220 | trivial |
+
+57.1 is worth raising before the PR merges, because it is one line and it is
+inside the change. 57.2 and 57.3 are older than the PR and belong in their own
+issues — the PR made the first one visible and gave the second one a single home.
