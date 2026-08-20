@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on **`a8dc083`** |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **`603aeb42`** |
 | Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1643,7 +1643,7 @@ the scripts quietly stop being the source of truth.
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
    statically: `check`/`lint` can compare the name against the model.
-13. **Five page-widget properties are parsed, dropped and not reported** (§51) —
+13. **Page-widget properties: partly fixed in §57** — `PageSize` round-trips now; listview `OnClick` still writes and checks clean and comes back missing. (§51) —
    `sort by` on a LISTVIEW's database datasource, `OnClick` on a LISTVIEW,
    `PageSize` on a GALLERY, and chart-level `CustomLayout` /
    `CustomConfigurations` when spelled with a capital. All four pass
@@ -1659,7 +1659,7 @@ the scripts quietly stop being the source of truth.
    prints it back, so the round-trip this repo uses to verify every other
    change reports it as dropped. The default is 20, which silently ends a
    24-round season in a "Load more" button.
-15. **Two expression traps that only `mx check` catches** (§51) — division is
+15. **Expression traps: partly fixed in §57** — `/` division is now MDL045 with a fix hint; a Decimal→Integer assignment and a comparison against a possibly-unset number both still pass `check`. (§51) — division is
    `div`, not `/` (CE0117 for any operand types, Decimal included), and `div`
    does *not* floor, so `77 div 5` is 15.4; and there is no cast from Decimal
    to Long, so a rounded percentage has to go through
@@ -1667,7 +1667,7 @@ the scripts quietly stop being the source of truth.
    argument is rejected by `mxcli check`. Also `not contains(…)` does not parse
    where `contains(…) = false` does. A `check` that validated microflow
    expressions against Mendix's grammar would catch all four at write time.
-16. **A marketplace module install collapses MPR v2 into v1** (§53) — one
+16. ~~**A marketplace module install collapses MPR v2 into v1** (§53)~~ — **fixed, verified in §57.** `marketplace install` transplants units with mxcli's own writer (466 → 485 units, `.mpr` unchanged); `mxcli fix widgets`/`fix design-properties` replace the two `mx` commands that also collapsed it. Original text: — one
    `mx module-import`, nothing else, turns 94 KB + 466 `.mxunit` files into a
    single 16 MB blob. That removes the diffable model, `diff-local`, mergeable
    units and the whole property PR 125 just established. `mx convert` only
@@ -1679,14 +1679,14 @@ the scripts quietly stop being the source of truth.
    widget. `mxcli widget init` is the counter-example that preserves v2, so the
    behaviour is a property of the `mx` binary rather than of writing to a v2
    project.
-17. **A module flagged `IsThemeModule` cannot be installed headlessly at all**
+17. ~~**A module flagged `IsThemeModule` cannot be installed headlessly at all**~~ — **fixed, verified in §57** (Conversational UI installs, 363 units, v2 intact). Original text:
    (§53) — Conversational UI 7.2.0 carries `Projects$ModuleImpl.IsThemeModule =
    true` while its own `manifest.json` says `"type": "Module"`, and
    `mx module-import` refuses it (exit 112). Flipping that one boolean imports
    the identical package cleanly, so the flag is the sole gate. This blocks the
    only Mendix-supplied chat UI from any CLI-driven project. mxcli could at
    minimum detect the flag and say *why* instead of surfacing `exit status 112`.
-18. **Installing a marketplace module resolves no dependencies** (§53) — the four
+18. **Installing a marketplace module resolves no dependencies** (§53, re-confirmed on `603aeb42` in §57 — Conversational UI alone leaves 717 × CE1613) — the four
    Agents Kit 2 modules pull in `CommunityCommons`, `AgentCommons`, `Encryption`
    and two widgets, none of them named in the install output or the module docs.
    They are found by installing, reading CE1613s, and repeating; and the error
@@ -1694,8 +1694,8 @@ the scripts quietly stop being the source of truth.
    fixing a reference makes new documents checkable. `mxcli marketplace install`
    knows the content id — resolving or at least *listing* the dependency set
    would remove the loop.
-19. **`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
-   equivalent** (§53, corrected in §56) — after a headless widget install the
+19. ~~**`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
+   equivalent** (§53, corrected in §56)~~ — **fixed, verified in §57:** `mxcli fix widgets` and `mxcli fix design-properties`, both v2-preserving. Original text: — after a headless widget install the
    project reports 210 × CE0463, which reads exactly like the malformed-template
    defect that has its own diagnosis skill. It is not: `mx update-widgets` takes
    it to 1 and `mx rename-design-properties` to 0. *This entry originally said
@@ -1705,16 +1705,16 @@ the scripts quietly stop being the source of truth.
    So the gap is coverage, not absence: finish `widget sync`, and wrap
    `rename-design-properties`, whose 158 renames across 44 documents currently
    require the v2-destroying binary.
-20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53) —
+20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53, re-confirmed on `603aeb42` in §57 — same two lines) —
    `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
    the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
    Mistral) cannot be expressed in MDL. A project not on Mendix Cloud GenAI
    cannot keep its model document as code.
-21. **The agent doctypes have no version-registry entry** (§53) — `show features`
+21. ~~**The agent doctypes have no version-registry entry** (§53)~~ — **fixed, verified in §57:** all four listed by `show features`, gated 11.9.0. Original text: — `show features`
    on 11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()`
    pre-check and no actionable error on an older project, though
    `mxcli syntax agents` states the requirement as Mendix 11.9+.
-22. **A skill pack cannot carry Java source** (§54) — `Installs` has only
+22. ~~**A skill pack cannot carry Java source** (§54)~~ — **fixed, verified in §57:** `installs.java` shipped and this project's drafted pack landed upstream as `mendix-odata-pushdown`. Original text: — `Installs` has only
    `widgets` and `mdl`, pack files land inside `.claude/skills/<pack>/`, and
    MDL's `CREATE JAVA ACTION … AS $$ … $$` takes a method body with no
    standalone-class form. So `mendix-odata-pushdown` — the third pack the skill-
@@ -4283,3 +4283,113 @@ npm error The `npm ci` command can only install with an existing package-lock.js
 `npm install` works. Either ship the lock file or change the instruction — the
 lock file is the better answer for a pack whose whole point is a reproducible
 build.
+
+## 57. `603aeb42`: five of nine filed issues fixed, two partly, and one pack landed
+
+*Verified 2026-08-20 against `ako/mxcli` main at `603aeb42` — 828 commits after
+`a8dc083`, the build §54 and §56 were written on. Every row below was executed
+against this project or a throwaway worktree of it, not read from a commit
+message. Nine issues checked: the ones §53, §54 and §56 filed.*
+
+### Fixed, and measured
+
+| # | Was | Now |
+|---|---|---|
+| 16 | `mx module-import` rewrote MPR v2 as v1 | `mxcli marketplace install` transplants units with mxcli's own writer. Installing MCP Server into a pristine worktree: `.mpr` **94,208 bytes unchanged**, 466 → **485 units**. No collapse |
+| 17 | A module flagged `IsThemeModule` could not be installed at all | Conversational UI 7.2.0 installs — **363 units copied, 65 bundled files**, v2 intact. `e351ee4a` clears the flag on a throwaway copy rather than refusing |
+| 19 | No mxcli equivalent for `update-widgets` / `rename-design-properties` | `mxcli fix widgets` (CE0463) and `mxcli fix design-properties` (CE6087). Both report the thing that was wrong: *"851 .mxunit file(s), unchanged from 851 before (MPR v2 preserved)"* |
+| 21 | Agent doctypes absent from the version registry | `show features` lists **agent**, **agent model**, **agent knowledge base**, **agent consumed mcp service**, all gated 11.9.0 |
+| 22 | A skill pack could not carry Java source | `installs.java` shipped — and the pack §54 drafted **landed upstream** as `mendix-odata-pushdown`, credited in `11b7f4ed` to "the formula1 project's findings §54" |
+
+The §56 second instance of 16 is closed with it: `mxcli fix widgets` and
+`fix design-properties` leave the unit count untouched where `mx update-widgets`
+took 469 units to 0.
+
+**The pack, end to end.** `skill add mendix-odata-pushdown --module Pushdown`
+placed the three helper classes into `javasource/pushdown/` with
+`{{MODULE_PATH}}` substituted and no token left behind, and reported *"4 action
+class(es) not placed — mxcli generates those from the MDL"* — which is exactly
+the branch §54 flagged as "a real branch, not an obvious one", resolved the way
+it argued for. Applying the MDL created the module, entity, role and four
+actions under the new name, and `mx check` reports nothing about `Pushdown`. The
+manifest also gained the `verify:` script §54 said the pack wanted more than the
+other two.
+
+One interface change: `--apply` is gone from `skill add`. The MDL is applied with
+`mxcli exec .claude/skills/<pack>/mdl/module.mdl` instead, which the install
+output prints. Copy and apply are still separate, which was the point.
+
+### Fixed in part
+
+**13 — page-widget properties.** `PageSize: 40` now round-trips through
+`DESCRIBE PAGE`, closing the half of this §51 had already corrected once.
+`OnClick` on a listview still does not: the page writes and checks clean, and
+comes back without it. Still a silent drop, still no warning.
+
+**15 — expression traps.** `mxcli check -p` now runs expression type checking,
+and `/` used as division is caught as **MDL045** with the fix in the message:
+
+```
+✗ set 'Pct' uses '/' as a division operator, which Mendix rejects (CE0117
+  "Error(s) in expression") — '/' navigates associations, it does not divide
+  → Use 'div' for division …
+```
+
+That is the trap that previously only `mx check` saw. Two of the four are still
+invisible, each isolated in its own probe and each returning `Check passed!`:
+
+- assigning a Decimal to an Integer variable, which Mendix rejects;
+- comparing a possibly-unset number (`$R/points > 0`) — the one that passes every
+  static check and throws in the browser at render.
+
+`not contains(…)` is still a parse error rather than a diagnosis, which at least
+fails loudly.
+
+### Still open, re-confirmed
+
+**18 — a marketplace install resolves no dependencies.** Installing Conversational
+UI alone leaves **717 × CE1613**: GenAICommons (602), AgentCommons (114),
+CommunityCommons (5). The install knows the content id and prints a "next steps"
+block; naming the dependency set there would remove the read-the-errors loop
+§53 described.
+
+**20 — `CREATE MODEL` can author only `MxCloudGenAI`.**
+`agenteditor_write.go:70` and `:90` still assign the provider unconditionally,
+and `mxcli syntax agents model` still documents one. Four of the five providers
+Agents Kit 2 supports remain unauthorable in MDL.
+
+### The upgrade itself is not free, once
+
+Re-running the frontend script set on the new build changed **17 microflow
+units** against a tree that was byte-clean on `a8dc083`. That looks exactly like
+the churn §50 described and §52 closed, so it was worth measuring rather than
+assuming:
+
+```
+pass 1 vs HEAD      17 files
+pass 2 vs pass 1     0 units changed bytes
+```
+
+Idempotency holds — the second pass wrote nothing. The 17 are a one-time
+convergence, and describing three of them before and after shows the only
+difference is `@position` coordinates:
+
+```
+-  @position(5110, 200)
++  @position(4740, 200)
+```
+
+That is `443e80de`, which sizes loop boxes from their contents. The activities,
+the expressions and the order are identical; the editor coordinates moved. Worth
+knowing before the next upgrade: **a build that changes layout produces a
+one-time diff across every document it touches**, and the way to tell it from a
+regression is the second pass, not the first.
+
+### What this says about the loop
+
+Five fixes, two partial fixes and a pack shipped, from findings filed four days
+earlier — and the pack landed with the design decision this project could only
+identify, not make. The two that did not move are also the two that were filed
+as observations rather than with a proposed mechanism. Worth remembering next
+time: **an issue that names the target closes faster than one that names the
+symptom.**
