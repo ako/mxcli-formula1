@@ -20,8 +20,10 @@ for d in "$USER_HOME/.claude" "$USER_HOME/.mxcli"; do
   chown -R "$USER_NAME:$USER_NAME" "$d"
 done
 
-# authorized_keys goes here; see authorize-ssh-key.sh. sshd is strict about
-# these modes and fails closed, silently, if they are loose.
+# authorized_keys goes here. sshd is strict about these modes and fails closed,
+# silently, if they are loose. Installing the key itself is post-start's job, not
+# this script's: ~/.ssh is not on a volume, so the key has to be re-installed on
+# every start, not just on create.
 install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "$USER_HOME/.ssh"
 
 # ---------------------------------------------------------------- ssh env
@@ -79,11 +81,21 @@ chmod 0440 /etc/sudoers.d/99-devcontainer-postgres
 visudo -cf /etc/sudoers.d/99-devcontainer-postgres >/dev/null
 
 # ----------------------------------------------------------------- postgres
-# The Debian package usually creates a 'main' cluster in its postinst, but that
-# depends on the package's own state at image build time, so do not assume it.
-PGVER="$(ls /etc/postgresql 2>/dev/null | sort -V | tail -1 || true)"
-if [ -z "$PGVER" ]; then
-  PGVER="$(ls /usr/lib/postgresql | sort -V | tail -1)"
+# Take the version from the installed binaries, not from /etc/postgresql: with
+# the data directory on a named volume the two disagree exactly when it matters.
+PGVER="$(ls /usr/lib/postgresql | sort -V | tail -1)"
+PGDATA="/var/lib/postgresql/$PGVER/main"
+
+# /var/lib/postgresql is a volume, so after a rebuild it can be empty while
+# /etc/postgresql still carries the config baked into the image. The cluster
+# then looks present and is not, and pg_ctlcluster fails on a missing data
+# directory. Detect on the data directory — PG_VERSION is the file initdb
+# writes last — and drop the stale config so pg_createcluster writes a matching
+# pair. The volume mounts root-owned, hence the chown.
+chown -R postgres:postgres /var/lib/postgresql
+if [ ! -s "$PGDATA/PG_VERSION" ]; then
+  echo "no cluster in the volume — creating postgres $PGVER"
+  rm -rf "/etc/postgresql/$PGVER/main"
   pg_createcluster "$PGVER" main
 fi
 PGCONF="/etc/postgresql/$PGVER/main"

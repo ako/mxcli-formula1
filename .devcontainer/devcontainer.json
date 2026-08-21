@@ -30,17 +30,7 @@
   //   8080/8090/6543  backend        8180/8190/6643  frontend
   //   8081/8091/6544  mxcli test --local (kept clear of both apps)
   "appPort": [
-    "127.0.0.1:2222:2222",
-    "127.0.0.1:8080:8080",
-    "127.0.0.1:8090:8090",
-    "127.0.0.1:6543:6543",
-    "127.0.0.1:8180:8180",
-    "127.0.0.1:8190:8190",
-    "127.0.0.1:6643:6643",
-    "127.0.0.1:8081:8081",
-    "127.0.0.1:8091:8091",
-    "127.0.0.1:6544:6544",
-    "127.0.0.1:5432:5432"
+    "127.0.0.1:2222:2222"
   ],
 
   // The container's home is discarded on rebuild. ~/.mxcli holds MxBuild and
@@ -49,9 +39,15 @@
   // credentials, and CLAUDE_CONFIG_DIR moves ~/.claude.json (the OAuth account,
   // which lives outside ~/.claude) into the same volume so a rebuild does not
   // sign you out.
+  // The Postgres data directory is on a volume too. Without it a rebuild wipes
+  // both Mendix databases and f1ops: the apps come back up against empty
+  // schemas, the cached service returns nothing until ACT_RefreshAll has run
+  // again, and nothing says why. post-create.sh detects the empty volume and
+  // runs pg_createcluster, so the first start after a rebuild still works.
   "mounts": [
     "source=f1-claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume",
-    "source=f1-mxcli-cache-${devcontainerId},target=/home/vscode/.mxcli,type=volume"
+    "source=f1-mxcli-cache-${devcontainerId},target=/home/vscode/.mxcli,type=volume",
+    "source=f1-postgres-${devcontainerId},target=/var/lib/postgresql,type=volume"
   ],
 
   "containerEnv": {
