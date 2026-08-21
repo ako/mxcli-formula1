@@ -43,18 +43,25 @@ BEGIN
   $DriverId = CALL JAVA ACTION ODataPushdown.Key(
     Uri = $Request/Uri, KeyField = 'driverId');
 
-  -- A career page asks for every season; the banner asks for one of them. Both
-  -- are the same request with one more conjunct.
+  -- A career page asks for every season; the banner asks for one of them; the
+  -- season screen asks for every driver in one year. All three are the same
+  -- request with a different conjunct.
   $Year = CALL JAVA ACTION ODataPushdown.FilterNumber(
     Uri = $Request/Uri, Field = 'year', Fallback = 0);
 
-  -- No driver, no career. 1=0 costs one scan of nothing rather than grouping
-  -- every result the sport has ever recorded.
+  -- Either constraint bounds the work: a driver is a career, a year is a
+  -- season. Neither is the whole sport, and it is only the unconstrained
+  -- request that has to be refused — 1=0 costs one scan of nothing rather than
+  -- grouping every result ever recorded.
   DECLARE $Where String = ' WHERE 1=0';
   IF $DriverId != '' THEN
     SET $Where = ' WHERE rr.driverId = ''' + $DriverId + '''';
     IF $Year != 0 THEN
       SET $Where = $Where + ' AND rr.year = ' + toString($Year);
+    END IF;
+  ELSE
+    IF $Year != 0 THEN
+      SET $Where = ' WHERE rr.year = ' + toString($Year);
     END IF;
   END IF;
 

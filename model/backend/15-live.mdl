@@ -15,9 +15,14 @@
  * returns the file. The session key travels as data so the page can show which
  * session it is looking at.
  *
- * All three reads call ODataPushdown.Parse once and hand the answer to their
+ * All five reads call ODataPushdown.Parse once and hand the answer to their
  * query — the module's bind style, the same as 02. See the header there for
  * what `Columns`, the types and `RejectUnsupported` are doing.
+ *
+ * Three of the five are the snapshot: Order, Messages, Session. The other two
+ * are the history it was taken from — Trace, one row per driver per lap, and
+ * Stints, every set of tyres rather than only the one running. They are what
+ * turn a table of standings into a chart of how the race got there.
  */
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
@@ -36,7 +41,9 @@ BEGIN
     + 'lastLapSeconds:lastLapSeconds:number,sector1:sector1:number,'
     + 'sector2:sector2:number,sector3:sector3:number,'
     + 'speedTrap:speedTrap:number,compound:compound:text,'
-    + 'tyreAge:tyreAge:number,pitStops:pitStops:number';
+    + 'tyreAge:tyreAge:number,pitStops:pitStops:number,'
+    + 'drs:drs:text,sector1Mark:sector1Mark:text,'
+    + 'sector2Mark:sector2Mark:text,sector3Mark:sector3Mark:text';
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
     Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
     MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
@@ -144,6 +151,127 @@ BEGIN
   RETURN $Rows;
 END;
 
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveTrace (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveTrace AS $Rows
+BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'traceKey:traceKey:text,sessionKey:sessionKey:text,'
+    + 'driverNumber:driverNumber:number,code:code:text,'
+    + 'lapNumber:lapNumber:number,position:position:number,'
+    + 'gapToLeader:gapToLeader:text,gapSeconds:gapSeconds:number,'
+    + 'lapSeconds:lapSeconds:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'traceKey', RejectUnsupported = false);
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveTrace
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveTrace
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveStints (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveStint AS $Rows
+BEGIN
+  /* One parse of the request; the query binds what comes back. */
+  DECLARE $Cols String = 'stintKey:stintKey:text,sessionKey:sessionKey:text,'
+    + 'driverNumber:driverNumber:number,code:code:text,'
+    + 'stintNumber:stintNumber:number,compound:compound:text,'
+    + 'lapStart:lapStart:number,lapEnd:lapEnd:number,'
+    + 'tyreAgeAtStart:tyreAgeAtStart:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'stintKey', RejectUnsupported = false);
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetLiveStints
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetLiveStints
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TrackOutline (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.LiveTrackOutline AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.LiveTrackOutline SORT BY Seq ASC;
+  IF $Response != empty THEN
+    $Total = COUNT($Rows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+  RETURN $Rows;
+END;
+
+/*
+ * Where each car is now: the newest location sample per driver.
+ *
+ * The rolling window holds three minutes at one sample a second, so "now" is
+ * the last row per driver rather than the whole table -- twenty rows out of
+ * four thousand.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CarPositions (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.LiveLocationNow AS $Rows
+BEGIN
+  RETRIEVE $All FROM Formula1Backend.LiveLocationNow SORT BY At DESC;
+  $Rows = CREATE LIST OF Formula1Backend.LiveLocationNow;
+  DECLARE $Seen String = '|';
+  LOOP $L IN $All BEGIN
+    IF contains($Seen, '|' + toString($L/DriverNumber) + '|') = false THEN
+      SET $Seen = $Seen + toString($L/DriverNumber) + '|';
+      ADD $L TO $Rows;
+    END IF;
+  END LOOP;
+  IF $Response != empty THEN
+    $Total = COUNT($Rows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+  RETURN $Rows;
+END;
+
 create or modify odata service Formula1Backend.F1LiveNowApi (
   path: 'odata/f1-now/',
   version: '1.0.0',
@@ -176,7 +304,11 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     SpeedTrap as 'speedTrap' (Filterable, Sortable),
     Compound as 'compound' (Filterable, Sortable),
     TyreAge as 'tyreAge' (Filterable, Sortable),
-    PitStops as 'pitStops' (Filterable, Sortable)
+    PitStops as 'pitStops' (Filterable, Sortable),
+    Drs as 'drs' (Filterable, Sortable),
+    Sector1Mark as 'sector1Mark' (Filterable, Sortable),
+    Sector2Mark as 'sector2Mark' (Filterable, Sortable),
+    Sector3Mark as 'sector3Mark' (Filterable, Sortable)
   );
 
   publish entity Formula1Backend.Stg_LiveMessage as 'Messages' (
@@ -218,6 +350,80 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     Rainfall as 'rainfall' (Filterable, Sortable),
     WindSpeed as 'windSpeed' (Filterable, Sortable)
   );
+
+  /*
+   * The history behind the other three. A page drawing a gap chart asks for
+   * the whole session at once and shapes it client-side, so this resource is
+   * filterable on lapNumber and code but does no aggregating of its own.
+   */
+  publish entity Formula1Backend.Stg_LiveTrace as 'Trace' (
+    ReadMode: microflow Formula1Backend.Read_LiveTrace,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    TraceKey as 'traceKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    Position as 'position' (Filterable, Sortable),
+    GapToLeader as 'gapToLeader' (Filterable, Sortable),
+    GapSeconds as 'gapSeconds' (Filterable, Sortable),
+    LapSeconds as 'lapSeconds' (Filterable, Sortable)
+  );
+
+  /*
+   * The circuit, traced from one car's lap, and where every car is on it now.
+   *
+   * Both are in OpenF1's track-local frame rather than in degrees, which is
+   * what lets a page draw a dot on the line without projecting anything: the
+   * outline and the cars came from the same feed in the same units.
+   */
+  publish entity Formula1Backend.LiveTrackOutline as 'TrackOutline' (
+    ReadMode: microflow Formula1Backend.Read_TrackOutline,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    PointKey as 'pointKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Seq as 'seq' (Filterable, Sortable),
+    X as 'x' (Filterable, Sortable),
+    Y as 'y' (Filterable, Sortable)
+  );
+
+  publish entity Formula1Backend.LiveLocationNow as 'CarPositions' (
+    ReadMode: microflow Formula1Backend.Read_CarPositions,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    SampleKey as 'sampleKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    X as 'x' (Filterable, Sortable),
+    Y as 'y' (Filterable, Sortable)
+  );
+
+  /* Every stint of every car. LapEnd is empty for the one still running. */
+  publish entity Formula1Backend.Stg_LiveStint as 'Stints' (
+    ReadMode: microflow Formula1Backend.Read_LiveStints,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    StintKey as 'stintKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    StintNumber as 'stintNumber' (Filterable, Sortable),
+    Compound as 'compound' (Filterable, Sortable),
+    LapStart as 'lapStart' (Filterable, Sortable),
+    LapEnd as 'lapEnd' (Filterable, Sortable),
+    TyreAgeAtStart as 'tyreAgeAtStart' (Filterable, Sortable)
+  );
 };
 
 /* A read microflow a published service calls needs its own role, and the
@@ -228,5 +434,13 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveSession TO Formula1Backend.A
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveOrder TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveMessages TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveSession TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveTrace TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveTrace TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStints TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStints TO Formula1Backend.DataAdmin;
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.ApiUser;
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CarPositions TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CarPositions TO Formula1Backend.DataAdmin;

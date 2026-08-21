@@ -1,0 +1,239 @@
+/*
+ * Screen 5 of 5 — Driver.
+ * =======================
+ *
+ * One driver, one season at the top and a whole career underneath.
+ *
+ * The comp's strip is the spine of this screen: one cell per round, coloured
+ * by how the round went, and every cell a way into that weekend. It is the
+ * densest thing in the redesign and the most useful, because a season reads as
+ * a pattern before it reads as numbers — a row of green with two red cells is
+ * a reliability story you can see before you can count it.
+ *
+ * Underneath, the two questions a career answers: did they convert grid
+ * position into results, and did the results add up. One is a scatter of every
+ * round, the other a table of every season.
+ */
+
+create or replace page Formula1Frontend.Driver
+(
+  title: 'Driver',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'driver/{Driver}',
+  Params: { $Driver: F1Live.Drivers }
+)
+{
+  container pageBody {
+
+    /*
+     * The peer row. The comp scopes it to one season's twenty entrants; this
+     * screen is a whole career, so the peers are the twenty drivers with the
+     * most points ever scored — the set a reader is most likely to want next.
+     * Both the sort and the limit are pushed down, so it is twenty rows.
+     */
+    container chipsRow (class: 'chips-row') {
+      listview lvPeers (datasource: MICROFLOW Formula1Frontend.DS_DriverPeers,
+                        PageSize: 40) {
+        container chipPeer (
+          class: 'chip-pick',
+          dynamicclasses: 'if $currentObject/driverId = $Driver/driverId
+                           then ''is-picked'' else ''''',
+          OnClick: SHOW_PAGE Formula1Frontend.Driver(Driver: $currentObject)
+        ) {
+          dynamictext chipAbbr (content: '{1}', contentparams: [{1} = abbreviation])
+        }
+      }
+    }
+
+    dataview dvDriver (datasource: $Driver, class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroMark (class: 'hero-mark') {
+          dynamictext heroNum (content: '{1}', contentparams: [{1} = abbreviation])
+        }
+        container heroId (class: 'hero-id') {
+          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+                                rendermode: H2, class: 'hero-name')
+          dynamictext heroSub (content: '{1} · born {2} · {3} starts',
+            contentparams: [{1} = nationality, {2} = placeOfBirth, {3} = raceStarts],
+            class: 'hero-sub')
+        }
+      }
+    }
+
+    /*
+     * The five headline numbers are a season's, not a career's, so this block
+     * reads the driver's last season rather than their totals.
+     */
+    dataview dvLatest (
+      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver)
+    ) {
+      container kpis (class: 'kpis') {
+        container kYear (class: 'kpi kpi-accent') {
+          dynamictext kYearL (content: 'Season', class: 'kpi-label')
+          dynamictext kYearV (content: '{1}', contentparams: [{1} = year],
+                              class: 'kpi-value')
+        }
+        container kPoints (class: 'kpi') {
+          dynamictext kPointsL (content: 'Points', class: 'kpi-label')
+          dynamictext kPointsV (content: '{1}', contentparams: [{1} = points],
+                                class: 'kpi-value')
+        }
+        container kPos (class: 'kpi') {
+          dynamictext kPosL (content: 'Position', class: 'kpi-label')
+          dynamictext kPosV (content: '{1}', contentparams: [{1} = standingPosition],
+                             class: 'kpi-value')
+        }
+        container kWins (class: 'kpi') {
+          dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
+          dynamictext kWinsV (content: '{1}', contentparams: [{1} = wins],
+                              class: 'kpi-value')
+        }
+        container kPodiums (class: 'kpi') {
+          dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
+          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                 class: 'kpi-value')
+        }
+        container kAvg (class: 'kpi') {
+          dynamictext kAvgL (content: 'Avg finish', class: 'kpi-label')
+          dynamictext kAvgV (content: '{1}', contentparams: [{1} = avgFinish],
+                             class: 'kpi-value')
+        }
+      }
+    }
+
+    dataview dvStrip (
+      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver),
+      class: 'panel'
+    ) {
+      container stripHead (class: 'panel-head') {
+        dynamictext stripTitle (content: '{1} season, round by round',
+                                contentparams: [{1} = year], class: 'panel-title')
+        dynamictext stripSub (
+          content: 'finishing position per round · × is a retirement · a cell opens the weekend',
+          class: 'panel-sub')
+      }
+      container stripGrid (class: 'strip-grid') {
+        listview lvStrip (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver),
+          PageSize: 40
+        ) {
+          container stripCell (
+            class: 'strip-cell',
+            /*
+             * Every branch tests `empty` before it compares. A comparison
+             * against an unset number is not false in Mendix, it throws —
+             * "Operator > not supported in expression >(, 0)" — and it throws
+             * in the browser, at render, where `mx check` cannot see it. A
+             * driver who retired has no finishing position and a driver who
+             * scored nothing can have no points at all.
+             */
+            dynamicclasses:
+              'if $currentObject/finishPosition = empty then ''strip-dnf''
+               else if $currentObject/finishPosition = 1 then ''strip-win''
+               else if $currentObject/finishPosition <= 3 then ''strip-podium''
+               else if $currentObject/points = empty then ''strip-none''
+               else if $currentObject/points > 0 then ''strip-points''
+               else ''strip-none''',
+            OnClick: MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace(Race: $currentObject)
+          ) {
+            dynamictext stripRound (content: 'R{1}', contentparams: [{1} = round],
+                                    class: 'cal-round')
+            dynamictext stripPos (content: '{1}',
+              contentparams: [{1} = finishPosition],
+              visible: [finishPosition != empty])
+            dynamictext stripDnf (content: '×', visible: [finishPosition = empty])
+          }
+        }
+      }
+      container stripKey (class: 'legend-key') {
+        dynamictext lkWin (content: 'Win', class: 'legend-item legend-win')
+        dynamictext lkPodium (content: 'Podium', class: 'legend-item legend-podium')
+        dynamictext lkPoints (content: 'Points', class: 'legend-item legend-points')
+        dynamictext lkNone (content: 'No points', class: 'legend-item legend-none')
+        dynamictext lkDnf (content: 'Retired', class: 'legend-item legend-dnf')
+      }
+    }
+
+    container driverSplit (class: 'split') {
+
+      container qrPanel (class: 'panel') {
+        container qrHead (class: 'panel-head') {
+          dynamictext qrTitle (content: 'Qualifying → race', class: 'panel-title')
+          dynamictext qrSub (
+            content: 'one point per round · below the diagonal means places gained',
+            class: 'panel-sub')
+        }
+        dataview dvQualRace (
+          datasource: MICROFLOW Formula1Frontend.DSJ_QualRace(Driver: $Driver)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartQualRace (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"height":300,"layer":[{"mark":{"type":"line","color":"#6E7681","strokeDash":[3,3],"strokeWidth":1},"encoding":{"x":{"field":"q","type":"quantitative","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"q","type":"quantitative","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}}}},{"mark":{"type":"point","filled":true,"size":70,"color":"#2DD4BF"},"encoding":{"x":{"field":"q","type":"quantitative","title":"Qualifying","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"r","type":"quantitative","title":"Race","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"race","title":"Race"},{"field":"q","title":"Qualified"},{"field":"r","title":"Finished"}]}}]}')
+        }
+      }
+
+      container careerPanel (class: 'panel') {
+        container careerHead (class: 'panel-head') {
+          dynamictext careerTitle (content: 'Season by season', class: 'panel-title')
+          dynamictext careerSub (
+            content: 'points as columns, championship finish as the line on the right',
+            class: 'panel-sub')
+        }
+        dataview dvCareer (
+          datasource: MICROFLOW Formula1Frontend.DSJ_Career(Driver: $Driver)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCareer (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":300,"resolve":{"scale":{"y":"independent"}},"layer":[{"transform":[{"filter":"datum.s === ''Points''"}],"mark":{"type":"bar","color":"#2DD4BF","cornerRadiusEnd":2},"encoding":{"x":{"field":"year","type":"ordinal","title":null},"y":{"field":"v","type":"quantitative","title":"Points","axis":{"format":"~s"},"scale":{"zero":false,"nice":false}},"tooltip":[{"field":"year","title":"Season"},{"field":"v","title":"Points"}]}},{"transform":[{"filter":"datum.s === ''Finish''"}],"mark":{"type":"line","color":"#A78BFA","strokeWidth":2,"point":{"filled":true,"color":"#A78BFA","size":40}},"encoding":{"x":{"field":"year","type":"ordinal"},"y":{"field":"v","type":"quantitative","title":"Finish","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"year","title":"Season"},{"field":"v","title":"Championship finish"}]}}]}')
+        }
+      }
+    }
+
+    /*
+     * The seasons themselves. Every row is a year, and the row opens that
+     * year's championship — the fifth of the five screens closing the loop
+     * back to the second.
+     */
+    container seasonsPanel (class: 'panel') {
+      container seasonsHead (class: 'panel-head') {
+        dynamictext seasonsTitle (content: 'Career record', class: 'panel-title')
+        dynamictext seasonsSub (content: 'row opens that season', class: 'panel-sub')
+      }
+      container seasonsGrid (class: 'grid-dense') {
+        datagrid dgSeasons (
+          datasource: MICROFLOW Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+          PageSize: 25,
+          PagingPosition: bottom,
+          OnClick: MICROFLOW Formula1Frontend.ACT_OpenSeasonOfDriver(Row: $currentObject)
+        ) {
+          column colYear (attribute: year, caption: 'Year', Alignment: right)
+          column colTeam (attribute: constructors, caption: 'Team')
+          column colPos (attribute: standingPosition, caption: 'Pos', Alignment: right)
+          column colPts (attribute: points, caption: 'Points', Alignment: right)
+          column colStarts (attribute: starts, caption: 'Starts', Alignment: right)
+          column colWins (attribute: wins, caption: 'W', Alignment: right)
+          column colPodiums (attribute: podiums, caption: 'Pod', Alignment: right)
+          column colPoles (attribute: poles, caption: 'Pol', Alignment: right)
+          column colBest (attribute: bestFinish, caption: 'Best', Alignment: right)
+          column colAvgQ (attribute: avgQualifying, caption: 'Avg Q', Alignment: right)
+          column colAvgF (attribute: avgFinish, caption: 'Avg F', Alignment: right)
+          column colRet (attribute: retirements, caption: 'Ret', Alignment: right)
+        }
+      }
+    }
+
+    container note (class: 'data-note') {
+      dynamictext noteLead (content: 'Where this comes from', class: 'data-note-lead')
+      dynamictext noteBody (
+        content: 'Career and per-season records are f1db. Averages and retirement counts are computed on the backend from the same results, and a season the driver was not classified in carries no championship finish rather than a sentinel — plotting one would draw a career arc out of "no position".')
+    }
+  }
+}

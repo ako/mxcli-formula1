@@ -1,0 +1,275 @@
+/*
+ * Screen 1 of 5 — Narrate.
+ * ========================
+ *
+ * The race as it stands, and how it got there.
+ *
+ * Everything else in this app reads a file that changes when someone publishes
+ * a release. This screen reads a snapshot of a session that was moving when it
+ * was taken, so it says when it was taken and where it came from — both are on
+ * the page, not in a comment.
+ *
+ * "Live" is bounded honestly: the backend serves whatever
+ * scripts/fetch-f1-live.sh last wrote. Re-run that and reload for the next
+ * snapshot; on a race Sunday run it on a timer with SESSION=latest, and
+ * OpenF1's ~3s delay is the floor. Note that OpenF1 turns off unauthenticated
+ * access *while a session is running*, so the timer needs a paid key to be
+ * worth setting — the script says so when it hits it.
+ *
+ * One thing in the comp is still not here, and its absence is deliberate
+ * rather than pending: the story panel wants precedents and streaks read out of
+ * seventy-five years of results by an agent pass. There is no such resource,
+ * and inventing the sentences on the page is exactly the failure the panel's
+ * own comp warns about — "read the provenance line before you say it out loud".
+ *
+ * The track map used to be on that list, on the grounds that the snapshot
+ * carried positions in the running order rather than positions in space. That
+ * stopped being true when the in-app sync began storing OpenF1's location feed,
+ * and the panel below is built from it.
+ */
+
+create or replace page Formula1Frontend.Narrate
+(
+  title: 'Narrate',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'narrate'
+)
+{
+  container pageBody {
+
+    dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSession) {
+
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: '{1} · {2}',
+            contentparams: [{1} = sessionType, {2} = countryName],
+            class: 'pagehead-eyebrow')
+          dynamictext title (content: '{1}', contentparams: [{1} = circuitName],
+                             rendermode: H2, class: 'pagehead-title')
+          /*
+           * The provenance line the comp puts in the header bar. It is one
+           * sentence and it does the whole job of the badge: which source,
+           * how fresh, and therefore how much to trust the numbers below.
+           */
+          dynamictext sub (content: 'openf1.org · snapshot taken {1}',
+            contentparams: [{1} = fetchedAt], class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext lap (content: 'LAP {1}', contentparams: [{1} = leadLap])
+        }
+      }
+
+      container kpis (class: 'kpis') {
+        container kCars (class: 'kpi') {
+          dynamictext kCarsL (content: 'Cars', class: 'kpi-label')
+          dynamictext kCarsV (content: '{1}', contentparams: [{1} = driverCount],
+                              class: 'kpi-value')
+        }
+        container kLap (class: 'kpi kpi-accent') {
+          dynamictext kLapL (content: 'Lead lap', class: 'kpi-label')
+          dynamictext kLapV (content: '{1}', contentparams: [{1} = leadLap],
+                             class: 'kpi-value')
+        }
+        container kAir (class: 'kpi') {
+          dynamictext kAirL (content: 'Air', class: 'kpi-label')
+          dynamictext kAirV (content: '{1}°C', contentparams: [{1} = airTemperature],
+                             class: 'kpi-value')
+        }
+        container kTrack (class: 'kpi') {
+          dynamictext kTrackL (content: 'Track', class: 'kpi-label')
+          dynamictext kTrackV (content: '{1}°C', contentparams: [{1} = trackTemperature],
+                               class: 'kpi-value')
+        }
+        container kRain (class: 'kpi') {
+          dynamictext kRainL (content: 'Rain', class: 'kpi-label')
+          dynamictext kRainV (content: '{1}', contentparams: [{1} = rainfall],
+                              class: 'kpi-value')
+          dynamictext kRainS (content: '0 = dry', class: 'kpi-sub')
+        }
+        container kWind (class: 'kpi') {
+          dynamictext kWindL (content: 'Wind', class: 'kpi-label')
+          dynamictext kWindV (content: '{1}', contentparams: [{1} = windSpeed],
+                              class: 'kpi-value')
+          dynamictext kWindS (content: 'm/s', class: 'kpi-sub')
+        }
+      }
+    }
+
+    /*
+     * Track position.
+     *
+     * The circuit is not drawn from a map. OpenF1 reports position in a
+     * track-local frame with no relation to latitude and longitude, so an
+     * outline from OpenStreetMap could not carry these dots -- the two would be
+     * in different coordinate systems with no transform between them. The
+     * outline here is traced from one car's lap of the same feed, which puts
+     * the cars on the line by construction rather than by fitting.
+     *
+     * Captured once per session by Sync_TrackMap and served with the current
+     * position of every car that has one.
+     */
+    container trackPanel (class: 'panel') {
+      container trackHead (class: 'panel-head') {
+        dynamictext trackTitle (content: 'Track position', class: 'panel-title')
+        dynamictext trackSub (
+          content: 'the circuit traced from one car''s lap · a dot per car, numbered · as of the last snapshot',
+          class: 'panel-sub')
+      }
+      container trackFigure (class: 'circuit-figure') {
+        dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMap) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTrackMap (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":420,"height":420,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":13,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2.5,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":190,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":9,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+        }
+      }
+    }
+
+    /*
+     * Gap to leader. The comp's headline chart and the one that carries the
+     * shape of the race — a pit stop is a step, a safety car is every line
+     * collapsing at once.
+     */
+    container gapPanel (class: 'panel') {
+      container gapHead (class: 'panel-head') {
+        dynamictext gapTitle (content: 'Gap to leader', class: 'panel-title')
+        dynamictext gapSub (
+          content: 'the five cars at the front · seconds · a lapped car stops having a gap, so its line ends',
+          class: 'panel-sub')
+      }
+      dataview dvGaps (datasource: MICROFLOW Formula1Frontend.DSJ_LiveGaps) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartGaps (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":260,"mark":{"type":"line","strokeWidth":1.6,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"gap","type":"quantitative","title":"Gap to leader (s)","scale":{"reverse":true,"zero":true}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA"]},"legend":{"orient":"top","columns":5,"offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"gap","title":"Gap (s)"}]}}')
+      }
+    }
+
+    /*
+     * The classification.
+     *
+     * The comp puts a position sparkline in every row. A Mendix data grid
+     * column holds an attribute, not a widget, so that is drawn once for
+     * everybody as the chart below instead.
+     *
+     * The three sector marks are cells rather than glyphs, coloured by
+     * DynamicCellClass: purple for the best anybody has set this session,
+     * green for the best this driver has. On a finished race they are all
+     * blank, and correctly so — the last lap is rarely anyone's best.
+     */
+    container orderPanel (class: 'panel') {
+      container orderHead (class: 'panel-head') {
+        dynamictext orderTitle (content: 'Classification', class: 'panel-title')
+        dynamictext orderSub (
+          content: 'gap to leader and to the car ahead · last lap and its three sectors · tyre, age and stops',
+          class: 'panel-sub')
+      }
+      container orderGrid (class: 'grid-dense') {
+        datagrid dgOrder (
+          datasource: MICROFLOW Formula1Frontend.DS_LiveOrder,
+          PageSize: 24,
+          PagingPosition: bottom
+        ) {
+          column colPos (attribute: position, caption: 'P', Alignment: right)
+          column colCode (attribute: code, caption: 'Code')
+          column colDriver (attribute: driverName, caption: 'Driver')
+          column colTeam (attribute: team, caption: 'Team')
+          column colGap (attribute: gapToLeader, caption: 'Gap', Alignment: right)
+          column colInt (attribute: interval, caption: 'Int', Alignment: right)
+          column colLast (attribute: lastLapSeconds, caption: 'Last', Alignment: right)
+          column colS1 (attribute: sector1, caption: 'S1', Alignment: right,
+            DynamicCellClass:
+              'if $currentObject/sector1Mark = ''p'' then ''sec-best''
+               else if $currentObject/sector1Mark = ''g'' then ''sec-personal'' else ''''')
+          column colS2 (attribute: sector2, caption: 'S2', Alignment: right,
+            DynamicCellClass:
+              'if $currentObject/sector2Mark = ''p'' then ''sec-best''
+               else if $currentObject/sector2Mark = ''g'' then ''sec-personal'' else ''''')
+          column colS3 (attribute: sector3, caption: 'S3', Alignment: right,
+            DynamicCellClass:
+              'if $currentObject/sector3Mark = ''p'' then ''sec-best''
+               else if $currentObject/sector3Mark = ''g'' then ''sec-personal'' else ''''')
+          column colTrap (attribute: speedTrap, caption: 'Trap', Alignment: right)
+          column colTyre (attribute: compound, caption: 'Tyre')
+          column colAge (attribute: tyreAge, caption: 'Age', Alignment: right)
+          column colStops (attribute: pitStops, caption: 'St', Alignment: right)
+        }
+      }
+      container orderKey (class: 'legend-key') {
+        dynamictext okBest (content: 'Session best sector', class: 'legend-item legend-podium')
+        dynamictext okPers (content: 'Personal best sector', class: 'legend-item legend-points')
+      }
+    }
+
+    container posPanel (class: 'panel') {
+      container posHead (class: 'panel-head') {
+        dynamictext posTitle (content: 'Position by lap', class: 'panel-title')
+        dynamictext posSub (
+          content: 'every car, lap one to now · first place at the top · the crossings are the race',
+          class: 'panel-sub')
+      }
+      dataview dvPositions (datasource: MICROFLOW Formula1Frontend.DSJ_LivePositions) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPositions (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":320,"mark":{"type":"line","strokeWidth":1.2,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
+      }
+    }
+
+    container liveSplit (class: 'split') {
+
+      container stintPanel (class: 'panel') {
+        container stintHead (class: 'panel-head') {
+          dynamictext stintTitle (content: 'Strategy', class: 'panel-title')
+          dynamictext stintSub (
+            content: 'one bar per stint, coloured by compound · a stint still running is closed at the lead lap',
+            class: 'panel-sub')
+        }
+        dataview dvStints (datasource: MICROFLOW Formula1Frontend.DSJ_LiveStints) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartStints (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":420,"mark":{"type":"bar","height":9,"cornerRadius":1},"encoding":{"x":{"field":"from","type":"quantitative","title":"Lap","scale":{"zero":true,"nice":false},"axis":{"format":"d","tickMinStep":1}},"x2":{"field":"to"},"y":{"field":"code","type":"nominal","title":null,"sort":null},"color":{"field":"compound","type":"nominal","title":null,"scale":{"domain":["SOFT","MEDIUM","HARD","INTERMEDIATE","WET"],"range":["#F85149","#E3B341","#8B949E","#3FB950","#58A6FF"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"compound","title":"Tyre"},{"field":"from","title":"From lap"},{"field":"to","title":"To lap"}]}}')
+        }
+      }
+
+      container rcPanel (class: 'panel') {
+        container rcHead (class: 'panel-head') {
+          dynamictext rcTitle (content: 'Race control', class: 'panel-title')
+          dynamictext rcSub (content: 'most recent first', class: 'panel-sub')
+        }
+        container rcGrid (class: 'grid-dense') {
+          datagrid dgMessages (
+            datasource: MICROFLOW Formula1Frontend.DS_LiveMessages,
+            PageSize: 20,
+            PagingPosition: bottom
+          ) {
+            column colLap (attribute: lap, caption: 'Lap', Alignment: right)
+            column colAt (attribute: at, caption: 'Time')
+            column colCat (attribute: category, caption: 'Category')
+            column colFlag (attribute: flag, caption: 'Flag')
+            column colMsg (attribute: message, caption: 'Message')
+          }
+        }
+      }
+    }
+
+    container note (class: 'data-note') {
+      dynamictext noteLead (content: 'Where this comes from', class: 'data-note-lead')
+      dynamictext noteBody (
+        content: 'Timing, tyres and race control are OpenF1 (openf1.org), an unofficial free API with a documented ~3 second delay during a session. This screen shows one snapshot of one session and says above when it was taken; it does not poll. Everything on the other four screens comes from f1db instead, and is official.')
+    }
+  }
+}

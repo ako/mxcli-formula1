@@ -1,0 +1,581 @@
+/*
+ * The live sync, in the app.
+ * =========================
+ *
+ * scripts/fetch-f1-live.sh cannot run on Mendix Cloud and cannot run on a
+ * Windows developer's machine, which makes it the wrong place for the one job
+ * that has to happen while the app is serving: keeping the timing current. This
+ * moves it inside — a scheduled event, the app's own DuckDB connection reading
+ * OpenF1 over HTTPS, and OQL statements doing the set work.
+ *
+ * Nothing here touches the filesystem. The script stays for offline use and for
+ * seeding a snapshot without an account, but it is no longer the only way.
+ *
+ * ---------------------------------------------------------------- replay ----
+ *
+ * The storage is append-only, and that is the whole design decision.
+ *
+ * The CSV snapshot could only answer "where is everyone now", because each
+ * fetch overwrote the last. Keeping every lap instead means the same rows
+ * answer "where was everyone on lap 30", and a race can be replayed rather than
+ * only watched. So:
+ *
+ *   LiveLap is one row per driver per lap and is never cleared. It is both the
+ *   history and the present: "now" is simply its highest lap, which is what the
+ *   old Order file held and nothing more. A running order is therefore no
+ *   longer stored at all -- it is LiveLap at a chosen lap, and the chosen lap
+ *   is what a replay scrubber moves.
+ *
+ *   LiveWeather is kept as a series for the same reason. Track temperature
+ *   falling across a race is part of the story of it.
+ *
+ *   LiveStint and LiveSession are small and mutable -- a stint's LapEnd fills
+ *   in when the car pits, the session's LeadLap climbs -- so those are
+ *   reconciled per sync rather than appended.
+ *
+ * Appending is made idempotent by the natural key rather than by clearing:
+ * a sync inserts the laps it does not already have. Re-running it changes
+ * nothing, which is what lets it run every minute without coordination.
+ */
+
+/* ------------------------------------------------------------- the tables -- */
+
+/*
+ * One row per driver per lap: the replay table.
+ *
+ * Carries what the old Stg_LiveEntry carried per driver *and* what
+ * Stg_LiveTrace carried per lap, because they were the same measurement seen at
+ * two resolutions -- the entry file was this table filtered to its last lap.
+ *
+ * GapToLeader is text and GapSeconds is the same value as a number, or nothing.
+ * OpenF1 reports seconds until a car is lapped and then switches to "+1 LAP",
+ * so the text column is the one a page shows and the number is the one a chart
+ * plots; a chart that coerced "+1 LAP" would draw the car at the front.
+ */
+create or modify persistent entity Formula1Backend.LiveLap (
+  SessionKey: string(20),
+  DriverNumber: long,
+  LapNumber: long,
+  Position: long,
+  GapToLeader: string(20),
+  GapSeconds: decimal,
+  LapSeconds: decimal,
+  Sector1: decimal,
+  Sector2: decimal,
+  Sector3: decimal,
+  SpeedTrap: long,
+  Compound: string(20),
+  TyreAge: long,
+  PitStops: long
+) index (SessionKey, DriverNumber, LapNumber);
+
+/*
+ * Who was driving what, per session. Separate from the laps because it does not
+ * change lap to lap, and repeating a team colour fourteen hundred times to
+ * avoid one join is not a saving.
+ */
+create or modify persistent entity Formula1Backend.LiveDriver (
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  DriverName: string(120),
+  Team: string(120),
+  TeamColour: string(10)
+) index (SessionKey, DriverNumber);
+
+/* Every stint, reconciled per sync: LapEnd is empty until the car pits. */
+create or modify persistent entity Formula1Backend.LiveStintRow (
+  SessionKey: string(20),
+  DriverNumber: long,
+  StintNumber: long,
+  Compound: string(20),
+  LapStart: long,
+  LapEnd: long,
+  TyreAgeAtStart: long
+) index (SessionKey, DriverNumber, StintNumber);
+
+/* Race control, append-only. */
+create or modify persistent entity Formula1Backend.LiveMessageRow (
+  SessionKey: string(20),
+  At: string(20),
+  Category: string(40),
+  Flag: string(20),
+  Scope: string(40),
+  Lap: long,
+  Message: string(500)
+) index (SessionKey, At);
+
+/*
+ * Weather as a series rather than a reading. The snapshot kept only the latest
+ * sample; a replay wants the curve, and it is one row a minute.
+ */
+create or modify persistent entity Formula1Backend.LiveWeatherRow (
+  SessionKey: string(20),
+  At: string(20),
+  AirTemperature: decimal,
+  TrackTemperature: decimal,
+  Humidity: decimal,
+  Rainfall: decimal,
+  WindSpeed: decimal
+) index (SessionKey, At);
+
+/* One row per session, reconciled per sync. */
+create or modify persistent entity Formula1Backend.LiveSessionRow (
+  SessionKey: string(20),
+  SessionName: string(60),
+  SessionType: string(40),
+  Location: string(120),
+  CountryName: string(60),
+  CircuitName: string(120),
+  DateStart: string(40),
+  Year: long,
+  DriverCount: long,
+  LeadLap: long,
+  FetchedAt: string(30)
+) index (SessionKey);
+
+/* ------------------------------------------------------------- the state -- */
+
+/*
+ * The bearer token, and when it stops working.
+ *
+ * A row rather than a constant because it is minted at runtime and replaced
+ * roughly hourly. AccessToken is PRIVATE-by-convention: nothing publishes this
+ * entity, and the ops resource that reports sync health exposes ExpiresAt
+ * without it.
+ */
+create or modify persistent entity Formula1Backend.LiveToken (
+  AccessToken: string(4000),
+  ExpiresAt: datetime
+);
+
+/*
+ * What the scheduled event is doing, and whether it should be.
+ *
+ * Enabled defaults to false. A scheduled event that starts polling a paid API
+ * the moment someone runs the model scripts is a surprise, and on Mendix Cloud
+ * it would be a surprise that costs money; switching it on is a deliberate act.
+ *
+ * SessionKey empty means "the session OpenF1 calls latest".
+ */
+create or modify persistent entity Formula1Backend.LiveSyncState (
+  Enabled: boolean,
+  SessionKey: string(20),
+  /*
+   * Where telemetry has been read up to, on the *session's* clock.
+   *
+   * Empty means "follow the wall clock", which is what a live race wants. Set
+   * it and the sync walks a finished session forward from that point instead,
+   * which is the only way to backfill telemetry for a race that has already
+   * happened -- car_data three minutes ago is nothing at all if the race was
+   * last month.
+   */
+  TelemetryCursor: datetime,
+  LastRunAt: datetime,
+  LastResult: string(500),
+  LapsWritten: long,
+  RunCount: long
+);
+
+/* -------------------------------------------------------------- the state -- */
+
+/*
+ * The one LiveSyncState row, created if it is not there.
+ *
+ * There is exactly one of these, and until this existed there were two: both
+ * Sync_Live and Ops_LiveSyncSet created a row when they found none, and running
+ * them in either order produced a pair. Nothing failed loudly -- `RETRIEVE ...
+ * LIMIT 1` simply returned whichever the database offered, so switching the
+ * sync on could update one row while the cycle read the other and stayed off.
+ *
+ * A singleton has to be created in one place to be a singleton. Everything that
+ * wants the state calls this, and the surplus rows are cleared on the way past
+ * so an app that already has two converges on one.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_State ()
+  RETURNS Formula1Backend.LiveSyncState AS $State
+BEGIN
+  RETRIEVE $Rows FROM Formula1Backend.LiveSyncState;
+  DECLARE $Seen Long = 0;
+  LOOP $R IN $Rows BEGIN
+    SET $Seen = $Seen + 1;
+    IF $Seen > 1 THEN
+      DELETE $R;
+    END IF;
+  END LOOP;
+
+  /* The retrieve binds $State and the create binds $Created: a microflow's
+   * variable names are unique flow-wide, so one name cannot be filled by both. */
+  RETRIEVE $State FROM Formula1Backend.LiveSyncState LIMIT 1;
+  IF $State = empty THEN
+    $Created = CREATE Formula1Backend.LiveSyncState (
+      Enabled = false, SessionKey = '', LapsWritten = 0, RunCount = 0) COMMIT;
+    LOG INFO NODE 'F1LiveSync' 'live sync state created, disabled';
+    RETURN $Created;
+  END IF;
+  RETURN $State;
+END;
+
+/* --------------------------------------------------------------- the key -- */
+
+/*
+ * Credentials, as constants rather than as a file.
+ *
+ * Constants are what Mendix Cloud gives you a place to set per environment,
+ * which is the whole point of moving off the shell script: the same model
+ * deploys to a laptop and to a cloud node and neither needs a dotfile. Empty by
+ * default, and empty is a working configuration -- OpenF1 serves historical
+ * sessions unauthenticated and only closes the door while a session is running.
+ */
+create or modify constant Formula1Backend.OpenF1BaseUrl type string
+  default 'https://api.openf1.org/v1'
+  comment 'OpenF1 REST base. Override to point at a mirror or a recording.';
+
+create or modify constant Formula1Backend.OpenF1TokenUrl type string
+  default 'https://api.openf1.org/token'
+  comment 'OpenF1 OAuth2 token endpoint (password grant).';
+
+create or modify constant Formula1Backend.OpenF1Username type string default ''
+  comment 'OpenF1 account. Leave empty to run unauthenticated (historical only).';
+
+create or modify constant Formula1Backend.OpenF1Password type string default '' PRIVATE;
+
+/*
+ * The token response. Three fields, one of which OpenF1 sends as a string even
+ * though it is a number of seconds, so the snippet says "3600" in quotes and
+ * the mapping reads it as text.
+ */
+CREATE OR MODIFY JSON STRUCTURE Formula1Backend.JSON_OpenF1Token
+  SNIPPET '{"access_token": "abc", "token_type": "bearer", "expires_in": "3600"}';
+
+@Position(100, 1100)
+create or modify non-persistent entity Formula1Backend.Stg_TokenResponse (
+  AccessToken: string(4000),
+  TokenType: string(40),
+  ExpiresIn: string(20)
+);
+
+CREATE OR MODIFY IMPORT MAPPING Formula1Backend.IMM_OpenF1Token
+  WITH JSON STRUCTURE Formula1Backend.JSON_OpenF1Token
+{
+  create Formula1Backend.Stg_TokenResponse {
+    AccessToken = access_token,
+    TokenType = token_type,
+    ExpiresIn = expires_in
+  }
+};
+
+/*
+ * Mint a token, or hand back the one already held.
+ *
+ * An hour is shorter than a Grand Prix, so this is asked on every sync and
+ * answers from the stored row until that row is within five minutes of expiry.
+ * Five rather than one because a sync is several HTTPS reads and a token that
+ * expires half way through fails the rest of them silently.
+ *
+ * Returns empty rather than throwing when there are no credentials. Empty is a
+ * working state: it means unauthenticated, which serves every historical
+ * session and fails only while a session is live -- and the caller reports that
+ * rather than the sync dying on a configuration that is deliberate.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_EnsureToken ()
+  RETURNS String AS $Token
+BEGIN
+  DECLARE $Token String = '';
+
+  RETRIEVE $Stored FROM Formula1Backend.LiveToken LIMIT 1;
+  IF $Stored != empty AND $Stored/ExpiresAt != empty
+     AND $Stored/ExpiresAt > addMinutes([%CurrentDateTime%], 5) THEN
+    SET $Token = $Stored/AccessToken;
+    RETURN $Token;
+  END IF;
+
+  IF trim(@Formula1Backend.OpenF1Username) = ''
+     OR trim(@Formula1Backend.OpenF1Password) = '' THEN
+    RETURN $Token;
+  END IF;
+
+  $Response = REST CALL POST '{1}'
+    WITH ({1} = @Formula1Backend.OpenF1TokenUrl)
+    HEADER 'Content-Type' = 'application/x-www-form-urlencoded'
+    BODY 'username={1}&password={2}'
+      WITH ({1} = urlEncode(@Formula1Backend.OpenF1Username),
+            {2} = urlEncode(@Formula1Backend.OpenF1Password))
+    TIMEOUT 30
+    RETURNS MAPPING Formula1Backend.IMM_OpenF1Token AS Formula1Backend.Stg_TokenResponse;
+
+  IF $Response = empty OR trim($Response/AccessToken) = '' THEN
+    LOG WARNING NODE 'F1LiveSync' 'OpenF1 token request returned nothing';
+    RETURN $Token;
+  END IF;
+
+  SET $Token = $Response/AccessToken;
+
+  DECLARE $Ttl Integer = 3600;
+  IF trim($Response/ExpiresIn) != '' THEN
+    SET $Ttl = parseInteger($Response/ExpiresIn);
+  END IF;
+
+  IF $Stored = empty THEN
+    $New = CREATE Formula1Backend.LiveToken (
+      AccessToken = $Token,
+      ExpiresAt = addSeconds([%CurrentDateTime%], $Ttl)
+    ) COMMIT;
+  ELSE
+    CHANGE $Stored (
+      AccessToken = $Token,
+      ExpiresAt = addSeconds([%CurrentDateTime%], $Ttl)
+    ) COMMIT;
+  END IF;
+
+  LOG INFO NODE 'F1LiveSync' 'OpenF1 token minted, valid for '
+    + toString($Ttl div 60) + ' minutes';
+  RETURN $Token;
+END;
+
+/* ------------------------------------------------------------- the stage -- */
+
+/*
+ * Where a sync lands before anything is kept.
+ *
+ * The same shape as LiveLap, persistent so an OQL statement can see it. A sync
+ * writes every lap it fetched here, promotes the ones that are new in one
+ * statement, and empties it. That is the skill pack's stage-and-promote
+ * pattern, and it is what makes "append only what is missing" a single
+ * statement instead of fourteen hundred existence checks.
+ */
+create or modify persistent entity Formula1Backend.LiveLapStage (
+  SessionKey: string(20),
+  DriverNumber: long,
+  LapNumber: long,
+  Position: long,
+  GapToLeader: string(20),
+  GapSeconds: decimal,
+  LapSeconds: decimal,
+  Sector1: decimal,
+  Sector2: decimal,
+  Sector3: decimal,
+  SpeedTrap: long,
+  Compound: string(20),
+  TyreAge: long,
+  PitStops: long
+) index (SessionKey, DriverNumber, LapNumber);
+
+/*
+ * One OpenF1 GET.
+ *
+ * Its own microflow so the bearer-or-not branch is written once rather than
+ * five times, and so the five calls are unmistakably sequential: OpenF1 allows
+ * three requests a second, and the previous design's parallel scans are exactly
+ * what tripped that.
+ *
+ * Returns the body as text. Nothing parses it here -- it goes to DuckDB as a
+ * bound parameter and is taken apart there.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Fetch (
+  $Path: String,
+  $Token: String
+)
+  RETURNS String AS $Body
+BEGIN
+  DECLARE $Body String = '';
+  DECLARE $Url String = @Formula1Backend.OpenF1BaseUrl + '/' + $Path;
+
+  IF trim($Token) != '' THEN
+    $Authed = REST CALL GET '{1}'
+      WITH ({1} = $Url)
+      HEADER 'Accept' = 'application/json'
+      HEADER 'Authorization' = 'Bearer ' + $Token
+      TIMEOUT 120
+      RETURNS String
+      ON ERROR CONTINUE;
+    SET $Body = $Authed;
+  ELSE
+    $Plain = REST CALL GET '{1}'
+      WITH ({1} = $Url)
+      HEADER 'Accept' = 'application/json'
+      TIMEOUT 120
+      RETURNS String
+      ON ERROR CONTINUE;
+    SET $Body = $Plain;
+  END IF;
+
+  /*
+   * An empty body would reach DuckDB as invalid JSON; an empty array is a shape
+   * from_json can read and the derivation simply yields nothing.
+   *
+   * This also absorbs a 404, which car_data and location return when the
+   * requested window holds no samples rather than returning an empty list. That
+   * is a normal answer -- between sessions, during a red flag, or when the
+   * window has run past the end of the race -- and failing the cycle over it
+   * would stop the sync every time a race finished.
+   */
+  IF trim($Body) = '' THEN
+    SET $Body = '[]';
+  END IF;
+  RETURN $Body;
+END;
+
+/* --------------------------------------------------------------- the run -- */
+
+/*
+ * One sync.
+ *
+ * Reads OpenF1 through the app's own DuckDB connection -- no shell, no
+ * filesystem, so it runs the same on a Windows laptop and on a Mendix Cloud
+ * node -- derives the lap table in SQL, and keeps what is new.
+ *
+ * Only the laps it does not already have are fetched. OpenF1 filters on
+ * lap_number, so a sync during a race asks for the last two laps rather than
+ * the whole race: steady state is twenty rows a minute, not fourteen hundred.
+ * Two rather than one because a lap already stored can still be revised -- a
+ * gap arrives after the lap does.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Live ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  /*
+   * First run creates the row switched off. A scheduled event that starts
+   * polling a paid API the moment the model is applied is a surprise, and on
+   * Mendix Cloud a surprise that bills; switching it on is a deliberate act.
+   */
+  $State = CALL MICROFLOW Formula1Backend.Sync_State();
+  IF $State/Enabled != true THEN
+    SET $Result = 'disabled';
+    RETURN $Result;
+  END IF;
+
+  DECLARE $Key String = 'latest';
+  IF trim($State/SessionKey) != '' THEN
+    SET $Key = trim($State/SessionKey);
+  END IF;
+
+  $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+
+  /*
+   * Five GETs, one at a time, in a fixed order.
+   *
+   * The first version of this let DuckDB fetch the URLs itself. It worked and
+   * it was fragile: DuckDB scans sources in parallel, so five requests left at
+   * once against OpenF1's three-a-second, and the refusal came back as
+   * "HTTP 0 Internal Server Error" -- which names neither the rate limit nor
+   * HTTP. Sequential activities cannot burst, and each one carries the token in
+   * a header instead of a DuckDB secret.
+   *
+   * Only the laps read is narrowed. The other four are small or need their full
+   * history: a position sample from before this lap is exactly what the ASOF
+   * join is looking for, so trimming them would break the derivation rather
+   * than speed it up.
+   */
+  DECLARE $From Long = 1;
+  RETRIEVE $Seen FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
+  IF $Seen != empty AND $Seen/LapNumber > 2 THEN
+    SET $From = $Seen/LapNumber - 1;
+  END IF;
+
+  /*
+   * `>` is percent-encoded because Java's URI parser refuses it raw --
+   * "Illegal character in query at index 59" -- where curl and DuckDB's httpfs
+   * both accepted it. OpenF1's filter syntax puts a comparison operator in the
+   * query string, so this is the one place it bites.
+   */
+  $LapsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'laps?session_key=' + $Key + '&lap_number%3E=' + toString($From),
+    Token = $Token);
+  $PosJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'position?session_key=' + $Key, Token = $Token);
+  $ItvJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'intervals?session_key=' + $Key, Token = $Token);
+  $StintsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'stints?session_key=' + $Key, Token = $Token);
+  $PitJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'pit?session_key=' + $Key, Token = $Token);
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Laps
+    (sessionKey = $Key, lapsJson = $LapsJson, posJson = $PosJson,
+     itvJson = $ItvJson, stintsJson = $StintsJson, pitJson = $PitJson);
+
+  /* Empty the stage before filling it: a previous run that died half way
+   * through would otherwise promote its leftovers alongside this one's. */
+  $Cleared = CALL JAVA ACTION Formula1Backend.OQL_Execute(
+    Statement = 'delete from Formula1Backend.LiveLapStage');
+
+  LOOP $R IN $Rows BEGIN
+    $Staged = CREATE Formula1Backend.LiveLapStage (
+      SessionKey = $R/SessionKey, DriverNumber = $R/DriverNumber,
+      LapNumber = $R/LapNumber, Position = $R/Position,
+      GapToLeader = $R/GapToLeader, GapSeconds = $R/GapSeconds,
+      LapSeconds = $R/LapSeconds, Sector1 = $R/Sector1, Sector2 = $R/Sector2,
+      Sector3 = $R/Sector3, SpeedTrap = $R/SpeedTrap, Compound = $R/Compound,
+      TyreAge = $R/TyreAge, PitStops = $R/PitStops) COMMIT;
+  END LOOP;
+
+  /*
+   * A lap already stored is replaced rather than skipped, because the numbers
+   * on it improve: a gap and a sector time arrive after the lap does, so the
+   * row written the minute a car crossed the line is the least complete version
+   * of it. Delete what the stage is about to supersede, then insert the lot --
+   * two statements, whatever the row count.
+   */
+  $Superseded = CALL JAVA ACTION Formula1Backend.OQL_Execute(
+    Statement = 'delete from Formula1Backend.LiveLap where exists ('
+      + 'select 1 from Formula1Backend.LiveLapStage as s'
+      + ' where s.SessionKey = Formula1Backend.LiveLap/SessionKey'
+      + ' and s.DriverNumber = Formula1Backend.LiveLap/DriverNumber'
+      + ' and s.LapNumber = Formula1Backend.LiveLap/LapNumber)');
+
+  $Kept = CALL JAVA ACTION Formula1Backend.OQL_Execute(
+    Statement = 'insert into Formula1Backend.LiveLap (SessionKey, DriverNumber,'
+      + ' LapNumber, Position, GapToLeader, GapSeconds, LapSeconds, Sector1,'
+      + ' Sector2, Sector3, SpeedTrap, Compound, TyreAge, PitStops)'
+      + ' select s.SessionKey, s.DriverNumber, s.LapNumber, s.Position,'
+      + ' s.GapToLeader, s.GapSeconds, s.LapSeconds, s.Sector1, s.Sector2,'
+      + ' s.Sector3, s.SpeedTrap, s.Compound, s.TyreAge, s.PitStops'
+      + ' from Formula1Backend.LiveLapStage as s');
+
+  $Emptied = CALL JAVA ACTION Formula1Backend.OQL_Execute(
+    Statement = 'delete from Formula1Backend.LiveLapStage');
+
+  $Fetched = COUNT($Rows);
+  SET $Result = 'session ' + $Key + ': fetched ' + toString($Fetched)
+    + ', replaced ' + toString($Superseded) + ', kept ' + toString($Kept);
+  IF trim($Token) = '' THEN
+    SET $Result = $Result + ' (unauthenticated)';
+  END IF;
+
+  CHANGE $State (
+    LastRunAt = [%CurrentDateTime%],
+    LastResult = $Result,
+    LapsWritten = $Kept,
+    RunCount = $State/RunCount + 1
+  ) COMMIT;
+
+  LOG INFO NODE 'F1LiveSync' $Result;
+  RETURN $Result;
+END;
+
+/* -------------------------------------------------------------- the timer -- */
+
+/*
+ * Minutely is as fine as Mendix goes -- Repeat takes a multiplier in minutes,
+ * so one minute is the floor. The shell script polls every thirty seconds, so
+ * moving the sync in-app costs about half a minute of freshness: OpenF1's own
+ * ~3s delay plus up to sixty seconds of waiting, against up to thirty. That is
+ * the price of running somewhere a shell script cannot, and it is worth saying
+ * out loud rather than discovering.
+ *
+ * The event is created enabled; the *sync* is what defaults to off, through
+ * LiveSyncState. So the timer fires every minute from the first deploy and does
+ * nothing at all until somebody switches the sync on, which is the cheap
+ * arrangement: no schedule to remember to enable when the race starts.
+ */
+CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_LiveSync (
+  Microflow: Formula1Backend.Sync_Live,
+  Enabled: true,
+  Repeat: Minutely,
+  Multiplier: 1,
+  TimeZone: Server
+);

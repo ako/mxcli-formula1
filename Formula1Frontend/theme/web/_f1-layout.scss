@@ -1015,3 +1015,40 @@
 .section-gap {
   margin-top: 24px;
 }
+
+// ---------------------------------------------------------------------------
+// Sector marks on the live classification.
+//
+// Timing screens colour a sector time rather than annotate it: purple for the
+// best anyone has set this session, green for the best this driver has. The
+// backend already decided which is which — the page carries a one-character
+// flag per sector and this turns it into the colour, so the cell keeps a plain
+// number and the column stays sortable, the same trick the Δ column plays.
+//
+// On a finished race every one of these is blank, and correctly so: the last
+// lap of a race is rarely anybody's quickest. They light up during a session.
+// ---------------------------------------------------------------------------
+.sec-best,
+.sec-best .td-text {
+  color: var(--mxt-accent);
+  font-weight: 600;
+}
+
+.sec-personal,
+.sec-personal .td-text {
+  color: var(--mxt-tone-ok);
+  font-weight: 600;
+}
+
+// ---------------------------------------------------------------------------
+// The circuit outline.
+//
+// The chart is authored square and at a fixed size, because a track drawn to
+// the width of its container is a track stretched: Monaco and Monza would come
+// out the same shape. Centring it is the whole job here.
+// ---------------------------------------------------------------------------
+.circuit-figure {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 2px;
+}

@@ -1,0 +1,257 @@
+/*
+ * Navigation and security for the frontend.
+ * =========================================
+ *
+ * One role: the Formula 1 enthusiast. The whole solution is read-only over a
+ * historical dataset, so there is nothing to grant beyond read and view.
+ *
+ * External entities still need entity access rules — the OData client fetches
+ * the rows, but Mendix will not show a user data their role cannot read.
+ *
+ * The redesign has five screens and no overviews, which changes what a menu
+ * has to do. Four of the five take a parameter — a season, a race, a
+ * constructor, a driver — and a menu item cannot supply one. So each of those
+ * four is entered through a microflow that picks a sensible default and opens
+ * the page with it: the most recent season, its last round, and that season's
+ * two champions. From there every screen is reached by clicking something on
+ * another screen, which is the whole navigation model of the comp.
+ */
+
+alter project security level PROTOTYPE;
+
+create or modify module role Formula1Frontend.Enthusiast
+  description 'Browse every season, driver, constructor and result. Read-only.';
+create or modify module role F1Live.Reader
+  description 'Read the live (CSV-backed) external entities.';
+create or modify module role F1Cached.Reader
+  description 'Read the cached (Postgres-backed) external entities.';
+create or modify module role F1Now.Reader
+  description 'Read the near-live timing snapshot from OpenF1.';
+create or modify module role F1Fan.Reader
+  description 'Read the derived career, season and reliability views, and the sourced facts.';
+
+/* Live external entities */
+grant F1Live.Reader ON F1Live.Seasons (READ *);
+grant F1Live.Reader ON F1Live.Circuits (READ *);
+grant F1Live.Reader ON F1Live.Constructors (READ *);
+grant F1Live.Reader ON F1Live.Drivers (READ *);
+grant F1Live.Reader ON F1Live.Races (READ *);
+grant F1Live.Reader ON F1Live.RaceResults (READ *);
+grant F1Live.Reader ON F1Live.DriverStandings (READ *);
+grant F1Live.Reader ON F1Live.ConstructorStandings (READ *);
+
+/* Cached external entities */
+grant F1Cached.Reader ON F1Cached.Seasons (READ *);
+grant F1Cached.Reader ON F1Cached.Circuits (READ *);
+grant F1Cached.Reader ON F1Cached.Constructors (READ *);
+grant F1Cached.Reader ON F1Cached.Drivers (READ *);
+grant F1Cached.Reader ON F1Cached.Races (READ *);
+grant F1Cached.Reader ON F1Cached.RaceResults (READ *);
+grant F1Cached.Reader ON F1Cached.DriverStandings (READ *);
+grant F1Cached.Reader ON F1Cached.ConstructorStandings (READ *);
+
+/* Fan external entities — the derived views behind four of the five screens */
+grant F1Fan.Reader ON F1Fan.DriverSeasons (READ *);
+grant F1Fan.Reader ON F1Fan.DriverRaces (READ *);
+grant F1Fan.Reader ON F1Fan.SeasonProgress (READ *);
+grant F1Fan.Reader ON F1Fan.Retirements (READ *);
+grant F1Fan.Reader ON F1Fan.Facts (READ *);
+grant F1Fan.Reader ON F1Fan.RaceWeekend (READ *);
+grant F1Fan.Reader ON F1Fan.RaceSessions (READ *);
+grant F1Fan.Reader ON F1Fan.Calendar (READ *);
+grant F1Fan.Reader ON F1Fan.WeekendShape (READ *);
+grant F1Fan.Reader ON F1Fan.LapChart (READ *);
+grant F1Fan.Reader ON F1Fan.TeamSeason (READ *);
+grant F1Fan.Reader ON F1Fan.TeamH2H (READ *);
+
+/* Near-live timing. Trace and Stints are the history behind the snapshot. */
+grant F1Now.Reader ON F1Now.Order (READ *);
+grant F1Now.Reader ON F1Now.Messages (READ *);
+grant F1Now.Reader ON F1Now.Session (READ *);
+grant F1Now.Reader ON F1Now.Trace (READ *);
+grant F1Now.Reader ON F1Now.Stints (READ *);
+
+/* -------------------------------------------------------------- default -- */
+
+/*
+ * The four entry points.
+ *
+ * Each picks the most recent thing of its kind, because "most recent" is the
+ * answer a reader arriving with no question in mind would have chosen. None of
+ * them invents a target: if the lookup comes back empty the microflow opens
+ * nothing rather than an empty screen, which is a blank click rather than a
+ * page that looks broken.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Season ()
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  IF $Season != empty THEN
+    SHOW PAGE Formula1Frontend.Season (Season: $Season);
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Weekend ()
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  IF $Season != empty THEN
+    RETRIEVE $Race FROM F1Fan.Calendar
+      WHERE year = $Season/year SORT BY round DESC LIMIT 1;
+    IF $Race != empty THEN
+      SHOW PAGE Formula1Frontend.Weekend (Race: $Race);
+    END IF;
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Constructor ()
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  IF $Season != empty THEN
+    RETRIEVE $Standing FROM F1Cached.ConstructorStandings
+      WHERE year = $Season/year SORT BY positionOrder ASC LIMIT 1;
+    IF $Standing != empty THEN
+      RETRIEVE $Constructor FROM F1Cached.Constructors
+        WHERE constructorId = $Standing/constructorId LIMIT 1;
+      IF $Constructor != empty THEN
+        SHOW PAGE Formula1Frontend.Constructor (Constructor: $Constructor);
+      END IF;
+    END IF;
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Driver ()
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  IF $Season != empty THEN
+    RETRIEVE $Standing FROM F1Cached.DriverStandings
+      WHERE year = $Season/year SORT BY positionOrder ASC LIMIT 1;
+    IF $Standing != empty THEN
+      RETRIEVE $Driver FROM F1Live.Drivers
+        WHERE driverId = $Standing/driverId LIMIT 1;
+      IF $Driver != empty THEN
+        SHOW PAGE Formula1Frontend.Driver (Driver: $Driver);
+      END IF;
+    END IF;
+  END IF;
+END;
+
+/* ---------------------------------------------------------------- pages -- */
+
+GRANT VIEW ON PAGE Formula1Frontend.Narrate TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Season TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Weekend TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Constructor TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Driver TO Formula1Frontend.Enthusiast;
+
+/* Datasource microflows. A microflow reached from a page needs its own role. */
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.NAV_Season TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.NAV_Weekend TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.NAV_Constructor TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.NAV_Driver TO Formula1Frontend.Enthusiast;
+
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverFact TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonFact TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ConstructorFact TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverSeasons TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverRaces TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverPeers TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverLatestSeason TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_DriverLatestRaces TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenDriverRow TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenConstructorRow TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenDriverSession TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_OpenSeasonOfDriver TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonProgress TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonCalendar TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonLeaders TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonTeamRows TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonHeadline TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverRows TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonDriverStandings TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Retirements TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamPeers TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamSeason TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamH2H TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TeamLatestStanding TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_Weekend TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendRounds TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendSessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_WeekendShape TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LapChart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveSession TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveOrder TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessages TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveTrace TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveLeaderCodes TO Formula1Frontend.Enthusiast;
+
+/*
+ * Vega charts. Each of these wraps one of the DS_ microflows above and returns
+ * the same facts as a JSON string, so the grants come in pairs — the reader
+ * still needs the underlying resource.
+ */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.Chart (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_Career TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_QualRace TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonProgress TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonTeams TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonMultiples TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TeamPoints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TeamPosition TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_Retirements TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendShape TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LapChart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendPace TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveGaps TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LivePositions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveStints TO Formula1Frontend.Enthusiast;
+
+/* The view-model rows the season screen binds to. */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonHeadline (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonTeamRow (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonDriverRow (READ *);
+
+create or modify user role Enthusiast (
+  Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader,
+  F1Now.Reader, System.User
+);
+
+/*
+ * The rail. Five items, in the order the comp puts them: the race happening
+ * now, then the season it belongs to, then one weekend of it, then the two
+ * ways of cutting it up.
+ *
+ * Narrate is the home page because it is the only screen that needs no
+ * parameter, and because a fan opening this app on a Sunday wants the race.
+ *
+ * Hyphenated Atlas names need quoting: ICON Atlas_Core.Atlas."map-location-pin".
+ * Browse them with SHOW ICON COLLECTION / DESCRIBE ICON COLLECTION. FINDINGS §48.
+ */
+create or replace navigation Responsive
+  HOME PAGE Formula1Frontend.Narrate
+  MENU (
+    MENU ITEM 'Narrate' PAGE Formula1Frontend.Narrate ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Season' MICROFLOW Formula1Frontend.NAV_Season ICON Atlas_Core.Atlas.calendar;
+    MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
+    MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
+    MENU ITEM 'Driver' MICROFLOW Formula1Frontend.NAV_Driver ICON Atlas_Core.Atlas."user-neutral-group";
+  );
+
+/* The circuit outline: the shape, the points behind it, and the chart. */
+grant F1Fan.Reader ON F1Fan.CircuitOutlines (READ *);
+grant F1Fan.Reader ON F1Fan.CircuitPoints (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CircuitOutline TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CircuitPoints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_CircuitOutline TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect TO Formula1Frontend.Enthusiast;
+
+/* The track map: the circuit outline, the live car positions, and the chart. */
+grant F1Now.Reader ON F1Now.TrackOutline (READ *);
+grant F1Now.Reader ON F1Now.CarPositions (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TrackOutline TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CarPositions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TrackMap TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_TrackOutlinePoints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_TrackMapBuilds TO Formula1Frontend.Enthusiast;

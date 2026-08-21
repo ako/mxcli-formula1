@@ -19,11 +19,18 @@ Theme `console` (dark), Mendix **11.13.0**, mxcli built from **ako/mxcli main** 
 
 ## What it looks like
 
-![The home page](docs/screenshots/01-home.png)
-
-Every screenshot below is the running app, captured against a live backend by
+Screenshots are the running app, captured against a live backend by
 `scripts/shoot-screenshots.mjs`. They are regenerated rather than curated, so a
-panel that is empty here is empty in the app.
+panel that is empty in one is empty in the app.
+
+> **Stale after the redesign.** The shots of the previous twelve-page app were
+> deleted rather than kept, because they show pages that no longer exist and the
+> claim above is worth more than the pictures. Regenerate them with the app and
+> backend running:
+>
+> ```bash
+> node scripts/shoot-screenshots.mjs
+> ```
 
 ## The two apps
 
@@ -172,61 +179,61 @@ down to what it still misses: the filter-operator popover, and the header logo
 (an `<img>`, replaced with a mask painted from `--mxt-brand`). It sits outside
 the `mxcli:theme` fence, so `mxcli theme apply` leaves it alone. FINDINGS §33, §34.
 
-## The fan pages
+## The five screens
 
-Three pages, each opened from a row in an overview:
+The app is five screens and nothing else. There is no home page and there are no
+overview lists, because every screen is an overview of the next one.
 
-| Page | Shows |
-|---|---|
-| **Driver career** | Every season — teams, championship position, wins, poles, average qualifying and finishing position — then every race with its three practice sessions, qualifying, grid slot and result side by side. The practice columns are empty before timed practice was recorded, which is itself the answer to "how did they practise". |
-| **Season summary** | A line chart of cumulative points round by round for the top five, computed with a DuckDB window function over the race results, plus both final standings. |
-| **Constructor** | Every reason that team's cars stopped, how often, and what share of their entries it accounts for — Ferrari: 72 distinct reasons, `Engine` 146 times, 5.8% of 2515 entries, 1950 to 2024. |
+| Screen | Shows | Opens |
+|---|---|---|
+| **Narrate** | The race as it stands and how it got there: gap to leader lap by lap, the classification with sector marks, position by lap for every car, strategy as one bar per stint, and race control newest first. | — |
+| **Season** | A championship: who won and by how much, cumulative points round by round, finishing position as ten small multiples on shared axes, the drivers' table, and the calendar. | driver · constructor · weekend |
+| **Weekend** | One Grand Prix with every session beside the next: practice → qualifying → race as a slopegraph, pace as each driver's gap to that session's own best, the session-by-session table, and the lap traces. | driver · any other round |
+| **Constructor** | A team's season, mostly as comparisons between its two drivers: points by round one bar per seat, team-mates head to head, championship position round by round. | driver · any other team |
+| **Driver** | One driver: the season strip round by round, qualifying against race result, the career as points and championship finish, and every season in a table. | weekend · season · any other driver |
 
-Each page opens with a paragraph from Wikipedia — 224 of them, covering all 77
-seasons, 116 race-winning drivers and 31 winning constructors, fetched by
-`scripts/fetch-f1-facts.sh` and read by DuckDB from `data/facts/f1db-facts.csv`
-like everything else. The text is CC BY-SA 4.0; the article link and licence
-travel with every row and are shown on the page.
+Four of the five take a parameter, and a Mendix menu item cannot supply one, so
+the rail's four lower items are microflows that pick the most recent thing of
+their kind — the latest season, its last round, and that season's two champions.
+Narrate needs no parameter and is the home page.
 
-The 2021 season, its title fight as a points curve, and the calendar each round
-opens from:
+**Chip rows move sideways.** Weekend, Constructor and Driver each carry a row of
+siblings along the top — every round of the season, every constructor, the
+twenty drivers with the most points ever scored — so a screen can be left
+sideways rather than only backwards. That is what replaced the overview pages.
 
-![Season summary](docs/screenshots/04-season-summary.png)
+**Every screen ends on its sourcing.** A footnote saying which of f1db, Jolpica
+and OpenF1 the numbers came from, and which of them were computed here rather
+than read. The Narrate screen additionally shows *when* its snapshot was taken,
+because it is the only one whose data was moving.
 
-A career — here Jos Verstappen's, eight seasons across five teams, every round
-with practice, qualifying, grid and result on one line:
+### What the design asks for and this does not have
 
-![Driver career](docs/screenshots/07-driver-career.png)
+Two panels of the Narrate screen are absent by decision rather than pending, and
+`model/frontend/06-narrate.mdl` says so where a reader will find it:
 
-And what stopped a team's cars:
+* **the track map**, which wants an (x, y) per car against a drawn circuit
+  outline. The snapshot carries positions in the running order, not positions in
+  space, and the outline is a hand-drawn path per venue. A track map that
+  guessed either would be a picture of nothing;
+* **the story panel**, which wants precedents and streaks read out of
+  seventy-five years of results by an agent pass. There is no such resource, and
+  writing the sentences into the page is the exact failure its own comp warns
+  about — "read the provenance line before you say it out loud".
 
-![Constructor reliability](docs/screenshots/09-constructor-detail.png)
+One panel is drawn differently rather than dropped. The design puts a position
+sparkline inside every row of the classification; a Mendix data grid column
+holds an attribute and not a widget, so the same information is drawn once for
+everybody as the position-by-lap chart underneath.
 
-## The race weekend
+## Where the numbers come from
 
-A fourth page, opened from any row of a season's calendar: one Grand Prix with
-every session beside the next.
-
-| Panel | From |
-|---|---|
-| Session cards | who led FP1, FP2, FP3, who took pole and with what lap, the fastest lap, the winner |
-| Position across the weekend | FP1 → FP2 → FP3 → Quali → Race for the top ten, as ten lines over five points |
-| Race position by lap | the lap-by-lap traces — the one thing f1db does not carry |
-| Session pace | each driver's gap to that session's own best, in seconds, so a wet FP1 does not skew the chart |
-| The table | code, team, all three practices, qualifying position and lap, grid, Δ, best lap, pit stops, points, retirement |
-
-![Race weekend](docs/screenshots/05-race-weekend.png)
-
-Bahrain 2021: Verstappen quickest in all three practices and on pole, Hamilton
-winning it, Bottas taking the fastest lap. The lap-trace panel is empty because
-traces are fetched for 2024 only — the panel says so rather than pretending.
-
-**Where the lap traces come from.** f1db has every session's *result* — 17085
-fastest laps back to 1950, qualifying with Q1/Q2/Q3 splits, practice from 1986,
-22430 pit stops with lap and duration — but not a row per driver per lap. Ergast
-had that and Ergast is gone (`ergast.com` now redirects). `scripts/fetch-f1-laps.sh`
-pulls it from [Jolpica-F1](https://jolpi.ca), the community successor on the same
-API shape: 26574 timings for 2024, ~12 requests per race inside a 500/hour budget,
+**The lap traces.** f1db has every session's *result* — 17085 fastest laps back
+to 1950, qualifying with Q1/Q2/Q3 splits, practice from 1986, 22430 pit stops
+with lap and duration — but not a row per driver per lap. Ergast had that and
+Ergast is gone (`ergast.com` now redirects). `scripts/fetch-f1-laps.sh` pulls it
+from [Jolpica-F1](https://jolpi.ca), the community successor on the same API
+shape: 26574 timings for 2024, ~12 requests per race inside a 500/hour budget,
 written to `data/laps/f1db-laps.csv` and read by DuckDB like everything else.
 Jolpica's driver ids are not f1db's, so the join tries the slug, then the
 accent-stripped surname restricted to that race's starters.
@@ -234,10 +241,8 @@ accent-stripped surname restricted to that race's starters.
 Set `LAP_SEASONS="2023 2024"` to widen it; the default is one season because two
 would exceed the hourly budget.
 
-## Live race overview
-
-A fourth data source and a fourth service, `F1LiveNowApi` — `/odata/f1-now/` —
-carrying what neither f1db nor Jolpica publish: **live timing**.
+**Live timing.** A fourth data source and a fourth service, `F1LiveNowApi` —
+`/odata/f1-now/` — carrying what neither f1db nor Jolpica publish.
 
 ```
 Race @ Hungaroring, Budapest — lead lap 70, air 31.3°C, track 47.0°C
@@ -246,30 +251,124 @@ Race @ Hungaroring, Budapest — lead lap 70, air 31.3°C, track 47.0°C
   P3  ANT  Kimi ANTONELLI   Mercedes         gap 18.728  S1 29.053 S2 30.514 S3 23.905  HARD(0) 2 stops
 ```
 
-Running order with gap to leader and to the car ahead, last lap and its three
-sectors, speed trap, tyre and age, pit stops; race-control messages newest
-first; and air/track temperature, rain and wind.
-
 Source: [OpenF1](https://openf1.org) — unofficial, free, key-less, documenting a
 ~3 second delay during a session. `scripts/fetch-f1-live.sh` snapshots one
-session into `data/live/`; the page reads the last snapshot and **shows when it
-was taken**. Re-run and reload for the next one; on a race Sunday run it on a
-timer with `SESSION=latest`.
+session into `data/live/` as six CSVs. Four are the snapshot — session, order,
+weather, race control. The other two are the history behind it: `live-trace.csv`
+carries one row per driver per lap with position and gap to leader, and
+`live-stints.csv` every set of tyres rather than only the one running. OpenF1
+returns every endpoint as a time series, so keeping the history costs nothing at
+the source, and it is the difference between a table of standings and a chart of
+how the race got there.
 
-![Live race overview](docs/screenshots/02-live-race.png)
+The page reads the last snapshot and **shows when it was taken**. Re-run and
+reload for the next one.
 
-One trap: OpenF1 **404s the entire request if you pass `limit`**. Filter with
-`session_key` / `driver_number` instead.
+Three traps, all of them now handled in the script and named in its header:
 
-## The overviews
+* OpenF1 **404s the entire request if you pass `limit`**. Filter with
+  `session_key` / `driver_number` instead.
+* It **rate-limits per burst**, not per hour: fetching the nine endpoints back
+  to back reliably earns a 429 partway down the list, and a 429 body is JSON
+  too, so it lands in the output file and parses to nothing — which is how a
+  snapshot ends up with a running order and no weather. The script retries with
+  a widening pause.
+* It **switches off unauthenticated access while a session is running** — every
+  endpoint, past sessions included, answers 401 until the session ends. So the
+  one moment a live page most wants a refresh is the one moment a *free* fetch
+  cannot get one.
 
-The four browse pages every detail page is opened from — seasons, drivers,
-constructors, and all 27533 classifications with filters on driver and team:
+**Authenticating.** With an OpenF1 account it can. The scheme is OAuth2's
+*password* grant and nothing more — there is no authorize endpoint, no redirect
+and no consent screen, so there is no login page to build:
 
-| | |
-|---|---|
-| ![Seasons](docs/screenshots/03-seasons.png) | ![Drivers](docs/screenshots/06-drivers.png) |
-| ![Constructors](docs/screenshots/08-constructors.png) | ![Race results](docs/screenshots/10-race-results.png) |
+```bash
+export OPENF1_USERNAME='...'
+export OPENF1_PASSWORD='...'     # or OPENF1_TOKEN=<token> to skip the grant
+sh scripts/fetch-f1-live.sh
+```
+
+The script form-POSTs to `https://api.openf1.org/token`, gets a bearer token
+good for an hour, and sends it as `Authorization: Bearer` on every call. The
+token is cached in `~/.mxcli/openf1-token` (mode 600) with its expiry, so a
+fetch on a timer re-uses one token rather than re-sending the password every
+minute. Credentials come from the environment and are passed to curl with
+`--data-urlencode`, so they never reach a URL, a command line `ps` could show,
+or the repository.
+
+**An hour is shorter than a Grand Prix.** A race is ninety minutes of running
+plus the formation lap, and a red flag can push it past three; a token minted at
+lights-out expires somewhere around lap 50. Two mechanisms cover that, and they
+cover different failures:
+
+* *between runs* — every invocation re-reads the cached token and mints a new
+  one as soon as the old is within five minutes of expiring. On a timer this is
+  the whole answer: the run that straddles the hour mark pays for one extra
+  round trip and nothing else notices. Five minutes rather than one because a
+  full fetch is nine endpoints plus a per-driver telemetry pass, each of which
+  can retry through a 429 backoff, so a run can outlive a smaller margin;
+* *within a run* — a 401 mid-fetch re-mints once and retries that request, and
+  the new token then serves every endpoint after it. Without this the failure is
+  silent rather than loud: the remaining endpoints return nothing, the write
+  guard keeps the previous snapshot, and the page shows a stale timestamp with
+  no error anywhere to explain it.
+
+`OPENF1_TOKEN` is a starting value rather than a ceiling — set it alone and the
+fetch stops working after an hour, which the 401 message says out loud. Set the
+username and password too and a long session refreshes itself.
+
+On a race Sunday, a timer is all that is needed:
+
+```bash
+while sleep 30; do SESSION=latest sh scripts/fetch-f1-live.sh; done
+```
+
+That last point is why a failed fetch is now non-destructive: a file is always
+*present*, because `read_csv()` needs something to open, but it is only
+*rewritten* when the fetch returned rows.
+
+**Circuit outlines.** The shape of each track, as an SVG path — and not traced
+from the Wikipedia diagrams. Those are drawings: each hand-authored with its own
+viewBox, stroke weights and embedded corner labels, so using them means cleaning
+seventy files by hand and trusting the result.
+
+OpenStreetMap maps a circuit as what it is — a chain of one-way ways carrying
+real coordinates, usually one per named corner. At Zandvoort they come back
+named: Tarzanbocht, Scheivlak, Hugenholtzbocht. `scripts/fetch-circuit-outlines.py`
+stitches them in racing order into a closed loop and projects it, correcting
+longitude by cos(latitude) so Spa is not drawn on a different projection to
+Monza.
+
+Because it is geometry rather than artwork, **it can be checked**: every outline
+is measured against the length f1db records for that circuit, and one that
+disagrees by more than a few per cent is left out rather than shown.
+
+| Circuit | Traced | f1db recorded | Out by |
+|---|---|---|---|
+| Lusail | 5.426 km | 5.419 km | 0.1% |
+| Austin | 5.502 km | 5.513 km | 0.2% |
+| Hungaroring | 4.367 km | 4.381 km | 0.3% |
+| Interlagos | 4.336 km | 4.362 km | 0.6% |
+
+That guard is not decoration. An early version of the stitcher followed the pit
+lane out of the Hungaroring and came back with 5.434 km against a recorded
+4.381 — a plausible-looking shape that was 24% wrong, and exactly the error you
+cannot detect when you are copying a picture. Street circuits are the remaining
+gap: several are mapped as ordinary roads rather than `highway=raceway`, so no
+closed loop forms and they are absent rather than approximated.
+
+Output is `data/circuits/f1db-circuit-paths.csv` (the path, plus both lengths and
+the licence) and `f1db-circuit-points.csv` (the same outline as vertices, which
+is what the weekend screen's chart draws), and one SVG per circuit for
+inspection. Overpass responses are cached, so a re-run is free.
+
+OpenStreetMap is ODbL, which requires attribution; it rides in the row rather
+than in a comment, and the weekend screen prints it under the circuit name.
+
+**Wikipedia.** 224 paragraphs covering all 77 seasons, 116 race-winning drivers
+and 31 winning constructors, fetched by `scripts/fetch-f1-facts.sh` and read by
+DuckDB from `data/facts/f1db-facts.csv` like everything else. The text is
+CC BY-SA 4.0; the article link and licence travel with every row.
 
 ## The data
 
@@ -406,9 +505,9 @@ down to the DuckDB scan.
 node scripts/shoot-screenshots.mjs
 ```
 
-It logs in as the demo user, walks every page and writes `docs/screenshots/`.
-Two things to know before believing a bad-looking result: the race weekend page
-needs the better part of a minute for its last chart series, and the trial
+It logs in as the demo user, walks all five screens and writes
+`docs/screenshots/`. Two things to know before believing a bad-looking result:
+the weekend screen needs the better part of a minute for its last chart series, and the trial
 licence caps concurrent sessions — enough runs and the client 401s at startup
 and pages come up empty. Clear them with
 
@@ -427,6 +526,35 @@ and the CSVs are git-ignored; the scripts that fetch them are committed, which
 is what lets a reaped session bootstrap from files instead of from a prompt.
 
 See `FINDINGS.md` for what broke and what was worked around.
+
+### Do not put the backend on the hub
+
+`mxcli run --hub` sets `ApplicationRootUrl` to the public preview address so the
+app works under that origin. For the frontend that is the whole point. For the
+backend it silently breaks the frontend.
+
+Mendix pages a published OData collection at 200 rows and puts an **absolute**
+`@odata.nextLink` in the response, built from that root URL. With the backend on
+the hub, a read of a season's race results comes back as:
+
+```
+"@odata.nextLink": "https://formula1backend.mxcli.org/odata/f1/RaceResults?$filter=year+eq+1988&$skip=200"
+```
+
+The frontend follows it, lands on the hub's GitHub sign-in gate, and the
+retrieve throws — `Exception while retrieving data for 'dvMultiples'`. Every
+single-page read keeps working, which is what makes it confusing: the failure is
+specific to collections larger than one page, and the season screen's small
+multiples were the first thing to cross that line.
+
+So: frontend on the hub, backend on `--local`. The backend is an API behind a
+key; it gains nothing from a public URL and costs the frontend its paging.
+
+```bash
+cd Formula1Backend  && ./mxcli run --local -p Formula1Backend.mpr
+cd Formula1Frontend && ./mxcli run --hub https://hub.mxcli.org --hub-solution formula1 \
+    -p Formula1Frontend.mpr --app-port 8180 --admin-port 8190 --serve-port 6643
+```
 
 ## Where the time actually goes
 

@@ -1,0 +1,217 @@
+/*
+ * Screen 4 of 5 — Constructor.
+ * ============================
+ *
+ * A team's season: where the points came from, and which side of the garage
+ * they came from.
+ *
+ * The comp's organising idea is that a constructor is two drivers in the same
+ * car, so almost every block on this screen is a comparison rather than a
+ * total. Points by round is one row per seat, not one line per team. The
+ * head-to-head is the same comparison collapsed to four numbers. Only the
+ * championship line treats the team as a single thing, and it is the one block
+ * that answers a question about the team rather than about the pairing.
+ */
+
+create or replace page Formula1Frontend.Constructor
+(
+  title: 'Constructor',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'constructor/{Constructor}',
+  Params: { $Constructor: F1Cached.Constructors }
+)
+{
+  container pageBody {
+
+    container chipsRow (class: 'chips-row') {
+      listview lvPeers (datasource: MICROFLOW Formula1Frontend.DS_TeamPeers,
+                        PageSize: 30) {
+        container chipPeer (
+          class: 'chip-pick',
+          dynamicclasses:
+            'if $currentObject/constructorId = $Constructor/constructorId
+             then ''is-picked'' else ''''',
+          OnClick: SHOW_PAGE Formula1Frontend.Constructor(Constructor: $currentObject)
+        ) {
+          dynamictext chipName (content: '{1}', contentparams: [{1} = name])
+        }
+      }
+    }
+
+    dataview dvTeam (datasource: $Constructor, class: 'hero') {
+      container heroRow (class: 'hero-row') {
+        container heroMark (class: 'hero-mark') {
+          dynamictext heroInit (content: '{1}', contentparams: [{1} = country])
+        }
+        container heroId (class: 'hero-id') {
+          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+                                rendermode: H2, class: 'hero-name')
+          dynamictext heroSub (content: '{1} · {2} starts since the championship began',
+            contentparams: [{1} = country, {2} = raceStarts], class: 'hero-sub')
+        }
+        container heroStats (class: 'hero-stats') {
+          container hsTitles (class: 'hero-stat') {
+            dynamictext hsTitlesL (content: 'Titles', class: 'hero-stat-label')
+            dynamictext hsTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
+                                   class: 'hero-stat-value')
+          }
+          container hsWins (class: 'hero-stat') {
+            dynamictext hsWinsL (content: 'Wins', class: 'hero-stat-label')
+            dynamictext hsWinsV (content: '{1}', contentparams: [{1} = raceWins],
+                                 class: 'hero-stat-value')
+          }
+          container hsPodiums (class: 'hero-stat') {
+            dynamictext hsPodiumsL (content: 'Podiums', class: 'hero-stat-label')
+            dynamictext hsPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+                                    class: 'hero-stat-value')
+          }
+          container hsPoles (class: 'hero-stat') {
+            dynamictext hsPolesL (content: 'Poles', class: 'hero-stat-label')
+            dynamictext hsPolesV (content: '{1}', contentparams: [{1} = polePositions],
+                                  class: 'hero-stat-value')
+          }
+          container hsPoints (class: 'hero-stat') {
+            dynamictext hsPointsL (content: 'Points', class: 'hero-stat-label')
+            dynamictext hsPointsV (content: '{1}', contentparams: [{1} = points],
+                                   class: 'hero-stat-value')
+          }
+        }
+      }
+    }
+
+    /*
+     * Points by round, one bar per seat. Grouped rather than stacked: the
+     * comp is asking which driver scored, and a stack answers how much the
+     * team scored — a different question that the total already answers.
+     */
+    container ppr (class: 'panel') {
+      container pprHead (class: 'panel-head') {
+        dynamictext pprTitle (content: 'Points by round', class: 'panel-title')
+        dynamictext pprSub (content: 'one bar per seat · the most recent season on record',
+                            class: 'panel-sub')
+      }
+      dataview dvPpr (
+        datasource: MICROFLOW Formula1Frontend.DSJ_TeamPoints(Constructor: $Constructor)
+      ) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPpr (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":260,"mark":{"type":"bar","cornerRadiusEnd":2},"encoding":{"x":{"field":"code","type":"ordinal","title":"Round","sort":null,"axis":{"labelAngle":0}},"y":{"field":"pts","type":"quantitative","title":"Points","axis":{"format":"d"}},"xOffset":{"field":"driver","type":"nominal"},"color":{"field":"driver","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"code","title":"Round"},{"field":"pts","title":"Points"}]}}')
+      }
+    }
+
+    container teamSplit (class: 'split') {
+
+      /*
+       * Team-mates, head to head. Four rows, each a bar split at the ratio —
+       * qualifying, race finishes, points and retirements. The shares are
+       * computed on the backend, so the page draws them and does no arithmetic.
+       */
+      container h2hPanel (class: 'panel') {
+        container h2hHead (class: 'panel-head') {
+          dynamictext h2hTitle (content: 'Team-mates, head to head', class: 'panel-title')
+          dynamictext h2hSub (content: 'the most recent season on record', class: 'panel-sub')
+        }
+        dataview dvH2H (
+          datasource: MICROFLOW Formula1Frontend.DS_TeamH2H(Constructor: $Constructor)
+        ) {
+          container h2hNames (class: 'h2h-names') {
+            dynamictext h2hLeft (content: '{1}', contentparams: [{1} = leftName],
+                                 class: 'h2h-name-left')
+            dynamictext h2hRight (content: '{1}', contentparams: [{1} = rightName],
+                                  class: 'h2h-name')
+          }
+          container h2hQual (class: 'h2h-row') {
+            dynamictext hqL (content: '{1}', contentparams: [{1} = qualLeft],
+                             class: 'h2h-value-left')
+            container hqTrack (class: 'h2h-track') {
+              container hqFill (
+                class: 'h2h-fill',
+                dynamicclasses: '''w-'' + toString($currentObject/qualLeftShare)'
+              ) {
+                dynamictext hqFillX (content: '{1}', contentparams: [{1} = qualLeftShare])
+              }
+            }
+            dynamictext hqR (content: '{1}', contentparams: [{1} = qualRight],
+                             class: 'h2h-value')
+            dynamictext hqL2 (content: 'Out-qualified', class: 'h2h-label')
+          }
+          container h2hRace (class: 'h2h-row') {
+            dynamictext hrL (content: '{1}', contentparams: [{1} = raceLeft],
+                             class: 'h2h-value-left')
+            container hrTrack (class: 'h2h-track') {
+              container hrFill (
+                class: 'h2h-fill',
+                dynamicclasses: '''w-'' + toString($currentObject/raceLeftShare)'
+              ) {
+                dynamictext hrFillX (content: '{1}', contentparams: [{1} = raceLeftShare])
+              }
+            }
+            dynamictext hrR (content: '{1}', contentparams: [{1} = raceRight],
+                             class: 'h2h-value')
+            dynamictext hrL2 (content: 'Finished ahead', class: 'h2h-label')
+          }
+          container h2hPts (class: 'h2h-row') {
+            dynamictext hpL (content: '{1}', contentparams: [{1} = pointsLeft],
+                             class: 'h2h-value-left')
+            container hpTrack (class: 'h2h-track') {
+              container hpFill (
+                class: 'h2h-fill',
+                dynamicclasses: '''w-'' + toString($currentObject/pointsLeftShare)'
+              ) {
+                dynamictext hpFillX (content: '{1}', contentparams: [{1} = pointsLeftShare])
+              }
+            }
+            dynamictext hpR (content: '{1}', contentparams: [{1} = pointsRight],
+                             class: 'h2h-value')
+            dynamictext hpL2 (content: 'Points', class: 'h2h-label')
+          }
+          container h2hDnf (class: 'h2h-row') {
+            dynamictext hdL (content: '{1}', contentparams: [{1} = dnfLeft],
+                             class: 'h2h-value-left')
+            container hdTrack (class: 'h2h-track') {
+              container hdFill (
+                class: 'h2h-fill',
+                dynamicclasses: '''w-'' + toString($currentObject/dnfLeftShare)'
+              ) {
+                dynamictext hdFillX (content: '{1}', contentparams: [{1} = dnfLeftShare])
+              }
+            }
+            dynamictext hdR (content: '{1}', contentparams: [{1} = dnfRight],
+                             class: 'h2h-value')
+            dynamictext hdL2 (content: 'Retirements', class: 'h2h-label')
+          }
+        }
+      }
+
+      container posPanel (class: 'panel') {
+        container posHead (class: 'panel-head') {
+          dynamictext posTitle (content: 'Championship position, round by round',
+                                class: 'panel-title')
+          dynamictext posSub (content: 'lower is better, so the scale is reversed',
+                              class: 'panel-sub')
+        }
+        dataview dvTeamPos (
+          datasource: MICROFLOW Formula1Frontend.DSJ_TeamPosition(Constructor: $Constructor)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTeamPos (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"height":260,"mark":{"type":"line","strokeWidth":2,"point":{"filled":true,"size":36,"color":"#2DD4BF"},"color":"#2DD4BF","interpolate":"monotone"},"encoding":{"x":{"field":"round","type":"quantitative","title":"Round","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Championship position","scale":{"reverse":true,"zero":false,"nice":false,"domainMin":1},"axis":{"format":"d","tickMinStep":1}},"tooltip":[{"field":"round","title":"Round"},{"field":"pos","title":"Position"}]}}')
+        }
+      }
+    }
+
+    container note (class: 'data-note') {
+      dynamictext noteLead (content: 'Where this comes from', class: 'data-note-lead')
+      dynamictext noteBody (
+        content: 'Career totals and per-round results are f1db. The head-to-head counts and their shares are computed on the backend from the same rows, so the bars and the numbers beside them can never disagree. Both the round chart and the head-to-head describe the most recent season the team appears in, not its whole history.')
+    }
+  }
+}

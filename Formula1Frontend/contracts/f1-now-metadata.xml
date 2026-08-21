@@ -24,6 +24,10 @@
         <Property MaxLength="20" Name="compound" Type="Edm.String"/>
         <Property Name="tyreAge" Type="Edm.Int64"/>
         <Property Name="pitStops" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="drs" Type="Edm.String"/>
+        <Property MaxLength="1" Name="sector1Mark" Type="Edm.String"/>
+        <Property MaxLength="1" Name="sector2Mark" Type="Edm.String"/>
+        <Property MaxLength="1" Name="sector3Mark" Type="Edm.String"/>
       </EntityType>
       <EntityType Name="Stg_LiveMessage">
         <Key>
@@ -58,6 +62,55 @@
         <Property Name="humidity" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="rainfall" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="windSpeed" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
+      <EntityType Name="Stg_LiveTrace">
+        <Key>
+          <PropertyRef Name="traceKey"/>
+        </Key>
+        <Property MaxLength="50" Name="traceKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="driverNumber" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="code" Type="Edm.String"/>
+        <Property Name="lapNumber" Type="Edm.Int64"/>
+        <Property Name="position" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="gapToLeader" Type="Edm.String"/>
+        <Property Name="gapSeconds" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="lapSeconds" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
+      <EntityType Name="LiveTrackOutline">
+        <Key>
+          <PropertyRef Name="pointKey"/>
+        </Key>
+        <Property MaxLength="40" Name="pointKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="seq" Type="Edm.Int64"/>
+        <Property Name="x" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="y" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
+      <EntityType Name="LiveLocationNow">
+        <Key>
+          <PropertyRef Name="sampleKey"/>
+        </Key>
+        <Property MaxLength="60" Name="sampleKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="driverNumber" Type="Edm.Int64"/>
+        <Property MaxLength="40" Name="at" Type="Edm.String"/>
+        <Property Name="x" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="y" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
+      <EntityType Name="Stg_LiveStint">
+        <Key>
+          <PropertyRef Name="stintKey"/>
+        </Key>
+        <Property MaxLength="50" Name="stintKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="driverNumber" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="code" Type="Edm.String"/>
+        <Property Name="stintNumber" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="compound" Type="Edm.String"/>
+        <Property Name="lapStart" Type="Edm.Int64"/>
+        <Property Name="lapEnd" Type="Edm.Int64"/>
+        <Property Name="tyreAgeAtStart" Type="Edm.Int64"/>
       </EntityType>
       <EntityContainer Name="Entities">
         <EntitySet EntityType="Formula1Backend.Now.Stg_LiveEntry" Name="Order">
@@ -139,6 +192,162 @@
           </Annotation>
         </EntitySet>
         <EntitySet EntityType="Formula1Backend.Now.Stg_LiveSession" Name="Session">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.Stg_LiveTrace" Name="Trace">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.LiveTrackOutline" Name="TrackOutline">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.LiveLocationNow" Name="CarPositions">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Now.Stg_LiveStint" Name="Stints">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
             <Record>
               <PropertyValue Bool="false" Property="Insertable"/>

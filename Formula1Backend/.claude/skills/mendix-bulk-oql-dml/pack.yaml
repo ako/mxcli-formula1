@@ -1,0 +1,26 @@
+# Skill pack manifest. See docs/11-proposals/PROPOSAL_skill_packs.md.
+name: mendix-bulk-oql-dml
+version: 1.0.0
+description: >-
+  Set-based INSERT, UPDATE and DELETE through OQL statements, which the runtime
+  supports and Studio Pro cannot author. Three Java actions ready to apply, the
+  grammar matrix from sixteen probe statements, three working patterns, and the
+  gotcha that wrote bad data.
+
+# The oldest runtime that can execute any OQL DML statement. The individual
+# statement forms arrived later still, and SKILL.md carries that table —
+# DELETE 11.1, UPDATE 11.3 (associations 11.4), INSERT..SELECT 11.6
+# (associations 11.7), INSERT..VALUES 11.13 — because the pack is useful at
+# 11.1 for a subset, and gating the whole pack at 11.13 would hide it from the
+# projects that can use most of it.
+min_mendix_version: 11.1.0
+
+installs:
+  # Applying this writes three Java actions to the model, so it is never a side
+  # effect of copying the documentation: `mxcli skill add` copies, and only
+  # `--apply` executes. The file uses a `MyModule` placeholder that has to be
+  # replaced with the target module first.
+  mdl:
+    - mdl/oql-dml-actions.mdl
+
+source: https://github.com/ako/mxcli-ledger/tree/main/.claude/skills/mendix-bulk-oql-dml

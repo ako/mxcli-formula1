@@ -1,4 +1,9 @@
-// Screenshot every page of the running frontend into docs/screenshots/.
+// Screenshot every screen of the running frontend into docs/screenshots/.
+//
+// Five screens, so five shots plus the login and one chip-row hop. There is no
+// home page and there are no overviews: the app is Narrate, Season, Weekend,
+// Constructor, Driver, and each is reached either from the rail or by clicking
+// something on another one.
 //
 //   node scripts/shoot-screenshots.mjs
 //
@@ -103,25 +108,43 @@ const filterAndOpen = async (text, button) => {
   await page.waitForTimeout(12000);
 };
 
-await shot('01-home');
+// Narrate is the home page, so the first shot needs no navigation.
+await shot('01-narrate');
 
+// The rail's four lower items are microflows rather than page links -- each one
+// picks the most recent thing of its kind and opens the screen with it -- but
+// they are still anchors in the navigation tree, so nav() reaches them the same
+// way. Once a screen is open, the shots that follow it navigate by clicking
+// what the design says is clickable, which is also a check that those links
+// work.
 const steps = [
-  ['02-live-race', async () => { await nav('Live race'); }],
-  ['03-seasons', async () => { await nav('Seasons'); }],
-  ['04-season-summary', async () => { await filterAndOpen('Verstappen', 'Summary'); }],
-  ['05-race-weekend', async () => {
-    // The calendar is a card per round now, not a table with a link column.
-    // Round 18 rather than round 1: a mid-season weekend has every session
-    // populated, which is what the page is for.
+  ['02-season', async () => { await nav('Season'); }],
+
+  // Round 18 rather than round 1: a mid-season weekend has every session
+  // populated, which is what the screen is for. The calendar is a card per
+  // round at the foot of the season screen.
+  ['03-weekend', async () => {
     await page.locator('.cal-card').nth(17).click();
     await page.waitForTimeout(45000);
   }],
-  ['06-drivers', async () => { await nav('Drivers'); await nav('Live (CSV)'); }],
-  ['07-driver-career', async () => { await filterAndOpen('Verstappen', 'Career'); }],
-  ['08-constructors', async () => { await nav('Constructors'); }],
-  ['09-constructor-detail', async () => { await filterAndOpen('Ferrari', 'Reliability'); }],
-  ['10-race-results', async () => { await nav('Race results'); }],
-  ['11-circuits', async () => { await nav('Circuits'); }],
+
+  // Back to the season, then into a constructor from its standings row and a
+  // driver from theirs -- the two links the redesign uses instead of overviews.
+  ['04-constructor', async () => {
+    await nav('Constructor');
+    await page.waitForTimeout(6000);
+  }],
+  ['05-driver', async () => {
+    await nav('Driver');
+    await page.waitForTimeout(6000);
+  }],
+
+  // The chip row is how a screen is left sideways. Shooting one proves the row
+  // is populated and that its click resolves to a real object.
+  ['06-driver-peer', async () => {
+    await page.locator('.chip-pick').nth(3).click();
+    await page.waitForTimeout(12000);
+  }],
 ];
 
 for (const [name, go] of steps) {

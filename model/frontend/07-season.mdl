@@ -1,0 +1,249 @@
+/*
+ * Screen 2 of 5 — Season.
+ * =======================
+ *
+ * A championship, from the title fight down to the calendar.
+ *
+ * The comp reads top to bottom as an argument: the sentence says who won and
+ * by how much, the progression chart shows when it was decided, the small
+ * multiples show who was quick and who kept finishing, the table is the
+ * evidence, and the calendar is the index into it. Each block narrows.
+ *
+ * Every row that names something is a way out of this screen — a driver row
+ * opens the driver, a constructor row opens the constructor, a calendar card
+ * opens the weekend. That is the whole navigation model of the redesign: there
+ * are no overview pages, because every screen is an overview of the next one.
+ */
+
+create or replace page Formula1Frontend.Season
+(
+  title: 'Season',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'season/{Season}',
+  Params: { $Season: F1Cached.Seasons }
+)
+{
+  container pageBody {
+
+    dataview dvSeason (datasource: $Season) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: 'Season', class: 'pagehead-eyebrow')
+          dynamictext title (content: 'Formula One {1}', contentparams: [{1} = year],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1} rounds · official final standings',
+                           contentparams: [{1} = raceCount], class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext yr (content: '{1}', contentparams: [{1} = year])
+        }
+      }
+    }
+
+    /*
+     * The sentence. Computed rather than read, because the numbers in it are
+     * relationships between rows — the margin, how many drivers won a race —
+     * and a row cannot see its siblings.
+     */
+    dataview dvHeadline (
+      datasource: MICROFLOW Formula1Frontend.DS_SeasonHeadline(Season: $Season),
+      class: 'hero'
+    ) {
+      container hlCards (class: 'hl-cards') {
+        container hcDriver (class: 'hl-card hl-card-win') {
+          dynamictext hcDriverL (content: 'Champion', class: 'hl-label')
+          dynamictext hcDriverV (content: '{1}', contentparams: [{1} = ChampionDriver],
+                                 class: 'hl-value hl-value-name')
+          dynamictext hcDriverS (content: '{1} points · {2} clear',
+            contentparams: [{1} = ChampionPoints, {2} = Margin], class: 'hl-sub')
+        }
+        container hcTeam (class: 'hl-card') {
+          dynamictext hcTeamL (content: 'Constructor', class: 'hl-label')
+          dynamictext hcTeamV (content: '{1}', contentparams: [{1} = ChampionTeam],
+                               class: 'hl-value hl-value-name')
+          dynamictext hcTeamS (content: '{1} points · {2} clear',
+            contentparams: [{1} = ChampionTeamPoints, {2} = TeamMargin], class: 'hl-sub')
+        }
+        container hcRunner (class: 'hl-card') {
+          dynamictext hcRunnerL (content: 'Runner-up', class: 'hl-label')
+          dynamictext hcRunnerV (content: '{1}', contentparams: [{1} = RunnerUp],
+                                 class: 'hl-value hl-value-name')
+          dynamictext hcRunnerS (content: 'beaten by {1}', contentparams: [{1} = Margin],
+                                 class: 'hl-sub')
+        }
+        container hcWinners (class: 'hl-card') {
+          dynamictext hcWinnersL (content: 'Race winners', class: 'hl-label')
+          dynamictext hcWinnersV (content: '{1}', contentparams: [{1} = RaceWinners],
+                                  class: 'hl-value')
+          dynamictext hcWinnersS (content: 'over {1} rounds, {2} to {3}',
+            contentparams: [{1} = Rounds, {2} = FirstCode, {3} = LastCode],
+            class: 'hl-sub')
+        }
+      }
+    }
+
+    container topSplit (class: 'split') {
+
+      container progPanel (class: 'panel') {
+        container progHead (class: 'panel-head') {
+          dynamictext progTitle (content: 'Championship points, cumulative',
+                                 class: 'panel-title')
+          dynamictext progSub (content: 'the five who finished highest · round by round',
+                               class: 'panel-sub')
+        }
+        dataview dvProgress (
+          datasource: MICROFLOW Formula1Frontend.DSJ_SeasonProgress(Season: $Season)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartProgress (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":280,"mark":{"type":"line","strokeWidth":2,"interpolate":"monotone"},"encoding":{"x":{"field":"round","type":"quantitative","title":"Round","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pts","type":"quantitative","title":"Points","axis":{"format":"~s"}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA"]},"legend":{"orient":"top","columns":3,"offset":4}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"round","title":"Round"},{"field":"pts","title":"Points"}]}}')
+        }
+      }
+
+      /*
+       * Constructors as a bar list rather than a chart: the comp puts the
+       * name, a rule and the number on one line, and the row is a link. A
+       * chart would draw the same numbers and go nowhere.
+       */
+      container consPanel (class: 'panel') {
+        container consHead (class: 'panel-head') {
+          dynamictext consTitle (content: 'Constructors', class: 'panel-title')
+          dynamictext consSub (content: 'row opens the constructor', class: 'panel-sub')
+        }
+        listview lvCons (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonTeamRows(Season: $Season),
+          PageSize: 12
+        ) {
+          container consRow (
+            class: 'bar-row',
+            OnClick: MICROFLOW Formula1Frontend.ACT_OpenConstructorRow(Row: $currentObject)
+          ) {
+            dynamictext consPos (content: '{1}', contentparams: [{1} = PositionText],
+                                 class: 'series-rank')
+            dynamictext consName (content: '{1}', contentparams: [{1} = ConstructorName],
+                                  class: 'h2h-name')
+            container consTrack (class: 'bar-track') {
+              container consFill (
+                class: 'bar-fill',
+                dynamicclasses: '''w-'' + toString($currentObject/Share)'
+              ) {
+                /* The fill is styled font-size:0 / color:transparent, so the
+                 * text is the child a container needs to exist at all rather
+                 * than something a reader sees. An empty container crashes at
+                 * render. */
+                dynamictext consFillX (content: '{1}', contentparams: [{1} = Share])
+              }
+            }
+            dynamictext consPts (content: '{1}', contentparams: [{1} = Points],
+                                 class: 'h2h-value')
+          }
+        }
+      }
+    }
+
+    /*
+     * Small multiples: finishing position by round, ten panels on one pair of
+     * axes. The comp's point is that they share a scale — a shallow line and a
+     * ragged one are comparable at a glance only because neither panel is
+     * allowed its own y.
+     */
+    container multPanel (class: 'panel') {
+      container multHead (class: 'panel-head') {
+        dynamictext multTitle (content: 'Finishing position by round', class: 'panel-title')
+        dynamictext multSub (
+          content: 'the top ten · same axes throughout, first place at the top · a gap is a retirement',
+          class: 'panel-sub')
+      }
+      dataview dvMultiples (
+        datasource: MICROFLOW Formula1Frontend.DSJ_SeasonMultiples(Season: $Season)
+      ) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartMultiples (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"header":{"labelColor":"#E6EDF3","labelFontSize":11,"labelFontWeight":600,"titleColor":"#8B949E"},"legend":{"disable":true}},"columns":5,"facet":{"field":"driver","type":"nominal","title":null,"sort":null,"header":{"labelAnchor":"start"}},"spec":{"width":150,"height":70,"layer":[{"transform":[{"filter":"datum.pos !== null"}],"mark":{"type":"line","strokeWidth":1.2,"color":"#2DD4BF","interpolate":"monotone"},"encoding":{"x":{"field":"round","type":"quantitative","title":"Round","axis":{"format":"d","tickMinStep":4},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Finish","scale":{"reverse":true,"zero":false,"nice":false,"domain":[1,20]},"axis":{"format":"d","values":[1,10,20]}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"round","title":"Round"},{"field":"pos","title":"Finished"}]}},{"transform":[{"filter":"datum.pos === 1"}],"mark":{"type":"point","filled":true,"size":26,"color":"#E3B341"},"encoding":{"x":{"field":"round","type":"quantitative"},"y":{"field":"pos","type":"quantitative","scale":{"reverse":true,"domain":[1,20]}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"round","title":"Won round"}]}},{"transform":[{"filter":"datum.dnf === 1"}],"mark":{"type":"tick","thickness":1.4,"size":8,"color":"#F85149","yOffset":30},"encoding":{"x":{"field":"round","type":"quantitative"},"tooltip":[{"field":"driver","title":"Driver"},{"field":"round","title":"Retired on round"}]}}]}}')
+      }
+      container multKey (class: 'legend-key') {
+        dynamictext mkWin (content: 'Win', class: 'legend-item legend-win')
+        dynamictext mkDnf (content: 'Retirement', class: 'legend-item legend-dnf')
+      }
+    }
+
+    /*
+     * The drivers' championship. Points and position come from the standings,
+     * the counting stats from DriverSeasons; DS_SeasonDriverRows joins them so
+     * the grid binds one list. The row opens the driver.
+     */
+    container standPanel (class: 'panel') {
+      container standHead (class: 'panel-head') {
+        dynamictext standTitle (content: 'Drivers'' championship', class: 'panel-title')
+        dynamictext standSub (
+          content: 'row opens the driver · share is points as a percentage of the champion''s',
+          class: 'panel-sub')
+      }
+      container standGrid (class: 'grid-dense') {
+        datagrid dgStandings (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverRows(Season: $Season),
+          PageSize: 25,
+          PagingPosition: bottom,
+          OnClick: MICROFLOW Formula1Frontend.ACT_OpenDriverRow(Row: $currentObject)
+        ) {
+          column colPos (attribute: PositionText, caption: 'P', Alignment: right)
+          column colDriver (attribute: DriverName, caption: 'Driver')
+          column colTeam (attribute: Team, caption: 'Team')
+          column colPts (attribute: Points, caption: 'Points', Alignment: right)
+          column colWins (attribute: Wins, caption: 'W', Alignment: right)
+          column colPodiums (attribute: Podiums, caption: 'Pod', Alignment: right)
+          column colPoles (attribute: Poles, caption: 'Pol', Alignment: right)
+          column colAvg (attribute: AvgFinish, caption: 'Avg', Alignment: right)
+          column colShare (attribute: PointsShare, caption: 'Team share %', Alignment: right)
+        }
+      }
+    }
+
+    /*
+     * The calendar. Twenty-four cards, each one a way into the weekend — the
+     * comp's strip along the bottom, and the reason this screen needs no
+     * results overview.
+     */
+    container calPanel (class: 'panel') {
+      container calHead (class: 'panel-head') {
+        dynamictext calTitle (content: 'Calendar', class: 'panel-title')
+        dynamictext calSub (content: 'card opens the weekend · winner beneath the round',
+                            class: 'panel-sub')
+      }
+      container calGrid (class: 'card-grid') {
+        listview lvCal (
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonCalendar(Season: $Season),
+          PageSize: 30
+        ) {
+          container calCard (
+            class: 'cal-card',
+            OnClick: SHOW_PAGE Formula1Frontend.Weekend(Race: $currentObject)
+          ) {
+            container calTop (class: 'cal-card-top') {
+              dynamictext calRound (content: 'R{1}', contentparams: [{1} = round],
+                                    class: 'cal-round')
+              dynamictext calCode (content: '{1}', contentparams: [{1} = code],
+                                   class: 'cal-code')
+            }
+            dynamictext calWinner (content: '{1}', contentparams: [{1} = winnerName],
+                                   class: 'cal-winner')
+          }
+        }
+      }
+    }
+
+    container note (class: 'data-note') {
+      dynamictext noteLead (content: 'Where this comes from', class: 'data-note-lead')
+      dynamictext noteBody (
+        content: 'Final standings, race results and the calendar are f1db, which carries the official record from 1950. The champion''s margin, the number of different race winners and each driver''s share of the champion''s points are computed here from those rows — they are arithmetic on the record, not a second source.')
+    }
+  }
+}

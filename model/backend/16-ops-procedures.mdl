@@ -425,6 +425,103 @@ END;
  * verified per request, `BcryptCost` goes back to the Mendix default of 12 —
  * see 07-demo-users.mdl, where the downgrade used to be.
  */
+/*
+ * Does this runtime actually execute OQL statements, and how must they be
+ * spelled?
+ *
+ * The Java actions in 18 are only as good as the runtime under them — DELETE
+ * arrived in 11.1 and INSERT..VALUES not until 11.13 — and "it works on my app"
+ * does not transfer. This asks the question against the database the app is
+ * really running on.
+ *
+ * Fixed statements rather than a caller-supplied one. Taking the statement as a
+ * parameter would make a far better diagnostic and also publish an
+ * execute-arbitrary-DML endpoint to anyone holding the ops key, which is not a
+ * trade a sample app should make quietly.
+ *
+ * Every statement here matches nothing: no circuit has that id, no season that
+ * year. What comes back is the runtime's own verdict on each spelling.
+ *
+ * The first two are the pair worth keeping. `where Year = -1` fails to parse,
+ * because OQL reserves the date-part words and Season.Year is one of them; the
+ * same statement with the identifier quoted parses. That is the kind of thing
+ * that looks like "OQL DML is not supported here" and is really a column called
+ * Year.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_OqlDmlProbe ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  $Bare = CALL JAVA ACTION Formula1Backend.OQL_Try(
+    Statement = 'delete from Formula1Backend.Season where Year = -1');
+  SET $Result = 'reserved bare: ' + $Bare;
+
+  $Quoted = CALL JAVA ACTION Formula1Backend.OQL_Try(
+    Statement = 'delete from Formula1Backend.Season where "Year" = -1');
+  SET $Result = $Result + ' || reserved quoted: ' + $Quoted;
+
+  $Plain = CALL JAVA ACTION Formula1Backend.OQL_Try(
+    Statement = 'delete from Formula1Backend.Circuit where CircuitId = ''zzz-probe''');
+  SET $Result = $Result + ' || plain delete: ' + $Plain;
+
+  $Ins = CALL JAVA ACTION Formula1Backend.OQL_Try(
+    Statement = 'insert into Formula1Backend.Circuit (CircuitId, Name) select c.CircuitId, c.Name from Formula1Backend.Circuit as c where c.CircuitId = ''zzz-probe''');
+  SET $Result = $Result + ' || insert..select: ' + $Ins;
+
+  LOG INFO NODE 'F1Ops' 'OQL DML probe: ' + $Result;
+  RETURN $Result;
+END;
+
+/*
+ * Turning the sync on, and running one by hand.
+ *
+ * The scheduled event fires every minute regardless; these decide whether it
+ * does anything and which session it follows. SessionKey empty means the
+ * session OpenF1 calls "latest", which is what a race Sunday wants; a specific
+ * key is what replaying a finished race wants.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveSyncSet (
+  $Enabled: Boolean,
+  $SessionKey: String,
+  $TelemetryFrom: String
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+  $State = CALL MICROFLOW Formula1Backend.Sync_State();
+  CHANGE $State (Enabled = $Enabled, SessionKey = trim($SessionKey)) COMMIT;
+  /* A telemetry start point turns the sync into a backfill walker; empty
+   * leaves it following the wall clock, which is what a live race wants. */
+  IF trim($TelemetryFrom) != '' THEN
+    CHANGE $State (TelemetryCursor = parseDateTimeUTC(
+      trim($TelemetryFrom), 'yyyy-MM-dd''T''HH:mm:ss')) COMMIT;
+  END IF;
+  SET $Result = 'live sync enabled=' + toString($Enabled)
+    + ' session=' + trim($SessionKey);
+  LOG INFO NODE 'F1LiveSync' $Result;
+  RETURN $Result;
+END;
+
+/*
+ * Run a full cycle now -- three passes, twenty seconds apart, the same work the
+ * scheduled event does. Takes about a minute to return, which is the point.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveCycleNow ()
+  RETURNS String AS $Result
+BEGIN
+  $Result = CALL MICROFLOW Formula1Backend.Sync_Cycle();
+  RETURN $Result;
+END;
+
+/* Run one sync now rather than waiting for the minute. */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveSyncNow ()
+  RETURNS String AS $Result
+BEGIN
+  $Result = CALL MICROFLOW Formula1Backend.Sync_Live();
+  RETURN $Result;
+END;
+
 create or modify odata service Formula1Backend.F1OpsApi (
   path: 'odata/f1-ops/',
   version: '1.0.0',
@@ -483,6 +580,17 @@ authentication microflow Formula1Backend.AuthenticateApiClient
       Position as 'position',
       SubmittedBy as 'submittedBy'
     );
+
+  /* A diagnostic, not a procedure: it changes nothing and reports whether this
+   * runtime can execute OQL statements at all. */
+  publish microflow Formula1Backend.Ops_OqlDmlProbe as 'OqlDmlProbe';
+
+  /* The live sync: switch it on, point it at a session, or run one now. */
+  publish microflow Formula1Backend.Ops_LiveSyncSet as 'LiveSyncSet'
+    expose ( Enabled as 'enabled', SessionKey as 'sessionKey',
+             TelemetryFrom as 'telemetryFrom' );
+  publish microflow Formula1Backend.Ops_LiveSyncNow as 'LiveSyncNow';
+  publish microflow Formula1Backend.Ops_LiveCycleNow as 'LiveCycleNow';
 };
 
 /*
@@ -498,3 +606,14 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.RecordPrediction TO Formula1Backend.A
 GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_DriverForm      (read *);
 GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_ProcedureResult (read *);
 GRANT Formula1Backend.ApiUser ON Formula1Backend.Ops_Prediction      (create, read *, write *);
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_OqlDmlProbe TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_OqlDmlProbe TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncSet TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncSet TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_Live TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_EnsureToken TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveCycleNow TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveCycleNow TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_Cycle TO Formula1Backend.DataAdmin;
