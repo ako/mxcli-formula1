@@ -26,6 +26,20 @@
 # they are written — the script is the artefact, not the data.
 /data/live/
 
+# Raw OpenF1 responses, archived by scripts/archive-session.sh.
+#
+# Unlike the rest of data/, this is NOT freely re-fetchable: a session is only
+# served as history for as long as OpenF1 keeps it, and during any live session
+# the whole API closes to unauthenticated callers. It is also the fixture behind
+# scripts/openf1-mock.py, so at least one session has to be in the repo or a
+# fresh clone cannot run the sync against anything.
+#
+# The Zandvoort sprint (11348) is committed as that fixture -- 4.9 MB, a
+# complete race with 341k car_data and 332k location rows. Everything else is
+# archived locally and left out.
+/data/openf1/*
+!/data/openf1/11348/
+
 # DuckDB scratch files, if any are ever materialised next to the CSVs.
 *.duckdb
 *.duckdb.wal
