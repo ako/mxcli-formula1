@@ -1,0 +1,179 @@
+-- ============================================================================
+-- OQL DML through Java actions
+-- ============================================================================
+-- Mendix's runtime can execute OQL *statements* — insert, update, delete — and
+-- Studio Pro exposes no way to author one. The API is two calls:
+--
+--   com.mendix.core.Core.createOqlStatement(String)  ->  OqlStatement
+--   OqlStatement.setVariable(name, value)            ->  OqlStatement (chainable)
+--   OqlStatement.execute(IContext)                   ->  int rows affected
+--
+-- Both are in com.mendix.public-api.jar. Check the runtime version first:
+-- DELETE needs 11.1, UPDATE 11.3 (associations 11.4), INSERT..SELECT 11.6
+-- (associations 11.7), INSERT..VALUES 11.13.
+--
+-- What that buys is set-based work: one statement the database runs, rather
+-- than a retrieve of every match into memory, a loop, and a commit per object.
+--
+-- Apply with:  mxcli exec oql-dml-actions.mdl -p MyApp.mpr
+-- Replace MyModule throughout with the module these belong in.
+--
+-- The cost is that the object cache does not see it. Nothing that these
+-- statements change fires an event handler, runs a validation rule, or refreshes
+-- an object a client is already holding — see the note on OQL_Execute.
+-- ============================================================================
+
+/**
+ * Execute one OQL DML statement. Returns the number of rows affected.
+ *
+ * This is the primitive the rest of the file builds on. It deliberately has no
+ * variables: a statement with variables goes through OQL_ExecuteWith, so the
+ * caller has to decide which values are data (bound, escaped) rather than
+ * getting a string-concatenation habit for free.
+ *
+ * WHAT THIS BYPASSES. The statement runs in the database, inside the calling
+ * microflow's transaction. It does not go through the object cache, so:
+ *   * no before/after-commit event handlers fire,
+ *   * no validation rules run,
+ *   * an object already retrieved in this context keeps its old values,
+ *   * a client holding the object is not refreshed.
+ * Use it for bulk work over rows nobody is looking at. For a single object a
+ * user is editing, change and commit the object.
+ *
+ * @param Statement An OQL insert, update or delete statement
+ * @returns Rows affected
+ */
+create or replace java action MyModule.OQL_Execute (
+  Statement: string
+)
+returns integer
+as $$
+if (Statement == null || Statement.trim().isEmpty()) {
+    throw new IllegalArgumentException("OQL_Execute: statement is empty");
+}
+com.mendix.datastorage.OqlStatement stmt = com.mendix.core.Core.createOqlStatement(Statement);
+int affected = stmt.execute(getContext());
+com.mendix.core.Core.getLogger("OQL").debug("OQL_Execute affected " + affected + " row(s): " + Statement);
+return (long) affected;
+$$;
+/
+
+/**
+ * Execute one OQL DML statement carrying up to four bound variables.
+ *
+ *
+ * Variables are written $Name in the statement and bound here by name, so a
+ * value never becomes part of the statement text. That matters for the same
+ * reason it matters in SQL: a merchant called O'Brien breaks a concatenated
+ * statement and does not break a bound one.
+ *
+ * Types are declared rather than guessed. A slot with an empty name is skipped,
+ * which is what makes one action serve a statement with one variable and a
+ * statement with four.
+ *
+ * @param Statement An OQL insert, update or delete statement using $Name variables
+ * @param Name1 Variable name without the $, or empty to skip
+ * @param Value1 The value, as text; converted according to Type1
+ * @param Type1 'string', 'integer', 'decimal', 'boolean', 'datetime' or 'id'
+ * @returns Rows affected
+ */
+create or replace java action MyModule.OQL_ExecuteWith (
+  Statement: string,
+  Name1: string,
+  Value1: string,
+  Type1: string,
+  Name2: string,
+  Value2: string,
+  Type2: string,
+  Name3: string,
+  Value3: string,
+  Type3: string,
+  Name4: string,
+  Value4: string,
+  Type4: string
+)
+returns integer
+as $$
+if (Statement == null || Statement.trim().isEmpty()) {
+    throw new IllegalArgumentException("OQL_ExecuteWith: statement is empty");
+}
+com.mendix.datastorage.OqlStatement stmt = com.mendix.core.Core.createOqlStatement(Statement);
+
+String[] names = { Name1, Name2, Name3, Name4 };
+String[] values = { Value1, Value2, Value3, Value4 };
+String[] types = { Type1, Type2, Type3, Type4 };
+
+for (int i = 0; i < names.length; i++) {
+    String name = names[i];
+    if (name == null || name.trim().isEmpty()) {
+        continue;
+    }
+    String value = values[i];
+    String type = (types[i] == null ? "string" : types[i].trim().toLowerCase());
+    switch (type) {
+        case "integer":
+        case "long":
+            stmt.setVariable(name, Long.parseLong(value.trim()));
+            break;
+        case "decimal":
+            stmt.setVariable(name, new java.math.BigDecimal(value.trim()));
+            break;
+        case "boolean":
+            stmt.setVariable(name, Boolean.parseBoolean(value.trim()));
+            break;
+        case "datetime":
+            // ISO-8601 instant, which is what formatDateTime with a UTC pattern emits.
+            stmt.setVariable(name, java.util.Date.from(java.time.Instant.parse(value.trim())));
+            break;
+        case "id":
+            stmt.setVariable(name,
+                com.mendix.core.Core.createMendixIdentifier(Long.parseLong(value.trim())));
+            break;
+        case "string":
+        default:
+            stmt.setVariable(name, value);
+            break;
+    }
+}
+
+int affected = stmt.execute(getContext());
+com.mendix.core.Core.getLogger("OQL").debug("OQL_ExecuteWith affected " + affected + " row(s): " + Statement);
+return (long) affected;
+$$;
+/
+
+/**
+ * Run a statement and report what happened instead of throwing.
+ *
+ * Returns 'OK rows=N' or 'ERR <exception>: <message>'. This exists because the
+ * grammar OQL DML accepts is not documented anywhere the model can see, so
+ * finding out what a statement does is an experiment, and an experiment that
+ * rolls the transaction back on the first surprise is a slow experiment.
+ *
+ * Not for production paths: a failure that returns a string is a failure the
+ * caller can ignore. Use OQL_Execute there and let it throw.
+ *
+ * @param Statement An OQL statement to try
+ * @returns 'OK rows=N' or 'ERR ...'
+ */
+create or replace java action MyModule.OQL_Try (
+  Statement: string
+)
+returns string
+as $$
+try {
+    com.mendix.datastorage.OqlStatement stmt = com.mendix.core.Core.createOqlStatement(Statement);
+    int affected = stmt.execute(getContext());
+    return "OK rows=" + affected;
+} catch (Throwable t) {
+    String message = String.valueOf(t.getMessage()).replace('\n', ' ').replace('\r', ' ');
+    if (message.length() > 300) {
+        message = message.substring(0, 300) + "...";
+    }
+    return "ERR " + t.getClass().getSimpleName() + ": " + message;
+}
+$$;
+/
+
+-- No grants here. A Java action has no security roles of its own in Mendix — it
+-- is reachable only through a microflow, and the microflow carries the access.

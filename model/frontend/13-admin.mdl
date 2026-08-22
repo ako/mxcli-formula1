@@ -1,0 +1,631 @@
+/*
+ * Screen 6 of 6 — Admin.
+ * ======================
+ *
+ * Every raw table the backend stores, one grid each, nothing derived.
+ *
+ * The other five screens are answers. This one is evidence. When the Narrate
+ * screen shows a race that looks wrong, the question is always "what is
+ * actually in the table", and the only way to ask it used to be psql on the
+ * backend's database -- not available on Mendix Cloud, and not available at all
+ * to anyone but whoever holds the connection string.
+ *
+ * Grouped across five pages rather than one, because sixteen grids on a single
+ * page is sixteen OData reads on open. Each page carries a link row to the
+ * other four: the navigation rail holds one Admin item, and MDL has no tab
+ * container, so without those links four of the five pages could only be
+ * reached by typing a URL.
+ *
+ * The heads use `panel-head`/`panel-title`/`panel-sub`, which the theme styles
+ * as a flex row with a gap. An earlier version invented `page-head`/`page-title`
+ * /`page-sub`, which the theme does not define -- so the two spans rendered
+ * inline with nothing between them and the screen read "Admin . SyncWhat the
+ * sync has been doing." `mxcli exec` warns about exactly this (MDL-WIDGET15)
+ * and the warning was right.
+ *
+ * LiveToken has no grid because it is not published. It holds a bearer token,
+ * and an admin screen is exactly the sort of convenience that ends up shared.
+ */
+
+create or replace page Formula1Frontend.Admin_Sync
+(
+  title: 'Admin — Sync',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'admin/sync'
+)
+{
+  container pageBody {
+    container hdrSync (class: 'panel-head') {
+      dynamictext ttlSync (content: 'Admin · Sync', class: 'panel-title')
+      dynamictext subSync (content: 'What the sync has been doing.', class: 'panel-sub')
+    }
+
+    /* Five pages, one rail item. Without this the other four are reachable
+     * only by typing their URL, which is how they shipped the first time. */
+    container navAdmin_Sync (class: 'admin-nav') {
+      container navToAdmin_SyncSync (class: 'chip-pick is-picked', OnClick: SHOW_PAGE Formula1Frontend.Admin_Sync) {
+        dynamictext navTxtAdmin_SyncSync (content: 'Sync')
+      }
+      container navToAdmin_SyncLaps (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Laps) {
+        dynamictext navTxtAdmin_SyncLaps (content: 'Laps')
+      }
+      container navToAdmin_SyncTelemetry (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Telemetry) {
+        dynamictext navTxtAdmin_SyncTelemetry (content: 'Telemetry')
+      }
+      container navToAdmin_SyncSession (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Session) {
+        dynamictext navTxtAdmin_SyncSession (content: 'Session')
+      }
+      container navToAdmin_SyncEvents (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Events) {
+        dynamictext navTxtAdmin_SyncEvents (content: 'Events')
+      }
+    }
+
+    container pnlSyncRuns (class: 'panel') {
+      container hdSyncRuns (class: 'panel-head') {
+        dynamictext tSyncRuns (content: 'Cycle runs', class: 'panel-title')
+        dynamictext sSyncRuns (content: 'one row per completed cycle · a cycle that threw leaves no row', class: 'panel-sub')
+      }
+      container gSyncRuns (class: 'grid-dense') {
+        datagrid dgSyncRuns (
+          datasource: DATABASE F1Admin.SyncRuns,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cSyncRunsRunId (attribute: runId, caption: '#', Alignment: right)
+          column cSyncRunsStartedAt (attribute: startedAt, caption: 'Started')
+          column cSyncRunsFinishedAt (attribute: finishedAt, caption: 'Finished')
+          column cSyncRunsDurationMs (attribute: durationMs, caption: 'ms', Alignment: right)
+          column cSyncRunsSessionKey (attribute: sessionKey, caption: 'Session')
+          column cSyncRunsPasses (attribute: passes, caption: 'Passes')
+          column cSyncRunsOutcome (attribute: outcome, caption: 'Outcome')
+          column cSyncRunsDetail (attribute: detail, caption: 'Detail')
+          column cSyncRunsLapsWritten (attribute: lapsWritten, caption: 'Laps')
+          column cSyncRunsAuthenticated (attribute: authenticated, caption: 'Authenticated')
+        }
+      }
+    }
+
+    container pnlSyncState (class: 'panel') {
+      container hdSyncState (class: 'panel-head') {
+        dynamictext tSyncState (content: 'Sync state', class: 'panel-title')
+        dynamictext sSyncState (content: 'the singleton · an empty telemetry cursor means live, following the wall clock', class: 'panel-sub')
+      }
+      container gSyncState (class: 'grid-dense') {
+        datagrid dgSyncState (
+          datasource: DATABASE F1Admin.SyncState,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cSyncStateRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cSyncStateEnabled (attribute: enabled, caption: 'Enabled')
+          column cSyncStateSessionKey (attribute: sessionKey, caption: 'Session')
+          column cSyncStateTelemetryCursor (attribute: telemetryCursor, caption: 'Telemetry cursor')
+          column cSyncStateLastRunAt (attribute: lastRunAt, caption: 'Last run at')
+          column cSyncStateLastResult (attribute: lastResult, caption: 'Last result')
+          column cSyncStateLapsWritten (attribute: lapsWritten, caption: 'Laps')
+          column cSyncStateRunCount (attribute: runCount, caption: 'Run count')
+        }
+      }
+    }
+
+    container pnlWatermarks (class: 'panel') {
+      container hdWatermarks (class: 'panel-head') {
+        dynamictext tWatermarks (content: 'Watermarks', class: 'panel-title')
+        dynamictext sWatermarks (content: 'per-endpoint high water marks, so a poll asks only for what is new', class: 'panel-sub')
+      }
+      container gWatermarks (class: 'grid-dense') {
+        datagrid dgWatermarks (
+          datasource: DATABASE F1Admin.Watermarks,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cWatermarksRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cWatermarksSessionKey (attribute: sessionKey, caption: 'Session')
+          column cWatermarksEndpoint (attribute: endpoint, caption: 'Endpoint')
+          column cWatermarksLastSeen (attribute: lastSeen, caption: 'Last seen')
+          column cWatermarksLastRunAt (attribute: lastRunAt, caption: 'Last run at')
+          column cWatermarksRowsLastRun (attribute: rowsLastRun, caption: 'Rows last run')
+        }
+      }
+    }
+  }
+};
+
+create or replace page Formula1Frontend.Admin_Laps
+(
+  title: 'Admin — Laps',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'admin/laps'
+)
+{
+  container pageBody {
+    container hdrLaps (class: 'panel-head') {
+      dynamictext ttlLaps (content: 'Admin · Laps', class: 'panel-title')
+      dynamictext subLaps (content: 'The lap table and what was derived from it.', class: 'panel-sub')
+    }
+
+    /* Five pages, one rail item. Without this the other four are reachable
+     * only by typing their URL, which is how they shipped the first time. */
+    container navAdmin_Laps (class: 'admin-nav') {
+      container navToAdmin_LapsSync (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Sync) {
+        dynamictext navTxtAdmin_LapsSync (content: 'Sync')
+      }
+      container navToAdmin_LapsLaps (class: 'chip-pick is-picked', OnClick: SHOW_PAGE Formula1Frontend.Admin_Laps) {
+        dynamictext navTxtAdmin_LapsLaps (content: 'Laps')
+      }
+      container navToAdmin_LapsTelemetry (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Telemetry) {
+        dynamictext navTxtAdmin_LapsTelemetry (content: 'Telemetry')
+      }
+      container navToAdmin_LapsSession (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Session) {
+        dynamictext navTxtAdmin_LapsSession (content: 'Session')
+      }
+      container navToAdmin_LapsEvents (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Events) {
+        dynamictext navTxtAdmin_LapsEvents (content: 'Events')
+      }
+    }
+
+    container pnlLaps (class: 'panel') {
+      container hdLaps (class: 'panel-head') {
+        dynamictext tLaps (content: 'Laps', class: 'panel-title')
+        dynamictext sLaps (content: 'one row per driver per lap · this is the replay', class: 'panel-sub')
+      }
+      container gLaps (class: 'grid-dense') {
+        datagrid dgLaps (
+          datasource: DATABASE F1Admin.Laps,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cLapsRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cLapsSessionKey (attribute: sessionKey, caption: 'Session')
+          column cLapsDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cLapsLapNumber (attribute: lapNumber, caption: 'Lap', Alignment: right)
+          column cLapsPosition (attribute: position, caption: 'Position', Alignment: right)
+          column cLapsGapToLeader (attribute: gapToLeader, caption: 'Gap to leader')
+          column cLapsGapSeconds (attribute: gapSeconds, caption: 'Gap seconds')
+          column cLapsLapSeconds (attribute: lapSeconds, caption: 'Lap seconds')
+          column cLapsSector1 (attribute: sector1, caption: 'Sector1')
+          column cLapsSector2 (attribute: sector2, caption: 'Sector2')
+          column cLapsSector3 (attribute: sector3, caption: 'Sector3')
+          column cLapsSpeedTrap (attribute: speedTrap, caption: 'Speed trap')
+          column cLapsCompound (attribute: compound, caption: 'Compound')
+          column cLapsTyreAge (attribute: tyreAge, caption: 'Tyre age')
+          column cLapsPitStops (attribute: pitStops, caption: 'Pit stops')
+        }
+      }
+    }
+
+    container pnlLapTelemetry (class: 'panel') {
+      container hdLapTelemetry (class: 'panel-head') {
+        dynamictext tLapTelemetry (content: 'Lap telemetry', class: 'panel-title')
+        dynamictext sLapTelemetry (content: 'per-lap aggregates from car_data', class: 'panel-sub')
+      }
+      container gLapTelemetry (class: 'grid-dense') {
+        datagrid dgLapTelemetry (
+          datasource: DATABASE F1Admin.LapTelemetry,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cLapTelemetryRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cLapTelemetrySessionKey (attribute: sessionKey, caption: 'Session')
+          column cLapTelemetryDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cLapTelemetryLapNumber (attribute: lapNumber, caption: 'Lap', Alignment: right)
+          column cLapTelemetryTopSpeed (attribute: topSpeed, caption: 'Top speed')
+          column cLapTelemetryAvgThrottle (attribute: avgThrottle, caption: 'Avg throttle')
+          column cLapTelemetryMaxGear (attribute: maxGear, caption: 'Max gear')
+          column cLapTelemetryDrsOpenShare (attribute: drsOpenShare, caption: 'Drs open share')
+          column cLapTelemetryBrakeShare (attribute: brakeShare, caption: 'Brake share')
+          column cLapTelemetryMaxRpm (attribute: maxRpm, caption: 'Max rpm')
+          column cLapTelemetrySamples (attribute: samples, caption: 'Samples', Alignment: right)
+        }
+      }
+    }
+
+    container pnlLapStage (class: 'panel') {
+      container hdLapStage (class: 'panel-head') {
+        dynamictext tLapStage (content: 'Lap stage', class: 'panel-title')
+        dynamictext sLapStage (content: 'the loader table · rows here between a fetch and its promotion', class: 'panel-sub')
+      }
+      container gLapStage (class: 'grid-dense') {
+        datagrid dgLapStage (
+          datasource: DATABASE F1Admin.LapStage,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cLapStageRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cLapStageSessionKey (attribute: sessionKey, caption: 'Session')
+          column cLapStageDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cLapStageLapNumber (attribute: lapNumber, caption: 'Lap', Alignment: right)
+          column cLapStagePosition (attribute: position, caption: 'Position', Alignment: right)
+          column cLapStageGapToLeader (attribute: gapToLeader, caption: 'Gap to leader')
+          column cLapStageGapSeconds (attribute: gapSeconds, caption: 'Gap seconds')
+          column cLapStageLapSeconds (attribute: lapSeconds, caption: 'Lap seconds')
+          column cLapStageSector1 (attribute: sector1, caption: 'Sector1')
+          column cLapStageSector2 (attribute: sector2, caption: 'Sector2')
+          column cLapStageSector3 (attribute: sector3, caption: 'Sector3')
+          column cLapStageSpeedTrap (attribute: speedTrap, caption: 'Speed trap')
+          column cLapStageCompound (attribute: compound, caption: 'Compound')
+          column cLapStageTyreAge (attribute: tyreAge, caption: 'Tyre age')
+          column cLapStagePitStops (attribute: pitStops, caption: 'Pit stops')
+        }
+      }
+    }
+  }
+};
+
+create or replace page Formula1Frontend.Admin_Telemetry
+(
+  title: 'Admin — Telemetry',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'admin/telemetry'
+)
+{
+  container pageBody {
+    container hdrTelemetry (class: 'panel-head') {
+      dynamictext ttlTelemetry (content: 'Admin · Telemetry', class: 'panel-title')
+      dynamictext subTelemetry (content: 'The rolling window, and the shape of the circuit.', class: 'panel-sub')
+    }
+
+    /* Five pages, one rail item. Without this the other four are reachable
+     * only by typing their URL, which is how they shipped the first time. */
+    container navAdmin_Telemetry (class: 'admin-nav') {
+      container navToAdmin_TelemetrySync (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Sync) {
+        dynamictext navTxtAdmin_TelemetrySync (content: 'Sync')
+      }
+      container navToAdmin_TelemetryLaps (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Laps) {
+        dynamictext navTxtAdmin_TelemetryLaps (content: 'Laps')
+      }
+      container navToAdmin_TelemetryTelemetry (class: 'chip-pick is-picked', OnClick: SHOW_PAGE Formula1Frontend.Admin_Telemetry) {
+        dynamictext navTxtAdmin_TelemetryTelemetry (content: 'Telemetry')
+      }
+      container navToAdmin_TelemetrySession (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Session) {
+        dynamictext navTxtAdmin_TelemetrySession (content: 'Session')
+      }
+      container navToAdmin_TelemetryEvents (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Events) {
+        dynamictext navTxtAdmin_TelemetryEvents (content: 'Events')
+      }
+    }
+
+    container pnlCarNow (class: 'panel') {
+      container hdCarNow (class: 'panel-head') {
+        dynamictext tCarNow (content: 'Car now', class: 'panel-title')
+        dynamictext sCarNow (content: 'cleared and refilled every pass · a shape, not a history', class: 'panel-sub')
+      }
+      container gCarNow (class: 'grid-dense') {
+        datagrid dgCarNow (
+          datasource: DATABASE F1Admin.CarNow,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cCarNowRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cCarNowSessionKey (attribute: sessionKey, caption: 'Session')
+          column cCarNowDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cCarNowAt (attribute: at, caption: 'At')
+          column cCarNowSpeed (attribute: speed, caption: 'Speed', Alignment: right)
+          column cCarNowThrottle (attribute: throttle, caption: 'Throttle', Alignment: right)
+          column cCarNowBrake (attribute: brake, caption: 'Brake', Alignment: right)
+          column cCarNowGear (attribute: gear, caption: 'Gear', Alignment: right)
+          column cCarNowRpm (attribute: rpm, caption: 'Rpm', Alignment: right)
+          column cCarNowDrs (attribute: drs, caption: 'Drs', Alignment: right)
+        }
+      }
+    }
+
+    container pnlCarPositions (class: 'panel') {
+      container hdCarPositions (class: 'panel-head') {
+        dynamictext tCarPositions (content: 'Car positions', class: 'panel-title')
+        dynamictext sCarPositions (content: 'track-local coordinates, same frame as the outline', class: 'panel-sub')
+      }
+      container gCarPositions (class: 'grid-dense') {
+        datagrid dgCarPositions (
+          datasource: DATABASE F1Admin.CarPositions,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cCarPositionsSampleKey (attribute: sampleKey, caption: 'Sample key')
+          column cCarPositionsSessionKey (attribute: sessionKey, caption: 'Session')
+          column cCarPositionsDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cCarPositionsAt (attribute: at, caption: 'At')
+          column cCarPositionsX (attribute: x, caption: 'X', Alignment: right)
+          column cCarPositionsY (attribute: y, caption: 'Y', Alignment: right)
+          column cCarPositionsZ (attribute: z, caption: 'Z', Alignment: right)
+        }
+      }
+    }
+
+    container pnlTrackOutline (class: 'panel') {
+      container hdTrackOutline (class: 'panel-head') {
+        dynamictext tTrackOutline (content: 'Track outline', class: 'panel-title')
+        dynamictext sTrackOutline (content: 'traced from one car''s own lap, captured once per session', class: 'panel-sub')
+      }
+      container gTrackOutline (class: 'grid-dense') {
+        datagrid dgTrackOutline (
+          datasource: DATABASE F1Admin.TrackOutline,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cTrackOutlinePointKey (attribute: pointKey, caption: 'Point key')
+          column cTrackOutlineSessionKey (attribute: sessionKey, caption: 'Session')
+          column cTrackOutlineSeq (attribute: seq, caption: 'Seq', Alignment: right)
+          column cTrackOutlineX (attribute: x, caption: 'X', Alignment: right)
+          column cTrackOutlineY (attribute: y, caption: 'Y', Alignment: right)
+        }
+      }
+    }
+  }
+};
+
+create or replace page Formula1Frontend.Admin_Session
+(
+  title: 'Admin — Session',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'admin/session'
+)
+{
+  container pageBody {
+    container hdrSession (class: 'panel-head') {
+      dynamictext ttlSession (content: 'Admin · Session', class: 'panel-title')
+      dynamictext subSession (content: 'Who was out, on what, in what weather.', class: 'panel-sub')
+    }
+
+    /* Five pages, one rail item. Without this the other four are reachable
+     * only by typing their URL, which is how they shipped the first time. */
+    container navAdmin_Session (class: 'admin-nav') {
+      container navToAdmin_SessionSync (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Sync) {
+        dynamictext navTxtAdmin_SessionSync (content: 'Sync')
+      }
+      container navToAdmin_SessionLaps (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Laps) {
+        dynamictext navTxtAdmin_SessionLaps (content: 'Laps')
+      }
+      container navToAdmin_SessionTelemetry (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Telemetry) {
+        dynamictext navTxtAdmin_SessionTelemetry (content: 'Telemetry')
+      }
+      container navToAdmin_SessionSession (class: 'chip-pick is-picked', OnClick: SHOW_PAGE Formula1Frontend.Admin_Session) {
+        dynamictext navTxtAdmin_SessionSession (content: 'Session')
+      }
+      container navToAdmin_SessionEvents (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Events) {
+        dynamictext navTxtAdmin_SessionEvents (content: 'Events')
+      }
+    }
+
+    container pnlSessions (class: 'panel') {
+      container hdSessions (class: 'panel-head') {
+        dynamictext tSessions (content: 'Sessions', class: 'panel-title')
+        dynamictext sSessions (content: 'one row per session the sync has seen', class: 'panel-sub')
+      }
+      container gSessions (class: 'grid-dense') {
+        datagrid dgSessions (
+          datasource: DATABASE F1Admin.Sessions,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cSessionsRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cSessionsSessionKey (attribute: sessionKey, caption: 'Session')
+          column cSessionsSessionName (attribute: sessionName, caption: 'Session name')
+          column cSessionsSessionType (attribute: sessionType, caption: 'Session type')
+          column cSessionsLocation (attribute: location, caption: 'Location')
+          column cSessionsCountryName (attribute: countryName, caption: 'Country name')
+          column cSessionsCircuitName (attribute: circuitName, caption: 'Circuit name')
+          column cSessionsDateStart (attribute: dateStart, caption: 'Date start')
+          column cSessionsYear (attribute: year, caption: 'Year', Alignment: right)
+          column cSessionsDriverCount (attribute: driverCount, caption: 'Driver count')
+          column cSessionsLeadLap (attribute: leadLap, caption: 'Lead lap')
+          column cSessionsFetchedAt (attribute: fetchedAt, caption: 'Fetched at')
+        }
+      }
+    }
+
+    container pnlDrivers (class: 'panel') {
+      container hdDrivers (class: 'panel-head') {
+        dynamictext tDrivers (content: 'Drivers', class: 'panel-title')
+        dynamictext sDrivers (content: 'the entry list as OpenF1 gives it', class: 'panel-sub')
+      }
+      container gDrivers (class: 'grid-dense') {
+        datagrid dgDrivers (
+          datasource: DATABASE F1Admin.Drivers,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cDriversRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cDriversSessionKey (attribute: sessionKey, caption: 'Session')
+          column cDriversDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cDriversCode (attribute: code, caption: 'Code')
+          column cDriversDriverName (attribute: driverName, caption: 'Driver name')
+          column cDriversTeam (attribute: team, caption: 'Team')
+          column cDriversTeamColour (attribute: teamColour, caption: 'Team colour')
+        }
+      }
+    }
+
+    container pnlStints (class: 'panel') {
+      container hdStints (class: 'panel-head') {
+        dynamictext tStints (content: 'Stints', class: 'panel-title')
+        dynamictext sStints (content: 'tyre stints · where compound and age come from', class: 'panel-sub')
+      }
+      container gStints (class: 'grid-dense') {
+        datagrid dgStints (
+          datasource: DATABASE F1Admin.Stints,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cStintsRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cStintsSessionKey (attribute: sessionKey, caption: 'Session')
+          column cStintsDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cStintsStintNumber (attribute: stintNumber, caption: 'Stint number')
+          column cStintsCompound (attribute: compound, caption: 'Compound')
+          column cStintsLapStart (attribute: lapStart, caption: 'Lap start')
+          column cStintsLapEnd (attribute: lapEnd, caption: 'Lap end')
+          column cStintsTyreAgeAtStart (attribute: tyreAgeAtStart, caption: 'Tyre age at start')
+        }
+      }
+    }
+
+    container pnlWeather (class: 'panel') {
+      container hdWeather (class: 'panel-head') {
+        dynamictext tWeather (content: 'Weather', class: 'panel-title')
+        dynamictext sWeather (content: 'a series rather than a reading', class: 'panel-sub')
+      }
+      container gWeather (class: 'grid-dense') {
+        datagrid dgWeather (
+          datasource: DATABASE F1Admin.Weather,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cWeatherRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cWeatherSessionKey (attribute: sessionKey, caption: 'Session')
+          column cWeatherAt (attribute: at, caption: 'At')
+          column cWeatherAirTemperature (attribute: airTemperature, caption: 'Air temperature')
+          column cWeatherTrackTemperature (attribute: trackTemperature, caption: 'Track temperature')
+          column cWeatherHumidity (attribute: humidity, caption: 'Humidity')
+          column cWeatherRainfall (attribute: rainfall, caption: 'Rainfall')
+          column cWeatherWindSpeed (attribute: windSpeed, caption: 'Wind speed')
+        }
+      }
+    }
+  }
+};
+
+create or replace page Formula1Frontend.Admin_Events
+(
+  title: 'Admin — Events',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'admin/events'
+)
+{
+  container pageBody {
+    container hdrEvents (class: 'panel-head') {
+      dynamictext ttlEvents (content: 'Admin · Events', class: 'panel-title')
+      dynamictext subEvents (content: 'Everything that happened that was not a lap.', class: 'panel-sub')
+    }
+
+    /* Five pages, one rail item. Without this the other four are reachable
+     * only by typing their URL, which is how they shipped the first time. */
+    container navAdmin_Events (class: 'admin-nav') {
+      container navToAdmin_EventsSync (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Sync) {
+        dynamictext navTxtAdmin_EventsSync (content: 'Sync')
+      }
+      container navToAdmin_EventsLaps (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Laps) {
+        dynamictext navTxtAdmin_EventsLaps (content: 'Laps')
+      }
+      container navToAdmin_EventsTelemetry (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Telemetry) {
+        dynamictext navTxtAdmin_EventsTelemetry (content: 'Telemetry')
+      }
+      container navToAdmin_EventsSession (class: 'chip-pick', OnClick: SHOW_PAGE Formula1Frontend.Admin_Session) {
+        dynamictext navTxtAdmin_EventsSession (content: 'Session')
+      }
+      container navToAdmin_EventsEvents (class: 'chip-pick is-picked', OnClick: SHOW_PAGE Formula1Frontend.Admin_Events) {
+        dynamictext navTxtAdmin_EventsEvents (content: 'Events')
+      }
+    }
+
+    container pnlMessages (class: 'panel') {
+      container hdMessages (class: 'panel-head') {
+        dynamictext tMessages (content: 'Race control', class: 'panel-title')
+        dynamictext sMessages (content: 'flags, safety cars, investigations', class: 'panel-sub')
+      }
+      container gMessages (class: 'grid-dense') {
+        datagrid dgMessages (
+          datasource: DATABASE F1Admin.Messages,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cMessagesRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cMessagesSessionKey (attribute: sessionKey, caption: 'Session')
+          column cMessagesAt (attribute: at, caption: 'At')
+          column cMessagesCategory (attribute: category, caption: 'Category')
+          column cMessagesFlag (attribute: flag, caption: 'Flag')
+          column cMessagesScope (attribute: scope, caption: 'Scope')
+          column cMessagesLap (attribute: lap, caption: 'Lap', Alignment: right)
+          column cMessagesMessage (attribute: message, caption: 'Message')
+        }
+      }
+    }
+
+    container pnlOvertakes (class: 'panel') {
+      container hdOvertakes (class: 'panel-head') {
+        dynamictext tOvertakes (content: 'Overtakes', class: 'panel-title')
+        dynamictext sOvertakes (content: 'OpenF1''s own detection · practice sessions have none', class: 'panel-sub')
+      }
+      container gOvertakes (class: 'grid-dense') {
+        datagrid dgOvertakes (
+          datasource: DATABASE F1Admin.Overtakes,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cOvertakesRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cOvertakesSessionKey (attribute: sessionKey, caption: 'Session')
+          column cOvertakesAt (attribute: at, caption: 'At')
+          column cOvertakesLapNumber (attribute: lapNumber, caption: 'Lap', Alignment: right)
+          column cOvertakesOvertakingDriver (attribute: overtakingDriver, caption: 'Overtaking driver')
+          column cOvertakesOvertakenDriver (attribute: overtakenDriver, caption: 'Overtaken driver')
+          column cOvertakesPosition (attribute: position, caption: 'Position', Alignment: right)
+        }
+      }
+    }
+
+    container pnlRadio (class: 'panel') {
+      container hdRadio (class: 'panel-head') {
+        dynamictext tRadio (content: 'Team radio', class: 'panel-title')
+        dynamictext sRadio (content: 'RecordingUrl points at OpenF1, not at us', class: 'panel-sub')
+      }
+      container gRadio (class: 'grid-dense') {
+        datagrid dgRadio (
+          datasource: DATABASE F1Admin.Radio,
+          PageSize: 20,
+          PagingPosition: bottom
+        ) {
+          column cRadioRowId (attribute: rowId, caption: '#', Alignment: right)
+          column cRadioSessionKey (attribute: sessionKey, caption: 'Session')
+          column cRadioAt (attribute: at, caption: 'At')
+          column cRadioDriverNumber (attribute: driverNumber, caption: 'No', Alignment: right)
+          column cRadioRecordingUrl (attribute: recordingUrl, caption: 'Recording url')
+        }
+      }
+    }
+  }
+};
+
+/* ------------------------------------------------------------------ tests -- */
+
+/*
+ * The admin path is four hops -- external entity, OData client, published
+ * resource, Postgres -- and a break in any of them looks the same from the
+ * screen: an empty grid. These count rows so an empty grid can be told from a
+ * broken one.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_AdminSyncRuns ()
+  RETURNS Integer AS $Count
+BEGIN
+  RETRIEVE $Runs FROM F1Admin.SyncRuns;
+  DECLARE $Count Integer = 0;
+  LOOP $R IN $Runs BEGIN
+    SET $Count = $Count + 1;
+  END LOOP;
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_AdminLaps ()
+  RETURNS Integer AS $Count
+BEGIN
+  RETRIEVE $Laps FROM F1Admin.Laps;
+  DECLARE $Count Integer = 0;
+  LOOP $L IN $Laps BEGIN
+    SET $Count = $Count + 1;
+  END LOOP;
+  RETURN $Count;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_AdminTrackOutline ()
+  RETURNS Integer AS $Count
+BEGIN
+  RETRIEVE $Pts FROM F1Admin.TrackOutline;
+  DECLARE $Count Integer = 0;
+  LOOP $P IN $Pts BEGIN
+    SET $Count = $Count + 1;
+  END LOOP;
+  RETURN $Count;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_AdminSyncRuns TO Formula1Frontend.Administrator;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_AdminLaps TO Formula1Frontend.Administrator;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_AdminTrackOutline TO Formula1Frontend.Administrator;

@@ -1,0 +1,846 @@
+/*
+ * The datasource layer.
+ * =====================
+ *
+ * Every page in this app binds its grids and charts to a microflow rather than
+ * to a plain database retrieve, and this is where those microflows live. The
+ * reason is the same one everywhere: the constraint has to reach the backend.
+ * A retrieve constrained on a page parameter becomes `$filter=driverId eq
+ * '...'` on the OData request, which is what the read microflow lifts out and
+ * turns into SQL. Retrieving unconstrained and filtering in Mendix would drag
+ * every row across the wire for nothing.
+ *
+ * They sit in their own script, ahead of the pages, because the five screens
+ * share them: the season screen's standings table and the driver screen's
+ * team-mate chips are the same resource read two ways, and a datasource that
+ * belongs to no single page belongs in none of their files.
+ */
+
+/* ------------------------------------------------------------ view model -- */
+
+/*
+ * Two non-persistent entities that exist only to be shown.
+ *
+ * Everything else on these pages is read straight off a resource. These two are
+ * not: the comp's season screen asks for numbers that are *relationships*
+ * between rows — the margin between first and second, how many different
+ * drivers won a race, each driver's points as a share of the winner's — and a
+ * row cannot see its siblings. They are computed once, in a microflow, into a
+ * shape the page can bind to.
+ *
+ * Non-persistent, so nothing is stored and nothing has to be cleaned up; they
+ * live for the request that built them.
+ */
+@Position(100, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonHeadline (
+  Year: long,
+  ChampionDriver: string(120),
+  ChampionPoints: decimal,
+  RunnerUp: string(120),
+  Margin: decimal,
+  ChampionTeam: string(120),
+  ChampionTeamPoints: decimal,
+  TeamMargin: decimal,
+  Rounds: long,
+  FirstCode: string(10),
+  LastCode: string(10),
+  RaceWinners: long
+);
+
+@Position(580, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonTeamRow (
+  PositionText: string(20),
+  PositionOrder: long,
+  ConstructorId: string(60),
+  ConstructorName: string(120),
+  EngineManufacturer: string(60),
+  Points: decimal,
+  Share: long,
+  Colour: string(10)
+);
+
+@Position(340, 700)
+create or modify non-persistent entity Formula1Frontend.SeasonDriverRow (
+  PositionText: string(20),
+  PositionOrder: long,
+  DriverId: string(60),
+  DriverName: string(120),
+  Team: string(300),
+  Points: decimal,
+  Wins: long,
+  Podiums: long,
+  Poles: long,
+  AvgFinish: decimal,
+  PointsShare: long,
+  Share: long
+);
+
+/* ---------------------------------------------------------- datasources -- */
+
+/*
+ * The prose. Wikipedia summaries, fetched by scripts/fetch-f1-facts.sh; a
+ * missing one is normal (the title guess did not resolve) and the page simply
+ * shows no card.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverFact ($Driver: F1Live.Drivers)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'driver' and entityId = $Driver/driverId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonFact ($Season: F1Cached.Seasons)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  DECLARE $Year String = toString($Season/year);
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'season' and entityId = $Year LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ConstructorFact (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.Facts AS $Fact
+BEGIN
+  RETRIEVE $Fact FROM F1Fan.Facts
+    WHERE scope = 'constructor' and entityId = $Constructor/constructorId LIMIT 1;
+  RETURN $Fact;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverSeasons ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverSeasons AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverRaces ($Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverRaces AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.DriverRaces WHERE driverId = $Driver/driverId;
+  RETURN $Rows;
+END;
+
+/*
+ * The peer row's twenty.
+ *
+ * A microflow rather than the list view's own `database from … sort by …
+ * limit`: a list view drops the sort — mxcli writes the entity and loses the
+ * order — and it has no limit clause at all. A gallery does keep the sort but
+ * still has no limit, which would make the chip row nine hundred drivers long.
+ *
+ * PageSize is a separate matter and does work on a list view, though `describe
+ * page` does not print it back; it is how many of the list are shown before a
+ * "Load more", not how many are fetched.
+ *
+ * `SORT BY … LIMIT` in a retrieve becomes $orderby + $top on the wire, and both
+ * are pushed into SQL by Read_Drivers, so this is twenty rows fetched, not
+ * twenty rows chosen from nine hundred.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverPeers ()
+  RETURNS List of F1Live.Drivers AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Live.Drivers SORT BY points DESC LIMIT 20;
+  RETURN $Rows;
+END;
+
+/*
+ * The banner and the round-by-round strip are both about one season — the last
+ * one the driver started — so both need that year before they can ask for
+ * anything.
+ *
+ * The year is found by walking the career rather than by taking the first row.
+ * The resource does return them newest first, but that is the backend's ORDER
+ * BY, not a contract; a max over the list cannot be wrong whatever order they
+ * arrive in. MDL has no aggregate for it — `max` is not one of the two the
+ * bare-assignment form accepts — so it is a loop.
+ *
+ * Then a second, narrower read. `year` is pushed down on DriverSeasons now, so
+ * this is one row over the wire, not a career filtered in the client.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverLatestSeason (
+  $Driver: F1Live.Drivers)
+  RETURNS F1Fan.DriverSeasons AS $Latest
+BEGIN
+  RETRIEVE $Seasons FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+
+  DECLARE $Year Long = 0;
+  LOOP $Season IN $Seasons BEGIN
+    IF $Season/year > $Year THEN
+      SET $Year = $Season/year;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Latest FROM F1Fan.DriverSeasons
+    WHERE driverId = $Driver/driverId and year = $Year LIMIT 1;
+  RETURN $Latest;
+END;
+
+/*
+ * The same season's rounds, for the strip. Twenty-four cells, so twenty-four
+ * rows — `year` reaches the backend here too, and a career of 244 starts stays
+ * where it is.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_DriverLatestRaces (
+  $Driver: F1Live.Drivers)
+  RETURNS List of F1Fan.DriverRaces AS $Rows
+BEGIN
+  RETRIEVE $Seasons FROM F1Fan.DriverSeasons WHERE driverId = $Driver/driverId;
+
+  DECLARE $Year Long = 0;
+  LOOP $Season IN $Seasons BEGIN
+    IF $Season/year > $Year THEN
+      SET $Year = $Season/year;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Rows FROM F1Fan.DriverRaces
+    WHERE driverId = $Driver/driverId and year = $Year;
+  RETURN $Rows;
+END;
+
+/*
+ * A strip cell holds a result, not a calendar entry, so opening the weekend
+ * behind it means resolving year + round back to the race first. Both terms are
+ * pushed down, so this is a single-row read and not a season fetched to throw
+ * twenty-three of it away.
+ *
+ * An unresolved round shows nothing rather than the wrong weekend — a driver
+ * can have a result in a season the calendar resource does not carry.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace (
+  $Race: F1Fan.DriverRaces)
+BEGIN
+  RETRIEVE $Cal FROM F1Fan.Calendar
+    WHERE year = $Race/year and round = $Race/round LIMIT 1;
+
+  IF $Cal != empty THEN
+    SHOW PAGE Formula1Frontend.Weekend (Race: $Cal);
+  END IF;
+END;
+
+/*
+ * The season's rounds for the calendar cards.
+ *
+ * A microflow rather than the list view's own database datasource, so the
+ * whole season arrives in one read and the sort survives. The list view's own
+ * PageSize is raised past a season's length as well: it defaults to twenty and
+ * a 24-round year would otherwise end in a "Load more" button.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonCalendar (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Fan.Calendar AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Season/year SORT BY round ASC;
+  RETURN $Rows;
+END;
+
+/*
+ * One row of the progression, for the strip that names the five lines.
+ *
+ * d1Name … d5Name are the same in every round — they are "whoever finished
+ * first", not "whoever led this round" — so any row will do and the first is
+ * one read.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonLeaders (
+  $Season: F1Cached.Seasons)
+  RETURNS F1Fan.SeasonProgress AS $Row
+BEGIN
+  RETRIEVE $Row FROM F1Fan.SeasonProgress WHERE year = $Season/year LIMIT 1;
+  RETURN $Row;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonProgress ($Season: F1Cached.Seasons)
+  RETURNS List of F1Fan.SeasonProgress AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.SeasonProgress WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+/*
+ * Standings come from the CACHED service, not the live one, and that is not a
+ * preference — it is the difference between right and wrong answers.
+ *
+ * A live resource backed by a read microflow receives the request but not the
+ * query options: Mendix applies none of them and returns whatever the microflow
+ * hands back (FINDINGS §22). Only Drivers, RaceResults and the five fan
+ * resources parse `$filter` themselves. `DriverStandings` does not — so
+ * constraining it on the year sent `$filter=year eq 1957`, got all 1680 rows
+ * back ordered by year descending, and the 1957 page showed the 2026 grid. The
+ * filter was silently dropped; nothing errored.
+ *
+ * The cached service publishes persistent entities, so Mendix pushes the
+ * constraint into SQL and 1957 returns its 22 rows.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Cached.DriverStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.DriverStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonConstructorStandings (
+  $Season: F1Cached.Seasons)
+  RETURNS List of F1Cached.ConstructorStandings AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_Retirements (
+  $Constructor: F1Cached.Constructors)
+  RETURNS List of F1Fan.Retirements AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Retirements
+    WHERE constructorId = $Constructor/constructorId;
+  RETURN $Rows;
+END;
+
+/*
+ * The constructor page's peer row. Twelve rather than the driver page's twenty:
+ * the chips carry team names, not three-letter codes, so twelve is what fits on
+ * one line — and twelve championship-winning teams is most of the list that has
+ * ever won one.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamPeers ()
+  RETURNS List of F1Cached.Constructors AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Cached.Constructors SORT BY points DESC LIMIT 12;
+  RETURN $Rows;
+END;
+
+/*
+ * A team's most recent season, round by round: what each of the two cars
+ * scored and where the team stood in the championship after each one.
+ *
+ * No year is sent, so the backend answers for the last season the team raced —
+ * which is what the page wants and saves a round trip to work out what that is.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamSeason (
+  $Constructor: F1Cached.Constructors)
+  RETURNS List of F1Fan.TeamSeason AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId;
+  RETURN $Rows;
+END;
+
+/* The same season's team-mate record: one row, four comparisons. */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamH2H (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.TeamH2H AS $Row
+BEGIN
+  RETRIEVE $Row FROM F1Fan.TeamH2H
+    WHERE constructorId = $Constructor/constructorId LIMIT 1;
+  RETURN $Row;
+END;
+
+/*
+ * The last round of that season, for the banner: it carries the season, the
+ * two drivers' names and the championship position the team finished in.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TeamLatestStanding (
+  $Constructor: F1Cached.Constructors)
+  RETURNS F1Fan.TeamSeason AS $Last
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId;
+
+  DECLARE $Round Long = 0;
+  LOOP $Row IN $Rows BEGIN
+    IF $Row/round > $Round THEN
+      SET $Round = $Row/round;
+    END IF;
+  END LOOP;
+
+  RETRIEVE $Last FROM F1Fan.TeamSeason
+    WHERE constructorId = $Constructor/constructorId and round = $Round LIMIT 1;
+  RETURN $Last;
+END;
+
+/*
+ * The five numbers across the top of the season screen.
+ *
+ * Three of them are margins and counts rather than fields: how far the champion
+ * finished ahead of second, how far the winning team finished ahead of second,
+ * and how many different drivers won a race. Each needs the whole standings
+ * list in hand at once, which is why this is a microflow and not five bindings.
+ *
+ * The distinct-winner count is a delimited string rather than a set, because
+ * MDL has no set and no list-of-primitives. Each winner is wrapped in pipes
+ * before the `contains` test so "Hill" cannot match inside "Damon Hill".
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonHeadline (
+  $Season: F1Cached.Seasons)
+  RETURNS Formula1Frontend.SeasonHeadline AS $H
+BEGIN
+  $H = CREATE Formula1Frontend.SeasonHeadline (
+    Year = $Season/year,
+    ChampionDriver = '-',
+    ChampionPoints = 0,
+    RunnerUp = '-',
+    Margin = 0,
+    ChampionTeam = '-',
+    ChampionTeamPoints = 0,
+    TeamMargin = 0,
+    Rounds = $Season/raceCount,
+    FirstCode = '-',
+    LastCode = '-',
+    RaceWinners = 0
+  );
+
+  RETRIEVE $Drivers FROM F1Cached.DriverStandings WHERE year = $Season/year;
+  LOOP $D IN $Drivers BEGIN
+    IF $D/positionOrder = 1 THEN
+      CHANGE $H (ChampionDriver = $D/driverName, ChampionPoints = $D/points);
+    END IF;
+    IF $D/positionOrder = 2 THEN
+      CHANGE $H (RunnerUp = $D/driverName, Margin = $D/points);
+    END IF;
+  END LOOP;
+  -- Margin held the runner-up's score until both were known; now it is the gap.
+  CHANGE $H (Margin = $H/ChampionPoints - $H/Margin);
+
+  RETRIEVE $Teams FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+  LOOP $T IN $Teams BEGIN
+    IF $T/positionOrder = 1 THEN
+      CHANGE $H (ChampionTeam = $T/constructorName, ChampionTeamPoints = $T/points);
+    END IF;
+    IF $T/positionOrder = 2 THEN
+      CHANGE $H (TeamMargin = $T/points);
+    END IF;
+  END LOOP;
+  CHANGE $H (TeamMargin = $H/ChampionTeamPoints - $H/TeamMargin);
+
+  RETRIEVE $Races FROM F1Fan.Calendar WHERE year = $Season/year;
+  DECLARE $Seen String = '|';
+  DECLARE $Winners Long = 0;
+  DECLARE $First Long = 9999;
+  DECLARE $Last Long = 0;
+  LOOP $R IN $Races BEGIN
+    IF $R/round < $First THEN
+      SET $First = $R/round;
+      CHANGE $H (FirstCode = $R/code);
+    END IF;
+    IF $R/round > $Last THEN
+      SET $Last = $R/round;
+      CHANGE $H (LastCode = $R/code);
+    END IF;
+    IF $R/winnerName != '' and $R/winnerName != '-'
+       and contains($Seen, '|' + $R/winnerName + '|') = false THEN
+      SET $Seen = $Seen + $R/winnerName + '|';
+      SET $Winners = $Winners + 1;
+    END IF;
+  END LOOP;
+  CHANGE $H (RaceWinners = $Winners);
+
+  RETURN $H;
+END;
+
+/*
+ * The drivers' championship, with each driver's points as a share of the
+ * champion's so the table can draw a bar beside the number.
+ *
+ * The comp's column is a share of the *team's* points; the standings resource
+ * carries no team, so this is a share of the winner's score instead — the same
+ * reading (how close was anyone to the front) against a denominator the data
+ * actually has. Two passes: the first finds the top score, the second builds
+ * the rows.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonDriverRows (
+  $Season: F1Cached.Seasons)
+  RETURNS List of Formula1Frontend.SeasonDriverRow AS $Rows
+BEGIN
+  RETRIEVE $Standings FROM F1Cached.DriverStandings WHERE year = $Season/year;
+
+  DECLARE $Best Decimal = 0.0;
+  LOOP $S IN $Standings BEGIN
+    IF $S/points > $Best THEN
+      SET $Best = $S/points;
+    END IF;
+  END LOOP;
+  -- A season where nobody scored still has to draw a table.
+  IF $Best = 0 THEN
+    SET $Best = 1.0;
+  END IF;
+
+  /*
+   * Two things Mendix's expression language does not spell the way SQL does,
+   * and both are silent until `mx check`:
+   *
+   *   division is `div`, not `/` — and `div` is *not* integer division, it is
+   *   plain division that happens to be spelled like Pascal's;
+   *   there is no cast from Decimal to Long, so the percentage is rounded by
+   *   formatting it to no decimals and parsing that back.
+   *
+   * The Long matters: the width is carried as a class name, and `w-77.0` is a
+   * rule that does not exist, which renders as a full-width bar — a wrong
+   * reading rather than a missing one.
+   */
+  DECLARE $Pct Decimal = 0.0;
+  DECLARE $Share Integer = 0;
+
+  /*
+   * The counting stats live on a different resource from the names.
+   *
+   * DriverStandings carries who finished where and on how many points, and
+   * nothing else; DriverSeasons carries wins, podiums, poles, average finish
+   * and each driver's share of their team's points, but identifies a driver by
+   * slug rather than by name. The comp's table wants both, so both are read —
+   * one constrained call each, joined here over about twenty rows rather than
+   * asked for per driver.
+   */
+  RETRIEVE $Seasons FROM F1Fan.DriverSeasons WHERE year = $Season/year;
+
+  $Rows = CREATE LIST OF Formula1Frontend.SeasonDriverRow;
+  LOOP $Standing IN $Standings BEGIN
+    SET $Pct = $Standing/points div $Best * 100.0;
+    SET $Share = parseInteger(formatDecimal($Pct, '0'));
+
+    $Row = CREATE Formula1Frontend.SeasonDriverRow (
+      PositionText = $Standing/positionText,
+      PositionOrder = $Standing/positionOrder,
+      DriverId = $Standing/driverId,
+      DriverName = $Standing/driverName,
+      Points = $Standing/points,
+      Share = $Share
+    );
+
+    /*
+     * Matched on driverId. A driver with no DriverSeasons row keeps the empty
+     * counts rather than borrowing somebody else's — the loop sets nothing
+     * unless it finds its own match.
+     */
+    LOOP $DS IN $Seasons BEGIN
+      IF $DS/driverId = $Standing/driverId THEN
+        CHANGE $Row (
+          Team = $DS/constructors,
+          Wins = $DS/wins,
+          Podiums = $DS/podiums,
+          Poles = $DS/poles,
+          AvgFinish = $DS/avgFinish,
+          PointsShare = $DS/pointsShare
+        );
+      END IF;
+    END LOOP;
+
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  RETURN $Rows;
+END;
+
+/*
+ * The constructors' standings with a colour on every row.
+ *
+ * A chart series' bar colour is an expression bound to the series' datasource,
+ * so it is evaluated per bar and a single series can be twelve colours — which
+ * is what the comp draws. What it needs is somewhere to read the colour from,
+ * and no resource carries one: f1db has no livery.
+ *
+ * The map is the comp's own, which is the FIA's: the ten current teams plus the
+ * two that have just left. Everything before that is a marque that no longer
+ * races, so the older seasons fall through to the brand — a season of teal bars
+ * is honest about there being no colour to give them, where twelve shades of
+ * invented orange would not be.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_SeasonTeamRows (
+  $Season: F1Cached.Seasons)
+  RETURNS List of Formula1Frontend.SeasonTeamRow AS $Rows
+BEGIN
+  RETRIEVE $Standings FROM F1Cached.ConstructorStandings WHERE year = $Season/year;
+
+  /* The bar is drawn as a width class, so the leader's total is the scale. */
+  DECLARE $Best Decimal = 0.0;
+  LOOP $T IN $Standings BEGIN
+    IF $T/points > $Best THEN
+      SET $Best = $T/points;
+    END IF;
+  END LOOP;
+  IF $Best = 0 THEN
+    SET $Best = 1.0;
+  END IF;
+
+  DECLARE $Colour String = '#2DD4BF';
+  DECLARE $Share Integer = 0;
+  $Rows = CREATE LIST OF Formula1Frontend.SeasonTeamRow;
+  LOOP $Team IN $Standings BEGIN
+    SET $Colour = '#2DD4BF';
+    IF $Team/constructorId = 'red-bull' THEN SET $Colour = '#3671C6'; END IF;
+    IF $Team/constructorId = 'mclaren' THEN SET $Colour = '#FF8000'; END IF;
+    IF $Team/constructorId = 'ferrari' THEN SET $Colour = '#E8002D'; END IF;
+    IF $Team/constructorId = 'mercedes' THEN SET $Colour = '#27F4D2'; END IF;
+    IF $Team/constructorId = 'aston-martin' THEN SET $Colour = '#229971'; END IF;
+    IF $Team/constructorId = 'alpine' THEN SET $Colour = '#FF87BC'; END IF;
+    IF $Team/constructorId = 'haas' THEN SET $Colour = '#B6BABD'; END IF;
+    IF $Team/constructorId = 'rb' THEN SET $Colour = '#6692FF'; END IF;
+    IF $Team/constructorId = 'racing-bulls' THEN SET $Colour = '#6692FF'; END IF;
+    IF $Team/constructorId = 'williams' THEN SET $Colour = '#64C4FF'; END IF;
+    IF $Team/constructorId = 'sauber' THEN SET $Colour = '#52E252'; END IF;
+    IF $Team/constructorId = 'alphatauri' THEN SET $Colour = '#5E8FAA'; END IF;
+    IF $Team/constructorId = 'alfa-romeo' THEN SET $Colour = '#C92D4B'; END IF;
+    IF $Team/constructorId = 'audi' THEN SET $Colour = '#BB0A30'; END IF;
+    IF $Team/constructorId = 'cadillac' THEN SET $Colour = '#C9B037'; END IF;
+
+    SET $Share = parseInteger(formatDecimal($Team/points div $Best * 100.0, '0'));
+    $Row = CREATE Formula1Frontend.SeasonTeamRow (
+      PositionText = $Team/positionText,
+      PositionOrder = $Team/positionOrder,
+      ConstructorId = $Team/constructorId,
+      ConstructorName = $Team/constructorName,
+      EngineManufacturer = $Team/engineManufacturer,
+      Points = $Team/points,
+      Share = $Share,
+      Colour = $Colour
+    );
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  RETURN $Rows;
+END;
+
+/* ------------------------------------------------------------- a weekend -- */
+
+/*
+ * One Grand Prix, every session.
+ *
+ * The parameter is a Calendar row rather than a race id, so the round chips
+ * and the season screen can both hand it over as an object. Everything else is
+ * looked up from its raceId.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_Weekend ($Race: F1Fan.Calendar)
+  RETURNS F1Fan.RaceWeekend AS $Weekend
+BEGIN
+  RETRIEVE $Weekend FROM F1Fan.RaceWeekend WHERE raceId = $Race/raceId LIMIT 1;
+  RETURN $Weekend;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_WeekendSessions ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.RaceSessions AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.RaceSessions WHERE raceId = $Race/raceId;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_WeekendShape ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.WeekendShape AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.WeekendShape WHERE raceId = $Race/raceId;
+  RETURN $Rows;
+END;
+
+/*
+ * The lap traces. Both filters have to reach the backend or it returns nothing
+ * on purpose — every lap of every fetched season is not a chart.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LapChart ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.LapChart AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.LapChart
+    WHERE year = $Race/year and round = $Race/round;
+  RETURN $Rows;
+END;
+
+/*
+ * The season's rounds, for the chip row across the top: one chip per Grand
+ * Prix, the one being shown outlined. `year` is pushed down, so this is the
+ * season and not the calendar.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_WeekendRounds ($Race: F1Fan.Calendar)
+  RETURNS List of F1Fan.Calendar AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.Calendar WHERE year = $Race/year SORT BY round ASC;
+  RETURN $Rows;
+END;
+
+
+
+/* ----------------------------------------------------------- the session -- */
+
+/*
+ * Near-live timing from OpenF1, by way of the backend's fourth service.
+ *
+ * A snapshot is one session, so none of these take a parameter and none of
+ * them constrain: each resource is the file. What the page does with them
+ * differs — Order is where everyone stands now, Trace is how they got there,
+ * and Stints is what they got there on.
+ *
+ * Trace is the only one big enough to think about: one row per driver per lap,
+ * so a seventy-lap race with twenty cars is fourteen hundred rows. It is read
+ * once and shaped into every chart on the screen rather than once per chart.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveSession ()
+  RETURNS F1Now.Session AS $Session
+BEGIN
+  RETRIEVE $Session FROM F1Now.Session LIMIT 1;
+  RETURN $Session;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveOrder ()
+  RETURNS List of F1Now.Order AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Order SORT BY position ASC;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveMessages ()
+  RETURNS List of F1Now.Messages AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Messages;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveStints ()
+  RETURNS List of F1Now.Stints AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Stints;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveTrace ()
+  RETURNS List of F1Now.Trace AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Trace;
+  RETURN $Rows;
+END;
+
+/*
+ * The five cars at the front, as a string to test membership against.
+ *
+ * The gap chart draws the leaders and nobody else, and a chart microflow that
+ * asked the backend once per leader would make five calls to answer one
+ * question. One read of the order, one read of the trace, and a `contains`
+ * against '|NOR|VER|...|' does it with two. The pipes matter: without them
+ * 'VER' would also match a driver coded 'VERX'.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveLeaderCodes ()
+  RETURNS String AS $Codes
+BEGIN
+  RETRIEVE $Leaders FROM F1Now.Order SORT BY position ASC LIMIT 5;
+  DECLARE $Codes String = '|';
+  LOOP $L IN $Leaders BEGIN
+    SET $Codes = $Codes + $L/code + '|';
+  END LOOP;
+  RETURN $Codes;
+END;
+
+
+/* -------------------------------------------------------------- opening -- */
+
+/*
+ * A standings row is a non-persistent row, not a driver or a constructor, so
+ * a click on one has to resolve the real object before it can open a screen.
+ *
+ * Both match on the id rather than on the displayed name. Names are not keys —
+ * f1db carries more than one "Nakajima" and more than one Rodríguez, and two
+ * constructors have been called Lotus — and a click that opened the wrong
+ * driver would look like a working link.
+ *
+ * A row whose id resolves to nothing does nothing, rather than opening an
+ * empty screen.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenDriverRow (
+  $Row: Formula1Frontend.SeasonDriverRow)
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = $Row/DriverId LIMIT 1;
+  IF $Driver != empty THEN
+    SHOW PAGE Formula1Frontend.Driver (Driver: $Driver);
+  END IF;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenConstructorRow (
+  $Row: Formula1Frontend.SeasonTeamRow)
+BEGIN
+  RETRIEVE $Constructor FROM F1Cached.Constructors
+    WHERE constructorId = $Row/ConstructorId LIMIT 1;
+  IF $Constructor != empty THEN
+    SHOW PAGE Formula1Frontend.Constructor (Constructor: $Constructor);
+  END IF;
+END;
+
+/*
+ * A session row identifies its driver by slug, like the standings rows do, so
+ * opening one takes the same lookup. Same reason for matching on the id: the
+ * name is a label, not a key.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenDriverSession (
+  $Row: F1Fan.RaceSessions)
+BEGIN
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = $Row/driverId LIMIT 1;
+  IF $Driver != empty THEN
+    SHOW PAGE Formula1Frontend.Driver (Driver: $Driver);
+  END IF;
+END;
+
+/*
+ * A career row is a season, so clicking one goes back to the season screen.
+ * Matched on the year, which for Seasons genuinely is the key.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_OpenSeasonOfDriver (
+  $Row: F1Fan.DriverSeasons)
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = $Row/year LIMIT 1;
+  IF $Season != empty THEN
+    SHOW PAGE Formula1Frontend.Season (Season: $Season);
+  END IF;
+END;
+
+/* ------------------------------------------------------- circuit outline -- */
+
+/*
+ * The shape of the track, and what it was traced from.
+ *
+ * Keyed on circuitId, which the weekend row carries and the calendar row does
+ * not — so both of these hang off RaceWeekend rather than off the page
+ * parameter. The outline row is the provenance (which source, how closely it
+ * matched f1db's recorded length); the points are the drawing.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_CircuitOutline (
+  $Weekend: F1Fan.RaceWeekend)
+  RETURNS F1Fan.CircuitOutlines AS $Outline
+BEGIN
+  RETRIEVE $Outline FROM F1Fan.CircuitOutlines
+    WHERE circuitId = $Weekend/circuitId LIMIT 1;
+  RETURN $Outline;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_CircuitPoints (
+  $Outline: F1Fan.CircuitOutlines)
+  RETURNS List of F1Fan.CircuitPoints AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Fan.CircuitPoints
+    WHERE circuitId = $Outline/circuitId SORT BY seq ASC;
+  RETURN $Rows;
+END;
+
+/* ----------------------------------------------------------- track map -- */
+
+/*
+ * The circuit, and where the cars are on it.
+ *
+ * Both come from OpenF1's location feed in its own track-local frame -- tens of
+ * thousands of units centred on the circuit, unrelated to latitude and
+ * longitude. That is what makes them usable together: the outline was traced
+ * from one car's lap, so a car's coordinates are on that line by construction
+ * rather than by fitting a transform between two sources.
+ *
+ * The OpenStreetMap outlines in data/circuits/ are a different thing for a
+ * different screen. They are geographic and checkable against a recorded
+ * length, which suits the weekend page's static diagram; they cannot carry
+ * these dots.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_TrackOutline ()
+  RETURNS List of F1Now.TrackOutline AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.TrackOutline SORT BY seq ASC;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_CarPositions ()
+  RETURNS List of F1Now.CarPositions AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.CarPositions;
+  RETURN $Rows;
+END;

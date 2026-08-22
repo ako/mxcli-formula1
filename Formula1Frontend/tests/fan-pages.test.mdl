@@ -137,3 +137,87 @@ $result = CALL MICROFLOW Formula1Frontend.Test_LiveSeasonByKey();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_LiveStandingByKey();
 /
+
+/**
+ * @test Season standings: 1988 classified 17 drivers
+ * @expect $result = 17
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1988DriverRows();
+/
+
+/**
+ * The champion's win count comes from DriverSeasons, not from the standings
+ * row, so a non-zero answer proves the two resources matched on driverId.
+ *
+ * @test Season standings: the 1988 champion's wins come through the join
+ * @expect $result = 8
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1988ChampionWins();
+/
+
+/**
+ * @test Season small multiples: 1988 builds a non-trivial table
+ * @expect $result > 500
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_1988Multiples();
+/
+
+/**
+ * @test Live: all three session charts build parseable JSON
+ * @expect $result = 3
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_LiveChartsBuild();
+/
+
+/**
+ * @test Circuit outline: Austin traces as a closed loop
+ * @expect $result > 40
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints();
+/
+
+/**
+ * @test Circuit outlines: none published that fails its own length check
+ * @expect $result = 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect();
+/
+
+/**
+ * @test Track map: the circuit outline was captured
+ * @expect $result > 100
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_TrackOutlinePoints();
+/
+
+/**
+ * @test Track map: outline and cars build one parseable table
+ * @expect $result > 1000
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_TrackMapBuilds();
+/
+
+/**
+ * Admin: the raw sync-run log is readable through the admin client.
+ * A break anywhere in external entity -> OData client -> published resource
+ * -> Postgres shows up on the screen as an empty grid, so count instead.
+ *
+ * @test Admin: the cycle log has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminSyncRuns();
+/
+
+/**
+ * @test Admin: the raw lap table has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminLaps();
+/
+
+/**
+ * @test Admin: the raw track outline has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminTrackOutline();
+/

@@ -7,44 +7,65 @@
 ## MDL Example
 
 ```sql
-PLUGGABLEWIDGET 'com.mendix.widget.web.gallery.Gallery' widget1
+PLUGGABLEWIDGET 'com.mendix.widget.web.gallery.Gallery' widget1 {
+  template {
+    -- widgets for `content`
+  }
+  emptyplaceholder {
+    -- widgets for `emptyPlaceholder`
+  }
+  filter {
+    -- widgets for `filtersPlaceholder`
+  }
+}
 ```
 
 ## Properties
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `filtersPlaceholder` | widgets |  |  |  |
-| `datasource` | datasource | Yes |  |  |
-| `itemSelection` | selection | Yes |  |  |
-| `itemSelectionMode` | enumeration | Yes | clear | Defines item selection behavior. |
-| `keepSelection` | boolean | Yes | false | If enabled, selected items will stay selected unless cleared by the user or a... |
-| `content` | widgets |  |  |  |
-| `refreshIndicator` | boolean | Yes | false | Show a refresh indicator when the data is being loaded. |
-| `desktopItems` | integer | Yes | 1 |  |
-| `tabletItems` | integer | Yes | 1 |  |
-| `phoneItems` | integer | Yes | 1 |  |
-| `pageSize` | integer | Yes | 20 |  |
-| `pagination` | enumeration | Yes | buttons |  |
-| `showTotalCount` | boolean | Yes | false |  |
-| `showPagingButtons` | enumeration | Yes | always |  |
-| `pagingPosition` | enumeration | Yes | bottom |  |
-| `loadMoreButtonCaption` | textTemplate |  |  |  |
-| `showEmptyPlaceholder` | enumeration | Yes | none |  |
-| `emptyPlaceholder` | widgets |  |  |  |
-| `itemClass` | expression |  |  |  |
-| `onClickTrigger` | enumeration | Yes | single |  |
-| `onClick` | action |  |  |  |
-| `onSelectionChange` | action |  |  |  |
-| `stateStorageType` | enumeration | Yes | attribute | When Browser local storage is selected, the configuration is scoped to a brow... |
-| `stateStorageAttr` | attribute |  |  | Attribute containing the personalized configuration of the capabilities. This... |
-| `onConfigurationChange` | action |  |  |  |
-| `storeFilters` | boolean | Yes | true |  |
-| `storeSort` | boolean | Yes | true |  |
-| `filterSectionTitle` | textTemplate |  |  | Assistive technology will read this upon reaching a filtering or sorting sect... |
-| `emptyMessageTitle` | textTemplate |  |  | Assistive technology will read this upon reaching an empty message section. |
-| `ariaLabelListBox` | textTemplate |  |  | Assistive technology will read this upon reaching gallery. |
-| `ariaLabelItem` | textTemplate |  |  | Assistive technology will read this upon reaching each gallery item. |
-| `selectedCountTemplateSingular` | textTemplate |  |  | Must include '%d' to denote number position ('%d item selected') |
-| `selectedCountTemplatePlural` | textTemplate |  |  | Must include '%d' to denote number position ('%d items selected') |
+| Property | Type | Required | Default | Values / notes | Group | Description |
+|----------|------|----------|---------|----------------|-------|-------------|
+| `filtersPlaceholder` | widgets |  |  |  | General::General | Filters placeholder |
+| `datasource` | datasource | Yes |  | list | General::General | Data source |
+| `itemSelection` | selection | Yes |  |  | General::General | Selection |
+| `itemSelectionMode` | enumeration | Yes | clear | `toggle` \| `clear` | General::General | Defines item selection behavior. |
+| `keepSelection` | boolean | Yes | false |  | General::General | If enabled, selected items will stay selected unless cleared by the user or a Nanoflow. |
+| `content` | widgets |  |  |  | General::General | Content placeholder |
+| `refreshIndicator` | boolean | Yes | false |  | General::General | Show a refresh indicator when the data is being loaded. |
+| `desktopItems` | integer | Yes | 1 |  | General::Columns | Desktop columns |
+| `tabletItems` | integer | Yes | 1 |  | General::Columns | Tablet columns |
+| `phoneItems` | integer | Yes | 1 |  | General::Columns | Phone columns |
+| `pageSize` | integer | Yes | 20 |  | General::Pagination | Page size |
+| `pagination` | enumeration | Yes | buttons | `buttons` \| `virtualScrolling` \| `loadMore` | General::Pagination | Pagination |
+| `showTotalCount` | boolean | Yes | false |  | General::Pagination | Show total count |
+| `showPagingButtons` | enumeration | Yes | always | `always` \| `auto` | General::Pagination | Show paging buttons |
+| `pagingPosition` | enumeration | Yes | bottom | `bottom` \| `top` \| `both` | General::Pagination | Position of pagination |
+| `loadMoreButtonCaption` | textTemplate |  |  |  | General::Pagination | Load more caption |
+| `showEmptyPlaceholder` | enumeration | Yes | none | `none` \| `custom` | General::Items | Empty message |
+| `emptyPlaceholder` | widgets |  |  |  | General::Items | Empty placeholder |
+| `itemClass` | expression |  |  |  | General::Items | Dynamic item class |
+| `onClickTrigger` | enumeration | Yes | single | `single` \| `double` | General::Events | On click trigger |
+| `onClick` | action |  |  |  | General::Events | On click action |
+| `onSelectionChange` | action |  |  |  | General::Events | On selection change |
+| `stateStorageType` | enumeration | Yes | attribute | `attribute` \| `localStorage` | Personalization::Configuration | When Browser local storage is selected, the configuration is scoped to a browser profile. This configuration is not tied to a Mendix user. |
+| `stateStorageAttr` | attribute |  |  | on change → `onConfigurationChange` | Personalization::Configuration | Attribute containing the personalized configuration of the capabilities. This configuration is automatically stored and loaded. The attribute requires Unlimited String. |
+| `onConfigurationChange` | action |  |  |  | Personalization::Configuration | On change |
+| `storeFilters` | boolean | Yes | true |  | Personalization::Configuration | Store filters |
+| `storeSort` | boolean | Yes | true |  | Personalization::Configuration | Store sort |
+| `filterSectionTitle` | textTemplate |  |  |  | Accessibility::Aria labels | Assistive technology will read this upon reaching a filtering or sorting section. |
+| `emptyMessageTitle` | textTemplate |  |  |  | Accessibility::Aria labels | Assistive technology will read this upon reaching an empty message section. |
+| `ariaLabelListBox` | textTemplate |  |  |  | Accessibility::Aria labels | Assistive technology will read this upon reaching gallery. |
+| `ariaLabelItem` | textTemplate |  |  |  | Accessibility::Aria labels | Assistive technology will read this upon reaching each gallery item. |
+| `selectedCountTemplateSingular` | textTemplate |  |  |  | Accessibility::Aria labels | Must include '%d' to denote number position ('%d item selected') |
+| `selectedCountTemplatePlural` | textTemplate |  |  |  | Accessibility::Aria labels | Must include '%d' to denote number position ('%d items selected') |
 
+## Child Slots (curly-brace blocks)
+
+| MDL keyword | Widget property |
+|-------------|----------------|
+| `template` | `content` |
+| `emptyplaceholder` | `emptyPlaceholder` |
+| `filter` | `filtersPlaceholder` |
+
+---
+
+Regenerated by `mxcli widget docs` and by `refresh catalog`. For the same data live from the `.mpk` — including anything added by a widget upgrade since this file was written — run `mxcli widget describe gallery -p <app.mpr>`.

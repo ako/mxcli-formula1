@@ -1,0 +1,254 @@
+/*
+ * Screen 3 of 5 — Weekend.
+ * ========================
+ *
+ * One Grand Prix, every session.
+ *
+ * The parameter is a Calendar row rather than a race id, so the round chips
+ * and the season screen can both hand it over as an object, and the URL can
+ * carry it. That only works because Read_Calendar answers a lookup by key —
+ * resolving `{Race}` back into an object is exactly the read that used to fall
+ * through to the collection default. FINDINGS §37.
+ *
+ * The comp's argument here is that a weekend is three questions, not one: who
+ * was quick on Friday, who was quick when it counted, and who was quick over a
+ * race distance. The slopegraph answers the first two by drawing the change,
+ * the dot plot answers the third by putting every session on one gap axis, and
+ * the table is where the reader checks either of them.
+ */
+
+create or replace page Formula1Frontend.Weekend
+(
+  title: 'Race weekend',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'weekend/{Race}',
+  Params: { $Race: F1Fan.Calendar }
+)
+{
+  container pageBody {
+
+    /*
+     * The round chips. The comp replaces the previous/next buttons with the
+     * whole calendar, so any round is one click from any other and the current
+     * one is marked rather than described.
+     */
+    container chipsRow (class: 'chips-row') {
+      listview lvRounds (datasource: MICROFLOW Formula1Frontend.DS_WeekendRounds(Race: $Race),
+                         PageSize: 30) {
+        container chipRound (
+          class: 'chip-pick',
+          dynamicclasses: 'if $currentObject/round = $Race/round then ''is-picked'' else ''''',
+          OnClick: SHOW_PAGE Formula1Frontend.Weekend(Race: $currentObject)
+        ) {
+          dynamictext chipCode (content: '{1}', contentparams: [{1} = code])
+        }
+      }
+    }
+
+    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race)) {
+      container head (class: 'pagehead') {
+        container headMain (class: 'pagehead-main') {
+          dynamictext eyebrow (content: '{1}', contentparams: [{1} = roundLabel],
+                               class: 'pagehead-eyebrow')
+          dynamictext title (content: '{1}', contentparams: [{1} = name],
+                             rendermode: H2, class: 'pagehead-title')
+          dynamictext sub (content: '{1} · {2} laps · {3} km',
+            contentparams: [{1} = circuitName, {2} = laps, {3} = distance],
+            class: 'pagehead-sub')
+        }
+        container headBadge (class: 'pagehead-badge') {
+          dynamictext rnd (content: 'R{1}', contentparams: [{1} = round])
+        }
+      }
+
+      /*
+       * Who took what. Four cards rather than a sentence, because each one is
+       * a different session and the comp treats them as peers.
+       */
+      container hlCards (class: 'hl-cards') {
+        container hcWin (class: 'hl-card hl-card-win') {
+          dynamictext hcWinL (content: 'Winner', class: 'hl-label')
+          dynamictext hcWinV (content: '{1}', contentparams: [{1} = winnerName],
+                              class: 'hl-value hl-value-name')
+          dynamictext hcWinS (content: '{1}', contentparams: [{1} = winnerTeam],
+                              class: 'hl-sub')
+        }
+        container hcPole (class: 'hl-card hl-card-pole') {
+          dynamictext hcPoleL (content: 'Pole', class: 'hl-label')
+          dynamictext hcPoleV (content: '{1}', contentparams: [{1} = poleName],
+                               class: 'hl-value hl-value-name')
+          dynamictext hcPoleS (content: '{1}', contentparams: [{1} = poleTime],
+                               class: 'hl-sub')
+        }
+        container hcFast (class: 'hl-card') {
+          dynamictext hcFastL (content: 'Fastest lap', class: 'hl-label')
+          dynamictext hcFastV (content: '{1}', contentparams: [{1} = fastestLapName],
+                               class: 'hl-value hl-value-name')
+          dynamictext hcFastS (content: '{1}', contentparams: [{1} = fastestLapTime],
+                               class: 'hl-sub')
+        }
+        container hcFp (class: 'hl-card') {
+          dynamictext hcFpL (content: 'Quickest in practice', class: 'hl-label')
+          dynamictext hcFpV (content: '{1}', contentparams: [{1} = fp3LeaderName],
+                             class: 'hl-value hl-value-name')
+          dynamictext hcFpS (content: 'FP3 · {1}', contentparams: [{1} = fp3LeaderTime],
+                             class: 'hl-sub')
+        }
+      }
+
+      /*
+       * The circuit itself.
+       *
+       * Traced from OpenStreetMap way geometry rather than copied from a
+       * diagram, which is what lets the panel say how far the trace was from
+       * the length f1db records — a drawing cannot be checked, and an outline
+       * that disagreed by more than a few per cent was never written in the
+       * first place.
+       *
+       * A circuit with no outline shows no panel: the ones that could not be
+       * stitched into a closed loop are absent rather than approximated.
+       */
+      dataview dvCircuit (
+        datasource: MICROFLOW Formula1Frontend.DS_CircuitOutline(Weekend: $currentObject),
+        class: 'panel'
+      ) {
+        container circuitHead (class: 'panel-head') {
+          dynamictext circuitTitle (content: '{1}', contentparams: [{1} = fullName],
+                                    class: 'panel-title')
+          dynamictext circuitSub (
+            content: 'traced {1} km against the {2} km on record · {3} · {4}',
+            contentparams: [{1} = tracedKm, {2} = officialKm, {3} = attribution,
+                            {4} = license],
+            class: 'panel-sub')
+        }
+        container circuitBody (class: 'circuit-figure') {
+          dataview dvCircuitChart (
+            datasource: MICROFLOW Formula1Frontend.DSJ_CircuitOutline(Outline: $currentObject)
+          ) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCircuit (
+              chartData: json,
+              datasetName: 'table',
+              chartHeight: 0,
+              renderer: 'svg',
+              showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":360,"height":360,"mark":{"type":"line","strokeWidth":3,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round","interpolate":"cardinal","tension":0.85},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false,"reverse":true}},"order":{"field":"i","type":"quantitative"}}}')
+          }
+        }
+      }
+    }
+
+    container weekSplit (class: 'split') {
+
+      container slopePanel (class: 'panel') {
+        container slopeHead (class: 'panel-head') {
+          dynamictext slopeTitle (content: 'Practice → qualifying → race',
+                                  class: 'panel-title')
+          dynamictext slopeSub (
+            content: 'position through the weekend · a line that falls to the right gained places',
+            class: 'panel-sub')
+        }
+        dataview dvShape (
+          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendShape(Race: $Race)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartShape (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":380,"layer":[{"mark":{"type":"line","strokeWidth":1.4},"encoding":{"x":{"field":"session","type":"ordinal","title":null,"sort":null},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"session","title":"Session"},{"field":"pos","title":"Position"}]}},{"mark":{"type":"point","filled":true,"size":34},"encoding":{"x":{"field":"session","type":"ordinal","sort":null},"y":{"field":"pos","type":"quantitative","scale":{"reverse":true,"zero":false,"nice":false}},"color":{"field":"driver","type":"nominal","legend":null},"tooltip":[{"field":"driver","title":"Driver"},{"field":"session","title":"Session"},{"field":"pos","title":"Position"}]}}]}')
+        }
+      }
+
+      container pacePanel (class: 'panel') {
+        container paceHead (class: 'panel-head') {
+          dynamictext paceTitle (content: 'Pace by session', class: 'panel-title')
+          dynamictext paceSub (
+            content: 'gap to the quickest lap of that session, in seconds · nearer the left is quicker',
+            class: 'panel-sub')
+        }
+        dataview dvPace (
+          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendPace(Race: $Race)
+        ) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPace (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":380,"mark":{"type":"point","filled":true,"size":60},"encoding":{"x":{"field":"gap","type":"quantitative","title":"Gap to session best (s)","scale":{"zero":true,"nice":true}},"y":{"field":"driver","type":"nominal","title":null,"sort":{"field":"gap","op":"min","order":"ascending"}},"color":{"field":"session","type":"nominal","title":null,"scale":{"domain":["FP1","FP2","FP3","Qualifying","Race"],"range":["#565F6B","#8B949E","#C9D1D9","#A78BFA","#2DD4BF"]},"legend":{"orient":"top","offset":4}},"shape":{"field":"session","type":"nominal","legend":null},"tooltip":[{"field":"driver","title":"Driver"},{"field":"session","title":"Session"},{"field":"gap","title":"Gap (s)"}]}}')
+        }
+      }
+    }
+
+    /*
+     * Session by session. Δ is grid to finish: positive gained, negative lost,
+     * coloured by DynamicCellClass so the sign is legible without reading it.
+     */
+    container sessPanel (class: 'panel') {
+      container sessHead (class: 'panel-head') {
+        dynamictext sessTitle (content: 'Session by session', class: 'panel-title')
+        dynamictext sessSub (content: 'Δ is grid to finish · row opens the driver',
+                             class: 'panel-sub')
+      }
+      container sessGrid (class: 'grid-dense') {
+        datagrid dgSessions (
+          datasource: MICROFLOW Formula1Frontend.DS_WeekendSessions(Race: $Race),
+          PageSize: 24,
+          PagingPosition: bottom,
+          OnClick: MICROFLOW Formula1Frontend.ACT_OpenDriverSession(Row: $currentObject)
+        ) {
+          column colPos (attribute: positionText, caption: 'P', Alignment: right)
+          column colAbbr (attribute: abbreviation, caption: 'Code')
+          column colDriver (attribute: driverName, caption: 'Driver')
+          column colTeam (attribute: constructorName, caption: 'Team')
+          column colFp1 (attribute: fp1Position, caption: 'FP1', Alignment: right)
+          column colFp2 (attribute: fp2Position, caption: 'FP2', Alignment: right)
+          column colFp3 (attribute: fp3Position, caption: 'FP3', Alignment: right)
+          column colQual (attribute: qualPosition, caption: 'Q', Alignment: right)
+          column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
+          column colFinish (attribute: finishPosition, caption: 'Race', Alignment: right)
+          column colDelta (attribute: positionsGained, caption: 'Δ', Alignment: right,
+            DynamicCellClass:
+              'if $currentObject/positionsGained = empty then ''delta-flat''
+               else if $currentObject/positionsGained > 0 then ''delta-up''
+               else if $currentObject/positionsGained < 0 then ''delta-down''
+               else ''delta-flat''')
+          column colBest (attribute: bestLapTime, caption: 'Best', Alignment: right)
+          column colStops (attribute: pitStops, caption: 'St', Alignment: right)
+          column colPts (attribute: points, caption: 'Pts', Alignment: right)
+        }
+      }
+    }
+
+    /*
+     * Position by lap for the race itself. Jolpica's lap traces, ten cars wide
+     * — the same picture the live screen draws from OpenF1, for a race that is
+     * already history.
+     */
+    container lapPanel (class: 'panel') {
+      container lapHead (class: 'panel-head') {
+        dynamictext lapTitle (content: 'Position by lap', class: 'panel-title')
+        dynamictext lapSub (content: 'the ten who finished highest · first place at the top',
+                            class: 'panel-sub')
+      }
+      dataview dvLapChart (
+        datasource: MICROFLOW Formula1Frontend.DSJ_LapChart(Race: $Race)
+      ) {
+        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartLaps (
+          chartData: json,
+          datasetName: 'table',
+          chartHeight: 0,
+          renderer: 'svg',
+          showActions: false,
+          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":320,"mark":{"type":"line","strokeWidth":1.3,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"driver","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"driver","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
+      }
+    }
+
+    container note (class: 'data-note') {
+      dynamictext noteLead (content: 'Where this comes from', class: 'data-note-lead')
+      dynamictext noteBody (
+        content: 'Classifications, grids and lap times are f1db. The lap traces behind the position chart are Jolpica-F1, the successor to Ergast; a race with no trace draws an empty chart rather than a guessed one. Gaps are computed against the quickest lap of each session, not carried in the source.')
+    }
+  }
+}

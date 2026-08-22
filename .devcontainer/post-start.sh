@@ -12,9 +12,59 @@ if [ -n "$PGVER" ]; then
   pg_ctlcluster "$PGVER" main start 2>/dev/null || service postgresql start || true
 fi
 
+# ----------------------------------------------------------------------- ssh
+DCDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Host keys are baked into the IMAGE (they are generated during the build, and
+# say root@buildkitsandbox), not per container. So every image rebuild hands the
+# container a brand new identity, and the client you connect from -- which
+# rightly treats a changed host key as a possible man-in-the-middle -- refuses
+# with "Host key verification failed" and makes you clear known_hosts again.
+#
+# Restoring one pinned set from the bind-mounted workspace makes the container's
+# identity stable across rebuilds, so you trust it once and never again. Copied
+# in BEFORE sshd starts, or it would come up on the old keys.
+#
+# The directory is gitignored: these are private host keys, and a shared one
+# would let anyone holding the repo impersonate somebody else's container. Treat
+# it as local-only. Delete the directory to go back to per-image keys.
+HOSTKEYS="$DCDIR/ssh_host_keys"
+if [ -d "$HOSTKEYS" ] && [ -n "$(ls -A "$HOSTKEYS" 2>/dev/null)" ]; then
+  cp -a "$HOSTKEYS"/ssh_host_*_key "$HOSTKEYS"/ssh_host_*_key.pub /etc/ssh/ 2>/dev/null || true
+  chown root:root /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub
+  chmod 600 /etc/ssh/ssh_host_*_key
+  chmod 644 /etc/ssh/ssh_host_*_key.pub
+  echo "ssh: restored pinned host keys ($(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}'))"
+fi
+
 # sshd is installed by the devcontainer feature but is likewise not started for
 # us. Harmless when you are using VS Code or the CLI instead of the desktop app.
 service ssh start 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
+
+# ~/.ssh is not on a named volume, so an authorized key does not survive a
+# rebuild -- which is why authorising used to be a once-per-rebuild chore run
+# from the host. authorized_keys.local lives in the bind-mounted workspace
+# instead, so it outlives both a rebuild and a `docker volume prune`, and this
+# re-installs from it on every start. It is gitignored: it is your key, not the
+# repo's. Public keys are not secrets; no private key ever enters the container.
+#
+# Merged rather than overwritten, so a key pushed in by authorize-ssh-key.sh
+# (still the right tool for adding a second machine) is not clobbered.
+KEYSRC="$DCDIR/authorized_keys.local"
+if [ -s "$KEYSRC" ]; then
+  AK=/home/vscode/.ssh/authorized_keys
+  install -d -m 700 -o vscode -g vscode /home/vscode/.ssh
+  touch "$AK"
+  cat "$KEYSRC" >> "$AK"
+  # Drop blanks and comment lines that the concatenation may have introduced.
+  # The `|| true` matters: grep exits 1 on no match, which under `set -e` would
+  # take the whole script down rather than leaving an empty key list.
+  { grep -v '^[[:space:]]*\(#\|$\)' "$AK" || true; } | sort -u > "$AK.tmp"
+  mv "$AK.tmp" "$AK"
+  chown vscode:vscode "$AK"
+  chmod 600 "$AK"
+  echo "ssh: authorized $(wc -l < "$AK") key(s) for vscode"
+fi
 
 # ------------------------------------------------------------- app forwarders
 # The Mendix runtime binds 127.0.0.1 only — mxcli reports "app serving at

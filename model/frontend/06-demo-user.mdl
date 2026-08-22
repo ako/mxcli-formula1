@@ -1,7 +1,0 @@
-/*
- * Demo user, split out of 05 because that script is not re-runnable —
- * `create module role` has no `or modify` form, so re-executing 05 stops at the
- * first role that already exists. This file is safe on its own.
- */
-
-CREATE DEMO USER 'fan' PASSWORD 'F1Enthusiast!2345' (Enthusiast);

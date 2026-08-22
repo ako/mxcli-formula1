@@ -36,9 +36,16 @@ and `14`, whose documents it moves.
 The clean fix is to split `06` into roles-then-grants so the cycle breaks and
 one pass suffices. Not done; the two-pass loop above is verified.
 
-The frontend has the same shape and needs three passes — its page scripts
-cross-reference each other's pages (`04` opens `Driver_Career` from `07`, which
-opens `Race_Weekend` from `08`).
+The frontend has the same shape and needs two passes, for a sharper reason: the
+five screens link to each other, and three of them link to *themselves*. The
+chip row along the top of the weekend, constructor and driver screens opens a
+sibling of the same kind, so `08-weekend.mdl` names `Formula1Frontend.Weekend`
+inside the definition of `Formula1Frontend.Weekend`. A first pass cannot resolve
+that — there is nothing to resolve it to yet — so the first pass over those
+three fails and the second succeeds.
+
+From an empty project, create the five as bare shells first and the loop below
+converges in one pass.
 
 **`02-external-entities.mdl` must run exactly once**, so it is outside the loop:
 
@@ -46,8 +53,10 @@ opens `Race_Weekend` from `08`).
 cd Formula1Frontend
 ./mxcli exec ../model/frontend/01-odata-clients.mdl     -p Formula1Frontend.mpr
 ./mxcli exec ../model/frontend/02-external-entities.mdl -p Formula1Frontend.mpr   # ONCE
-for pass in 1 2 3; do
-  for f in ../model/frontend/0[3-9]-*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.mpr; done
+for pass in 1 2; do
+  for f in ../model/frontend/0[3-9]-*.mdl ../model/frontend/1[0-2]-*.mdl; do
+    ./mxcli exec "$f" -p Formula1Frontend.mpr
+  done
 done
 ```
 

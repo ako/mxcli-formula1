@@ -12,30 +12,33 @@ PLUGGABLEWIDGET 'com.mendix.widget.custom.slider.Slider' widget1
 
 ## Properties
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `valueAttribute` | attribute | Yes |  |  |
-| `advanced` | boolean | Yes | false |  |
-| `minValueType` | enumeration | Yes | static |  |
-| `staticMinimumValue` | decimal | Yes | 0 | The minimum value of the slider. |
-| `minAttribute` | attribute |  |  | The minimum value of the slider. |
-| `expressionMinimumValue` | expression |  |  | The minimum value of the slider. |
-| `maxValueType` | enumeration | Yes | static |  |
-| `staticMaximumValue` | decimal | Yes | 100 | The maximum value of the slider. |
-| `maxAttribute` | attribute |  |  | The maximum value of the slider. |
-| `expressionMaximumValue` | expression |  |  | The maximum value of the slider. |
-| `stepSizeType` | enumeration | Yes | static |  |
-| `stepValue` | decimal | Yes | 1 | Value to be added or subtracted on each step the slider makes. Must be greate... |
-| `stepAttribute` | attribute |  |  | Value to be added or subtracted on each step the slider makes. Must be greate... |
-| `expressionStepSize` | expression |  |  | Value to be added or subtracted on each step the slider makes. Must be greate... |
-| `showTooltip` | boolean | Yes | true |  |
-| `tooltipType` | enumeration | Yes | value | By default tooltip shows current value. Choose 'Custom' to create your own te... |
-| `tooltip` | textTemplate |  |  |  |
-| `tooltipAlwaysVisible` | boolean | Yes | false | When enabled tooltip is always visible to the user |
-| `noOfMarkers` | integer | Yes | 2 | The number of marker ticks that appear along the slider’s track. (Visible w... |
-| `decimalPlaces` | integer | Yes | 0 | Number of decimal places for marker values |
-| `orientation` | enumeration | Yes | horizontal | The orientation of the slider. If ‘Vertical’, make sure to set the either... |
-| `heightUnit` | enumeration | Yes | percentage |  |
-| `height` | integer | Yes | 100 |  |
-| `onChange` | action |  |  |  |
+| Property | Type | Required | Default | Values / notes | Group | Description |
+|----------|------|----------|---------|----------------|-------|-------------|
+| `valueAttribute` | attribute | Yes |  |  | General::Data source | Value attribute |
+| `advanced` | boolean | Yes | false |  | General::General | Enable advanced options |
+| `minValueType` | enumeration | Yes | static | `static` \| `dynamic` \| `expression` | General::General | Minimum value type |
+| `staticMinimumValue` | decimal | Yes | 0 |  | General::General | The minimum value of the slider. |
+| `minAttribute` | attribute |  |  |  | General::General | The minimum value of the slider. |
+| `expressionMinimumValue` | expression |  |  |  | General::General | The minimum value of the slider. |
+| `maxValueType` | enumeration | Yes | static | `static` \| `dynamic` \| `expression` | General::General | Maximum value type |
+| `staticMaximumValue` | decimal | Yes | 100 |  | General::General | The maximum value of the slider. |
+| `maxAttribute` | attribute |  |  |  | General::General | The maximum value of the slider. |
+| `expressionMaximumValue` | expression |  |  |  | General::General | The maximum value of the slider. |
+| `stepSizeType` | enumeration | Yes | static | `static` \| `dynamic` \| `expression` | General::General | Step size type |
+| `stepValue` | decimal | Yes | 1 |  | General::General | Value to be added or subtracted on each step the slider makes. Must be greater than zero, and max - min should be evenly divisible by the step value. |
+| `stepAttribute` | attribute |  |  |  | General::General | Value to be added or subtracted on each step the slider makes. Must be greater than zero, and max - min should be evenly divisible by the step value. |
+| `expressionStepSize` | expression |  |  |  | General::General | Value to be added or subtracted on each step the slider makes. Must be greater than zero, and max - min should be evenly divisible by the step value. |
+| `showTooltip` | boolean | Yes | true |  | General::General | Show tooltip |
+| `tooltipType` | enumeration | Yes | value | `value` \| `customText` | General::General | By default tooltip shows current value. Choose 'Custom' to create your own template. |
+| `tooltip` | textTemplate |  |  |  | General::General | Tooltip |
+| `tooltipAlwaysVisible` | boolean | Yes | false |  | General::General | When enabled tooltip is always visible to the user |
+| `noOfMarkers` | integer | Yes | 2 |  | Track::Track | The number of marker ticks that appear along the slider’s track. (Visible when larger than 0) |
+| `decimalPlaces` | integer | Yes | 0 |  | Track::Track | Number of decimal places for marker values |
+| `orientation` | enumeration | Yes | horizontal | `horizontal` \| `vertical` | Track::Track | The orientation of the slider. If ‘Vertical’, make sure to set the either the height of the parent or slider to a fixed height. |
+| `heightUnit` | enumeration | Yes | percentage | `percentage` \| `pixels` | Track::Track | Height unit |
+| `height` | integer | Yes | 100 |  | Track::Track | Height |
+| `onChange` | action |  |  |  | Events::Events | On change |
 
+---
+
+Regenerated by `mxcli widget docs` and by `refresh catalog`. For the same data live from the `.mpk` — including anything added by a widget upgrade since this file was written — run `mxcli widget describe slider -p <app.mpr>`.

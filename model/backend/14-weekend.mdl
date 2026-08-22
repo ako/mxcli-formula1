@@ -496,6 +496,121 @@ END;
  * partial modify.
  */
 
+/* ------------------------------------------------------- circuit outlines -- */
+
+/*
+ * The shape of a track, as an SVG path, so a weekend page can draw the circuit
+ * it is about.
+ *
+ * Traced from OpenStreetMap way geometry by scripts/fetch-circuit-outlines.py
+ * rather than copied from one of the Wikipedia diagrams. The diagrams are
+ * drawings — each hand-authored, each with its own viewBox and its own embedded
+ * labels — so using them means cleaning seventy files by hand and trusting the
+ * result. OpenStreetMap maps a circuit as a chain of one-way ways carrying real
+ * coordinates, usually one per named corner, and stitching them in racing order
+ * gives a closed loop that can be *measured*: every outline is checked against
+ * the length f1db records, and one that disagrees by more than a few per cent
+ * is left out rather than shown.
+ *
+ * A fifth resource on the fan service rather than a service of its own, unlike
+ * the OpenF1 timing in 15. The freshness contract is the same as the rest of
+ * F1FanApi — a file that changes when someone re-runs a script — and the
+ * licence, while not f1db's, is another attribution-carrying open licence
+ * rather than a different kind of promise. It travels in the row.
+ */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CircuitOutlines (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_CircuitOutline AS $Rows
+BEGIN
+  /*
+   * `circuitId` is the key, which is what makes a weekend page's lookup work
+   * without a text-filter helper: the page asks for the one circuit it is about
+   * and the same call answers `?$filter=circuitId eq 'zandvoort'`,
+   * `/CircuitOutlines('zandvoort')` and the bare collection. FINDINGS §37 is the
+   * failure this avoids — an ignored key filter hands back the first row and
+   * the client adopts it as that object's identity for the rest of the session.
+   */
+  DECLARE $Cols String = 'circuitId:circuitId:text,name:name:text,'
+    + 'fullName:fullName:text,viewBox:viewBox:text,pathD:pathD:text,'
+    + 'points:points:number,tracedKm:tracedKm:number,'
+    + 'officialKm:officialKm:number,deltaPercent:deltaPercent:number,'
+    + 'source:source:text,license:license:text,attribution:attribution:text';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 1000000, DefaultTop = 1000000, DefaultOrderBy = '',
+    KeyField = 'circuitId', RejectUnsupported = false);
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuitOutlines
+    (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+     topN = toString($Q/Top), skipN = toString($Q/Skip),
+     sortCol = $Q/SortColumn1, sortDir = $Q/SortDirection1);
+
+  /*
+   * $count is the size of the whole filtered set, not of the page — a grid
+   * draws its scrollbar from it. Only computed when the client asks, so an
+   * unpaged read still costs one scan.
+   */
+  IF $Q/WantsCount = true THEN
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetCircuitOutlines
+      (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
+       topN = '1000000', skipN = '0',
+       sortCol = '', sortDir = 'A');
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CircuitPoints (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_CircuitPoint AS $Rows
+BEGIN
+  /*
+   * Full pushdown rather than key-only, because this is the one circuit
+   * resource a page reads as a *collection*: it wants four hundred points for
+   * one circuit out of nine thousand for twenty-two. `?$filter=circuitId eq
+   * 'zandvoort'` becomes a real WHERE through $Q/FilterSql, so the scan is
+   * narrowed at the file rather than the rows discarded after crossing the
+   * wire.
+   */
+  DECLARE $Cols String = 'pointKey:pointKey:text,circuitId:circuitId:text,'
+    + 'seq:i:number,x:x:number,y:y:number';
+  $Q = CALL JAVA ACTION ODataPushdown.Parse(
+    Uri = $Request/Uri, Columns = $Cols, Dialect = 'duckdb',
+    MaxTop = 20000, DefaultTop = 20000, DefaultOrderBy = 'circuitId ASC, i ASC',
+    KeyField = 'pointKey', RejectUnsupported = false);
+
+  DECLARE $Csv String = 'read_csv(''' + @Formula1Backend.DataDir
+    + '/../circuits/f1db-circuit-points.csv'', header = true,'
+    + ' columns = {''circuitId'': ''VARCHAR'', ''i'': ''BIGINT'','
+    + ' ''x'': ''DOUBLE'', ''y'': ''DOUBLE''})';
+
+  DECLARE $Sql String = 'SELECT circuitId || ''-'' || i AS pointKey, circuitId,'
+    + ' i AS seq, x, y FROM ' + $Csv + $Q/FilterSql + $Q/OrderBySql;
+
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetCircuitPoints
+    dynamic $Sql
+    (dataDir = @Formula1Backend.DataDir);
+
+  IF $Q/WantsCount = true THEN
+    DECLARE $CountSql String = 'SELECT circuitId || ''-'' || i AS pointKey,'
+      + ' circuitId, i AS seq, x, y FROM ' + $Csv + $Q/FilterSql;
+    $AllRows = execute database query Formula1Backend.F1Warehouse.GetCircuitPoints
+      dynamic $CountSql
+      (dataDir = @Formula1Backend.DataDir);
+    $Total = COUNT($AllRows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+
+  RETURN $Rows;
+END;
+
 create or modify odata service Formula1Backend.F1FanApi (
   path: 'odata/f1-fan/',
   version: '1.0.0',
@@ -810,6 +925,46 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     SourceUrl as 'sourceUrl' (Filterable, Sortable),
     License as 'license' (Filterable, Sortable)
   );
+
+  /*
+   * `circuitId` is the key, which is what lets a weekend page ask for the one
+   * circuit it is about without a text-filter helper: the same call answers
+   * `?$filter=circuitId eq 'zandvoort'`, `/CircuitOutlines('zandvoort')` and the
+   * bare collection.
+   */
+  publish entity Formula1Backend.Stg_CircuitOutline as 'CircuitOutlines' (
+    ReadMode: microflow Formula1Backend.Read_CircuitOutlines,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    CircuitId as 'circuitId' (KEY, Filterable, Sortable),
+    Name as 'name' (Filterable, Sortable),
+    FullName as 'fullName' (Filterable, Sortable),
+    ViewBox as 'viewBox' (Filterable, Sortable),
+    PathD as 'pathD' (Filterable, Sortable),
+    Points as 'points' (Filterable, Sortable),
+    TracedKm as 'tracedKm' (Filterable, Sortable),
+    OfficialKm as 'officialKm' (Filterable, Sortable),
+    DeltaPercent as 'deltaPercent' (Filterable, Sortable),
+    Source as 'source' (Filterable, Sortable),
+    License as 'license' (Filterable, Sortable),
+    Attribution as 'attribution' (Filterable, Sortable)
+  );
+
+  /* The same outline as vertices, for a chart rather than an SVG. */
+  publish entity Formula1Backend.Stg_CircuitPoint as 'CircuitPoints' (
+    ReadMode: microflow Formula1Backend.Read_CircuitPoints,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    PointKey as 'pointKey' (KEY, Filterable, Sortable),
+    CircuitId as 'circuitId' (Filterable, Sortable),
+    Seq as 'seq' (Filterable, Sortable),
+    X as 'x' (Filterable, Sortable),
+    Y as 'y' (Filterable, Sortable)
+  );
 };
 
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_RaceWeekend TO Formula1Backend.ApiUser;
@@ -837,3 +992,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.Data
  */
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
 GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitOutlines TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitOutlines TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitPoints TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitPoints TO Formula1Backend.DataAdmin;

@@ -287,3 +287,149 @@ BEGIN
   DECLARE $Year Long = $Standing/year;
   RETURN $Year;
 END;
+
+/* ---------------------------------------------------- the redesign's new -- */
+
+/*
+ * The drivers' championship table joins two resources — DriverStandings for
+ * who finished where, DriverSeasons for wins, podiums and poles — matched on
+ * driverId. These two check that the join lands: the row count comes from the
+ * standings, and the champion's win count only exists if the other side
+ * matched.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988DriverRows ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverRows (Season = $Season);
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988ChampionWins ()
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $N Long = -1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverRows (Season = $Season);
+  LOOP $R IN $Rows BEGIN
+    IF $R/PositionOrder = 1 AND $R/Wins != empty THEN
+      SET $N = $R/Wins;
+    END IF;
+  END LOOP;
+  RETURN $N;
+END;
+
+/*
+ * The small multiples read a whole season of results in one call and keep the
+ * ten drivers who finished highest. Sixteen rounds times ten drivers is the
+ * number of points on the grid — minus nobody, because a retirement still
+ * travels as a row so the panel can mark it.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988Multiples ()
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $N Long = 0;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_SeasonMultiples (Season = $Season);
+  IF $Chart != empty THEN
+    SET $N = length($Chart/json);
+  END IF;
+  RETURN $N;
+END;
+
+/*
+ * The three live charts.
+ *
+ * They assert shape, not size: the snapshot in data/live/ is whatever the last
+ * successful fetch wrote, and OpenF1 refuses unauthenticated requests while a
+ * session is running, so a count here would fail for a reason that has nothing
+ * to do with the code. An empty session yields '[]', which is two characters
+ * and still valid JSON — what these catch is a microflow that threw or built a
+ * string the widget cannot parse.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveChartsBuild ()
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $N Long = 0;
+  $Gaps = CALL MICROFLOW Formula1Frontend.DSJ_LiveGaps ();
+  $Pos  = CALL MICROFLOW Formula1Frontend.DSJ_LivePositions ();
+  $Stints = CALL MICROFLOW Formula1Frontend.DSJ_LiveStints ();
+  IF $Gaps != empty AND length($Gaps/json) >= 2 THEN
+    SET $N = $N + 1;
+  END IF;
+  IF $Pos != empty AND length($Pos/json) >= 2 THEN
+    SET $N = $N + 1;
+  END IF;
+  IF $Stints != empty AND length($Stints/json) >= 2 THEN
+    SET $N = $N + 1;
+  END IF;
+  RETURN $N;
+END;
+
+/*
+ * The circuit outline. Austin is on the current calendar and OpenStreetMap maps
+ * it as a clean closed loop, so it is the one to assert on; a circuit whose
+ * trace did not measure up is absent from the resource by design, which is what
+ * the second of these checks.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints ()
+  RETURNS Long AS $N
+BEGIN
+  /*
+   * Read straight off the resource rather than through DS_CircuitPoints, so
+   * this also proves the circuitId filter is pushed down: unconstrained, the
+   * file holds every circuit's vertices, and a count that came back with all
+   * of them would mean the term was dropped on the way to the scan.
+   */
+  RETRIEVE $Rows FROM F1Fan.CircuitPoints WHERE circuitId = 'austin';
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+/*
+ * Traced against recorded: the number that says an outline is the circuit and
+ * not a pit lane or an old layout.
+ *
+ * Counts the ones that fall short rather than the ones that pass, so the
+ * expectation is zero however many circuits have been fetched. A test pinned to
+ * a count would fail the next time somebody widened the calendar, which teaches
+ * people to edit the number rather than read the failure.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect ()
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $N Long = 0;
+  RETRIEVE $All FROM F1Fan.CircuitOutlines;
+  LOOP $O IN $All BEGIN
+    IF $O/deltaPercent = empty OR $O/deltaPercent > 6.0
+       OR $O/pathD = empty OR $O/attribution = empty THEN
+      SET $N = $N + 1;
+    END IF;
+  END LOOP;
+  RETURN $N;
+END;
+
+/*
+ * The track map. Asserts the two halves separately, because they fail
+ * differently: an outline of nothing means the capture never ran, and cars
+ * without an outline means the map draws dots in a void.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_TrackOutlinePoints ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Now.TrackOutline;
+  $N = COUNT($Rows);
+  RETURN $N;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_TrackMapBuilds ()
+  RETURNS Long AS $N
+BEGIN
+  DECLARE $N Long = 0;
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_TrackMap ();
+  IF $Chart != empty THEN
+    SET $N = length($Chart/json);
+  END IF;
+  RETURN $N;
+END;

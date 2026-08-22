@@ -272,6 +272,33 @@
         <Property MaxLength="300" Name="sourceUrl" Type="Edm.String"/>
         <Property MaxLength="60" Name="license" Type="Edm.String"/>
       </EntityType>
+      <EntityType Name="Stg_CircuitOutline">
+        <Key>
+          <PropertyRef Name="circuitId"/>
+        </Key>
+        <Property MaxLength="60" Name="circuitId" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="120" Name="name" Type="Edm.String"/>
+        <Property MaxLength="200" Name="fullName" Type="Edm.String"/>
+        <Property MaxLength="40" Name="viewBox" Type="Edm.String"/>
+        <Property MaxLength="20000" Name="pathD" Type="Edm.String"/>
+        <Property Name="points" Type="Edm.Int64"/>
+        <Property Name="tracedKm" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="officialKm" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="deltaPercent" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="60" Name="source" Type="Edm.String"/>
+        <Property MaxLength="60" Name="license" Type="Edm.String"/>
+        <Property MaxLength="120" Name="attribution" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Stg_CircuitPoint">
+        <Key>
+          <PropertyRef Name="pointKey"/>
+        </Key>
+        <Property MaxLength="70" Name="pointKey" Nullable="false" Type="Edm.String"/>
+        <Property MaxLength="60" Name="circuitId" Type="Edm.String"/>
+        <Property Name="seq" Type="Edm.Int64"/>
+        <Property Name="x" Scale="variable" Type="Edm.Decimal"/>
+        <Property Name="y" Scale="variable" Type="Edm.Decimal"/>
+      </EntityType>
       <EntityContainer Name="Entities">
         <EntitySet EntityType="Formula1Backend.Fan.Stg_RaceWeekend" Name="RaceWeekend">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
@@ -703,6 +730,84 @@
           </Annotation>
         </EntitySet>
         <EntitySet EntityType="Formula1Backend.Fan.Stg_Fact" Name="Facts">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_CircuitOutline" Name="CircuitOutlines">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Fan.Stg_CircuitPoint" Name="CircuitPoints">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
             <Record>
               <PropertyValue Bool="false" Property="Insertable"/>

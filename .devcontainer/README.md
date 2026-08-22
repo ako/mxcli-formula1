@@ -39,18 +39,90 @@ those attach to a container directly, so SSH is the way in, and it is a
 documented one: the docs name dev containers as an SSH target. That is why this
 config includes the `sshd` feature and publishes 2222.
 
-```bash
-./.devcontainer/authorize-ssh-key.sh
-```
-
-Run that on your Mac once per rebuild. It pushes your public key in and prints
-the connection settings to paste into **+ Add SSH connection**:
+Paste these into **+ Add SSH connection**:
 
 | Field | Value |
 |---|---|
 | SSH Host | `vscode@localhost` |
 | SSH Port | `2222` |
-| Identity File | `~/.ssh/id_ed25519` |
+| Identity File | the private key, on the machine you connect *from* |
+
+The `vscode` account has no password — it is locked, deliberately — so pubkey is
+the only way in. Two ways to get a key authorised:
+
+**A generated pair, which is what this repo is set up for.** If
+`.devcontainer/authorized_keys.local` exists, `post-start.sh` installs it into
+`~/.ssh/authorized_keys` on every container start. That file is in the
+bind-mounted workspace rather than in `~/.ssh`, which is *not* on a volume — so
+the key outlives a rebuild and a `docker volume prune` alike, and authorising
+stops being a once-per-rebuild chore. It is gitignored, along with the private
+key beside it: they are yours, not the repo's.
+
+To mint a fresh pair (in the container):
+
+```bash
+ssh-keygen -t ed25519 -N '' -f .devcontainer/id_ed25519_devcontainer
+cp .devcontainer/id_ed25519_devcontainer.pub .devcontainer/authorized_keys.local
+sudo bash .devcontainer/post-start.sh          # installs it now, no rebuild needed
+```
+
+Then copy `id_ed25519_devcontainer` to the machine you connect from, `chmod 600`
+it there, and point Identity File at it. Once it is off the container you can
+delete the container's copy — `authorized_keys.local` is the public half and is
+all that is needed to keep letting you in.
+
+**Your existing key, pushed from the host.** Still the right tool for adding a
+second machine, and it does not disturb the above — `post-start.sh` merges
+rather than overwrites:
+
+```bash
+./.devcontainer/authorize-ssh-key.sh          # run on your Mac, not in here
+```
+
+That one lands only in `~/.ssh/authorized_keys`, so it lasts until the next
+rebuild. Append the key to `authorized_keys.local` as well to make it stick.
+
+Check either from the host with:
+
+```bash
+ssh -p 2222 -i <private-key> vscode@localhost
+```
+
+### "Host key verification failed"
+
+The `sshd` feature generates host keys during the image **build**, so they are a
+property of the image, not of the container — they say `root@buildkitsandbox`.
+Rebuild the image and the container's identity changes underneath you; your
+client correctly treats that as a possible man-in-the-middle and refuses. The
+same happens if anything else ever answered on `localhost:2222`.
+
+`post-start.sh` pins one set from `.devcontainer/ssh_host_keys/` on every start,
+so the identity is now stable across rebuilds and you should hit this at most
+once. Clear the stale entry on the machine you connect from:
+
+```bash
+ssh-keygen -R '[localhost]:2222'
+```
+
+`ssh_host_keys/` is gitignored, and must stay that way — these are *private*
+host keys, and a committed one would let anyone with the repo impersonate
+somebody else's container. Delete the directory to go back to per-image keys.
+
+To re-pin after deliberately rotating them:
+
+```bash
+sudo cp -a /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub .devcontainer/ssh_host_keys/
+sudo chown -R vscode:vscode .devcontainer/ssh_host_keys
+```
+
+Nothing writes `/var/log/auth.log` in here — there is no syslog daemon — so
+sshd's own account of a failure goes nowhere by default. To see it:
+
+```bash
+sudo pkill -x sshd
+sudo /usr/sbin/sshd -E /var/log/sshd.log -o LogLevel=VERBOSE
+sudo tail -f /var/log/sshd.log
+```
 
 Desktop installs Claude Code on the far side itself the first time you connect,
 so the container does not ship it.

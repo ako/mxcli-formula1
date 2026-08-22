@@ -12,31 +12,36 @@ PLUGGABLEWIDGET 'com.mendix.widget.web.datagriddropdownfilter.DatagridDropdownFi
 
 ## Properties
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `baseType` | enumeration | Yes | attr |  |
-| `linkedDs` | datasource | Yes |  |  |
-| `attrChoice` | enumeration | Yes | auto | "Auto" works only when the widget is placed in a Data grid column. |
-| `attr` | attribute | Yes |  |  |
-| `auto` | boolean | Yes | true | Show options based on the references or the enumeration values and captions. |
-| `filterOptions` | object |  |  |  |
-| `refEntity` | association | Yes |  | Set the entity to enable filtering over association. |
-| `refOptions` | datasource |  |  | The options to show in the Drop-down filter widget. |
-| `refCaptionSource` | enumeration | Yes | attr |  |
-| `refCaption` | attribute |  |  |  |
-| `refCaptionExp` | expression |  |  |  |
-| `refSearchAttr` | attribute | Yes |  | Required when Filterable is set to yes |
-| `fetchOptionsLazy` | boolean | Yes | false | Lazy loading enables faster parent loading, but with personalization enabled,... |
-| `defaultValue` | expression |  |  | Empty option caption will be shown by default or if configured default value ... |
-| `filterable` | boolean | Yes | false |  |
-| `multiSelect` | boolean | Yes | false |  |
-| `emptyOptionCaption` | textTemplate |  |  |  |
-| `clearable` | boolean | Yes | true |  |
-| `selectedItemsStyle` | enumeration | Yes | text |  |
-| `selectionMethod` | enumeration | Yes | checkbox |  |
-| `valueAttribute` | attribute |  |  | Attribute used to store the last value of the filter. Associations are not su... |
-| `onChange` | action |  |  | Action to be triggered when the value or filter changes. |
-| `ariaLabel` | textTemplate |  |  | Assistive technology will read this upon reaching the input element. |
-| `emptySelectionCaption` | textTemplate |  |  | This text is shown if no options are selected. For example 'Select color' or ... |
-| `filterInputPlaceholderCaption` | textTemplate |  |  | This text is shown as placeholder for filterable filters. For example 'Type t... |
+| Property | Type | Required | Default | Values / notes | Group | Description |
+|----------|------|----------|---------|----------------|-------|-------------|
+| `baseType` | enumeration | Yes | attr | `attr` \| `ref` | General::Data source | Filter by |
+| `linkedDs` | datasource | Yes |  | list | General::Data source | Datasource to Filter |
+| `attrChoice` | enumeration | Yes | auto | `auto` \| `linked` | General::Data source | "Auto" works only when the widget is placed in a Data grid column. |
+| `attr` | attribute | Yes |  |  | General::Data source | Attribute |
+| `auto` | boolean | Yes | true |  | General::Data source | Show options based on the references or the enumeration values and captions. |
+| `filterOptions` | object |  |  | list; 2 sub-properties below | General::Data source | Options |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ `caption` | textTemplate | Yes |  |  |  | Caption |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ `value` | expression | Yes |  |  |  | Value |
+| `refEntity` | association | Yes |  |  | General::Data source | Set the entity to enable filtering over association. |
+| `refOptions` | datasource |  |  | list | General::Data source | The options to show in the Drop-down filter widget. |
+| `refCaptionSource` | enumeration | Yes | attr | `attr` \| `exp` | General::Data source | Caption source |
+| `refCaption` | attribute |  |  |  | General::Data source | Caption |
+| `refCaptionExp` | expression |  |  |  | General::Data source | Caption |
+| `refSearchAttr` | attribute | Yes |  |  | General::Data source | Required when Filterable is set to yes |
+| `fetchOptionsLazy` | boolean | Yes | false |  | General::Data source | Lazy loading enables faster parent loading, but with personalization enabled, value restoration will be limited. |
+| `defaultValue` | expression |  |  |  | General::General | Empty option caption will be shown by default or if configured default value matches none of the options |
+| `filterable` | boolean | Yes | false |  | General::General | Filterable |
+| `multiSelect` | boolean | Yes | false |  | General::General | Multiselect |
+| `emptyOptionCaption` | textTemplate |  |  |  | General::General | Empty option caption |
+| `clearable` | boolean | Yes | true |  | General::General | Clearable |
+| `selectedItemsStyle` | enumeration | Yes | text | `text` \| `boxes` | General::General | Show selected items as |
+| `selectionMethod` | enumeration | Yes | checkbox | `checkbox` \| `rowClick` | General::General | Selection method |
+| `valueAttribute` | attribute |  |  |  | General::Configurations | Attribute used to store the last value of the filter. Associations are not supported. |
+| `onChange` | action |  |  |  | General::Events | Action to be triggered when the value or filter changes. |
+| `ariaLabel` | textTemplate |  |  |  | Advanced::Accessibility | Assistive technology will read this upon reaching the input element. |
+| `emptySelectionCaption` | textTemplate |  |  |  | Advanced::Texts | This text is shown if no options are selected. For example 'Select color' or 'No options are selected'. |
+| `filterInputPlaceholderCaption` | textTemplate |  |  |  | Advanced::Texts | This text is shown as placeholder for filterable filters. For example 'Type to search'. |
 
+---
+
+Regenerated by `mxcli widget docs` and by `refresh catalog`. For the same data live from the `.mpk` — including anything added by a widget upgrade since this file was written — run `mxcli widget describe datagriddropdownfilter -p <app.mpr>`.

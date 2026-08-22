@@ -528,7 +528,58 @@ create or modify non-persistent entity Formula1Backend.Stg_LiveEntry (
   SpeedTrap: long,
   Compound: string(20),
   TyreAge: long,
-  PitStops: long
+  PitStops: long,
+  Drs: string(10),
+  Sector1Mark: string(1),
+  Sector2Mark: string(1),
+  Sector3Mark: string(1)
+);
+
+/*
+ * The history behind the snapshot: one row per driver per lap.
+ *
+ * Stg_LiveEntry is where everyone stands now; this is how they got there, and
+ * it is what the gap chart and the tower's position sparklines are drawn from.
+ * OpenF1 hands out every endpoint as a time series, so keeping the series costs
+ * nothing extra at the source — the fetch script resamples it onto laps, which
+ * is the only x-axis a race page ever wants.
+ *
+ * GapToLeader is text, not a number, for the same reason it is on Stg_LiveEntry:
+ * once a car is lapped OpenF1 stops reporting seconds and starts reporting
+ * "+1 LAP".
+ */
+create or modify non-persistent entity Formula1Backend.Stg_LiveTrace (
+  TraceKey: string(50),
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  LapNumber: long,
+  Position: long,
+  GapToLeader: string(20),
+  GapSeconds: decimal,
+  LapSeconds: decimal
+);
+
+/*
+ * Every stint of every car, not only the one running.
+ *
+ * Stg_LiveEntry carries the current compound because that is what a standings
+ * row shows. A strategy panel wants the whole set — which tyre, from which lap
+ * to which — and OpenF1 hands all of them over in the same response the
+ * snapshot was taken from, so keeping them costs nothing.
+ *
+ * LapEnd is empty for the stint a car is still on.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_LiveStint (
+  StintKey: string(50),
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  StintNumber: long,
+  Compound: string(20),
+  LapStart: long,
+  LapEnd: long,
+  TyreAgeAtStart: long
 );
 
 create or modify non-persistent entity Formula1Backend.Stg_LiveMessage (
@@ -568,6 +619,158 @@ create or modify non-persistent entity Formula1Backend.Stg_LiveSession (
  *
  * Every query takes dataDir so the CSV folder stays a constant, not a literal.
  * ------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+ * Circuit outlines.
+ *
+ * The shape of a track, as an SVG path, traced from OpenStreetMap way geometry
+ * by scripts/fetch-circuit-outlines.py rather than copied from a diagram.
+ *
+ * The point of tracing geometry rather than an image is that the result can be
+ * checked: every outline is measured against the length f1db records for that
+ * circuit, and one that disagrees by more than a few per cent is left out
+ * rather than shown. TracedKm and OfficialKm travel with the row so a page can
+ * say how closely it matched, and so a bad outline is a visible number rather
+ * than a picture nobody questions.
+ *
+ * OpenStreetMap is ODbL, which requires attribution. It rides along in the row
+ * for the same reason the Wikipedia licence rides along on Stg_Fact: a licence
+ * that lives in a comment is a licence the page cannot honour.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_CircuitOutline (
+  CircuitId: string(60),
+  Name: string(120),
+  FullName: string(200),
+  ViewBox: string(40),
+  PathD: string(20000),
+  Points: long,
+  TracedKm: decimal,
+  OfficialKm: decimal,
+  DeltaPercent: decimal,
+  Source: string(60),
+  License: string(60),
+  Attribution: string(120)
+);
+
+/*
+ * The same outline again, one row per vertex.
+ *
+ * PathD above is what makes a circuit row self-contained and what the SVG files
+ * are drawn from. This is the same measurement in the shape a chart can take:
+ * this app draws through Vega, and a Vega mark consumes rows, not a path
+ * string. Two representations of one thing, written by one pass of the fetcher,
+ * rather than a page taught to parse SVG.
+ *
+ * X and Y are already projected into the 1000x1000 viewBox — the cos(latitude)
+ * correction is applied at fetch time, so nothing downstream has to know where
+ * on Earth the circuit is to draw it with the right proportions.
+ */
+create or modify non-persistent entity Formula1Backend.Stg_CircuitPoint (
+  PointKey: string(70),
+  CircuitId: string(60),
+  Seq: long,
+  X: decimal,
+  Y: decimal
+);
+
+/* ---------------------------------------------------------------------------
+ * Row shapes for the in-app live sync.
+ *
+ * Non-persistable, like every other Stg_ here: they are what the External
+ * Database Connector hands back from a query, on their way into the persistent
+ * tables in 19. Stg_SyncLap is the wide one -- a driver's lap with its
+ * position, gap, sectors, tyre and stop count all on the same row, because that
+ * is the grain the replay table stores and the grain OpenF1's endpoints join
+ * to.
+ * ------------------------------------------------------------------------- */
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncLap (
+  SessionKey: string(20),
+  DriverNumber: long,
+  LapNumber: long,
+  Position: long,
+  GapToLeader: string(20),
+  GapSeconds: decimal,
+  LapSeconds: decimal,
+  Sector1: decimal,
+  Sector2: decimal,
+  Sector3: decimal,
+  SpeedTrap: long,
+  Compound: string(20),
+  TyreAge: long,
+  PitStops: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncDriver (
+  SessionKey: string(20),
+  DriverNumber: long,
+  Code: string(10),
+  DriverName: string(120),
+  Team: string(120),
+  TeamColour: string(10)
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncWeather (
+  SessionKey: string(20),
+  At: string(20),
+  AirTemperature: decimal,
+  TrackTemperature: decimal,
+  Humidity: decimal,
+  Rainfall: decimal,
+  WindSpeed: decimal
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncSession (
+  SessionKey: string(20),
+  SessionName: string(60),
+  SessionType: string(40),
+  Location: string(120),
+  CountryName: string(60),
+  CircuitName: string(120),
+  DateStart: string(40),
+  Year: long,
+  DriverCount: long,
+  LeadLap: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncTelemetry (
+  SessionKey: string(20), DriverNumber: long, LapNumber: long, TopSpeed: long,
+  AvgThrottle: decimal, MaxGear: long, DrsOpenShare: decimal,
+  BrakeShare: decimal, MaxRpm: long, Samples: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_TokenParsed (
+  AccessToken: string(4000), ExpiresIn: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncCarNow (
+  SessionKey: string(20), DriverNumber: long, At: string(40), Speed: long,
+  Throttle: long, Brake: long, Gear: long, Rpm: long, Drs: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncLocationNow (
+  SessionKey: string(20), DriverNumber: long, At: string(40),
+  X: decimal, Y: decimal, Z: decimal
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncOvertake (
+  SessionKey: string(20), At: string(40), LapNumber: long,
+  OvertakingDriver: long, OvertakenDriver: long, Position: long
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncRadio (
+  SessionKey: string(20), At: string(40), DriverNumber: long,
+  RecordingUrl: string(500)
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncLapWindow (
+  DriverNumber: long, FromTs: string(40), ToTs: string(40)
+);
+
+create or modify non-persistent entity Formula1Backend.Stg_SyncTrackPoint (
+  SessionKey: string(20), Seq: long, X: decimal, Y: decimal
+);
 
 create or modify database connection Formula1Backend.F1Warehouse
 type 'BYOD'
@@ -1134,7 +1337,8 @@ begin
          SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
                   code, driverName, team, teamColour, position, gapToLeader, interval,
                   lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
-                  compound, tyreAge, pitStops
+                  compound, tyreAge, pitStops, drs, sector1Mark, sector2Mark,
+                  sector3Mark
            FROM read_csv({dataDir} || ''/../live/live-order.csv'', header = true,
                          columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
                                     ''code'': ''VARCHAR'', ''driverName'': ''VARCHAR'',
@@ -1144,7 +1348,9 @@ begin
                                     ''lastLapSeconds'': ''DOUBLE'', ''sector1'': ''DOUBLE'',
                                     ''sector2'': ''DOUBLE'', ''sector3'': ''DOUBLE'',
                                     ''speedTrap'': ''BIGINT'', ''compound'': ''VARCHAR'',
-                                    ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT''})
+                                    ''tyreAge'': ''BIGINT'', ''pitStops'': ''BIGINT'',
+                                    ''drs'': ''VARCHAR'', ''sector1Mark'': ''VARCHAR'',
+                                    ''sector2Mark'': ''VARCHAR'', ''sector3Mark'': ''VARCHAR''})
            ORDER BY position
          ) t
          WHERE {keyFilter} = '''' OR CAST(t.entryKey AS VARCHAR) = {keyFilter}
@@ -1168,7 +1374,9 @@ begin
           position as Position, gapToLeader as GapToLeader, interval as Interval,
           lapNumber as LapNumber, lastLapSeconds as LastLapSeconds, sector1 as Sector1,
           sector2 as Sector2, sector3 as Sector3, speedTrap as SpeedTrap,
-          compound as Compound, tyreAge as TyreAge, pitStops as PitStops );
+          compound as Compound, tyreAge as TyreAge, pitStops as PitStops,
+          drs as Drs, sector1Mark as Sector1Mark, sector2Mark as Sector2Mark,
+          sector3Mark as Sector3Mark );
 
   /*
    * `at` is a reserved word in DuckDB (it introduces time travel: FROM t AT
@@ -1249,5 +1457,571 @@ begin
           leadLap as LeadLap, fetchedAt as FetchedAt, airTemperature as AirTemperature,
           trackTemperature as TrackTemperature, humidity as Humidity,
           rainfall as Rainfall, windSpeed as WindSpeed );
+
+  /*
+   * The lap-by-lap history. One row per driver per lap, already resampled onto
+   * lap boundaries by the fetch script, so this query is a straight read.
+   *
+   * The key is sessionKey-driverNumber-lapNumber, which is genuinely unique
+   * here -- unlike the race control messages next door, a driver completes a
+   * given lap exactly once.
+   */
+  query GetLiveTrace
+    sql 'SELECT * FROM (
+         SELECT sessionKey || ''-'' || driverNumber || ''-'' || lapNumber AS traceKey,
+                  sessionKey, driverNumber, code, lapNumber, position,
+                  gapToLeader, gapSeconds, lapSeconds
+           FROM read_csv({dataDir} || ''/../live/live-trace.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
+                                    ''code'': ''VARCHAR'', ''lapNumber'': ''BIGINT'',
+                                    ''position'': ''BIGINT'', ''gapToLeader'': ''VARCHAR'',
+                                    ''gapSeconds'': ''DOUBLE'', ''lapSeconds'': ''DOUBLE''})
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.traceKey AS VARCHAR) = {keyFilter}
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''traceKey'' THEN t.traceKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''gapToLeader'' THEN t.gapToLeader END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''traceKey'' THEN t.traceKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''gapToLeader'' THEN t.gapToLeader END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''gapSeconds'' THEN CAST(t.gapSeconds AS DOUBLE) WHEN ''lapSeconds'' THEN CAST(t.lapSeconds AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''gapSeconds'' THEN CAST(t.gapSeconds AS DOUBLE) WHEN ''lapSeconds'' THEN CAST(t.lapSeconds AS DOUBLE) END) END DESC NULLS LAST,
+           t.lapNumber, t.position
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
+    parameter dataDir: string
+    parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
+    returns Formula1Backend.Stg_LiveTrace
+    map ( traceKey as TraceKey, sessionKey as SessionKey, driverNumber as DriverNumber,
+          code as Code, lapNumber as LapNumber, position as Position,
+          gapToLeader as GapToLeader, gapSeconds as GapSeconds,
+          lapSeconds as LapSeconds );
+
+  /* Every stint of every car. Ordered by driver then stint so a page can walk
+   * it straight into per-driver bars without regrouping. */
+  query GetLiveStints
+    sql 'SELECT * FROM (
+         SELECT sessionKey || ''-'' || driverNumber || ''-'' || stintNumber AS stintKey,
+                  sessionKey, driverNumber, code, stintNumber, compound,
+                  lapStart, lapEnd, tyreAgeAtStart
+           FROM read_csv({dataDir} || ''/../live/live-stints.csv'', header = true,
+                         columns = {''sessionKey'': ''VARCHAR'', ''driverNumber'': ''BIGINT'',
+                                    ''code'': ''VARCHAR'', ''stintNumber'': ''BIGINT'',
+                                    ''compound'': ''VARCHAR'', ''lapStart'': ''BIGINT'',
+                                    ''lapEnd'': ''BIGINT'', ''tyreAgeAtStart'': ''BIGINT''})
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.stintKey AS VARCHAR) = {keyFilter}
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''stintKey'' THEN t.stintKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''compound'' THEN t.compound END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''stintKey'' THEN t.stintKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''code'' THEN t.code WHEN ''compound'' THEN t.compound END) END DESC NULLS LAST,
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''stintNumber'' THEN CAST(t.stintNumber AS DOUBLE) WHEN ''lapStart'' THEN CAST(t.lapStart AS DOUBLE) WHEN ''lapEnd'' THEN CAST(t.lapEnd AS DOUBLE) WHEN ''tyreAgeAtStart'' THEN CAST(t.tyreAgeAtStart AS DOUBLE) END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''stintNumber'' THEN CAST(t.stintNumber AS DOUBLE) WHEN ''lapStart'' THEN CAST(t.lapStart AS DOUBLE) WHEN ''lapEnd'' THEN CAST(t.lapEnd AS DOUBLE) WHEN ''tyreAgeAtStart'' THEN CAST(t.tyreAgeAtStart AS DOUBLE) END) END DESC NULLS LAST,
+           t.driverNumber, t.stintNumber
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
+    parameter dataDir: string
+    parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
+    returns Formula1Backend.Stg_LiveStint
+    map ( stintKey as StintKey, sessionKey as SessionKey, driverNumber as DriverNumber,
+          code as Code, stintNumber as StintNumber, compound as Compound,
+          lapStart as LapStart, lapEnd as LapEnd, tyreAgeAtStart as TyreAgeAtStart );
+
+  /* One outline per circuit, keyed by the circuit's own id. A weekend page asks
+   * for the one circuit it is about; nothing here asks for all of them, but the
+   * unfiltered read is 22 rows and costs nothing. */
+  query GetCircuitOutlines
+    sql 'SELECT * FROM (
+         SELECT circuitId, name, fullName, viewBox, pathD, points,
+                  tracedKm, officialKm, deltaPercent, source, license, attribution
+           FROM read_csv({dataDir} || ''/../circuits/f1db-circuit-paths.csv'',
+                         header = true,
+                         columns = {''circuitId'': ''VARCHAR'', ''name'': ''VARCHAR'',
+                                    ''fullName'': ''VARCHAR'', ''viewBox'': ''VARCHAR'',
+                                    ''pathD'': ''VARCHAR'', ''points'': ''BIGINT'',
+                                    ''tracedKm'': ''DOUBLE'', ''officialKm'': ''DOUBLE'',
+                                    ''deltaPercent'': ''DOUBLE'', ''source'': ''VARCHAR'',
+                                    ''license'': ''VARCHAR'', ''attribution'': ''VARCHAR''})
+         ) t
+         WHERE {keyFilter} = '''' OR CAST(t.circuitId AS VARCHAR) = {keyFilter}
+         ORDER BY
+           CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.circuitId WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName END) END ASC NULLS LAST,
+           CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.circuitId WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName END) END DESC NULLS LAST,
+           t.circuitId
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
+    parameter dataDir: string
+    parameter keyFilter: string
+    parameter topN: string
+    parameter skipN: string
+    parameter sortCol: string
+    parameter sortDir: string
+    returns Formula1Backend.Stg_CircuitOutline
+    map ( circuitId as CircuitId, name as Name, fullName as FullName,
+          viewBox as ViewBox, pathD as PathD, points as Points,
+          tracedKm as TracedKm, officialKm as OfficialKm,
+          deltaPercent as DeltaPercent, source as Source,
+          license as License, attribution as Attribution );
+
+  /* The outline as vertices. Called with dynamic SQL so a page's
+   * ?$filter=circuitId eq 'zandvoort' is pushed into the scan rather than
+   * pulling nine thousand points to keep four hundred. */
+  query GetCircuitPoints
+    sql 'SELECT circuitId || ''-'' || i AS pointKey, circuitId, i AS seq, x, y
+           FROM read_csv({dataDir} || ''/../circuits/f1db-circuit-points.csv'',
+                         header = true,
+                         columns = {''circuitId'': ''VARCHAR'', ''i'': ''BIGINT'',
+                                    ''x'': ''DOUBLE'', ''y'': ''DOUBLE''})
+          ORDER BY circuitId, i'
+    parameter dataDir: string
+    returns Formula1Backend.Stg_CircuitPoint
+    map ( pointKey as PointKey, circuitId as CircuitId, seq as Seq,
+          x as X, y as Y );
+
+  /* -------------------------------------------------------- OpenF1, live -- */
+
+  /*
+   * These five read OpenF1 over HTTPS instead of reading a file, and they are
+   * always called with dynamic SQL: the session key and the base URL come from
+   * the caller, and a token, when there is one, arrives as a CREATE SECRET
+   * statement prepended to the text. The SQL below is a placeholder that fixes
+   * the row shape and the column mapping; nothing executes it as written.
+   *
+   * DuckDB autoloads httpfs on first use, so no INSTALL or LOAD is needed.
+   */
+
+  /*
+   * The live derivation, from JSON handed in rather than fetched here.
+   *
+   * An earlier version had DuckDB fetch the five endpoints itself with
+   * read_json_auto('https://...'). It worked, and it was rate-limit fragile by
+   * construction: DuckDB scans those sources in parallel, five at once against
+   * OpenF1's three-requests-a-second, and reports the resulting 429 as
+   * "HTTP 0 Internal Server Error" -- a message that names neither the rate
+   * limit nor HTTP, and costs an afternoon.
+   *
+   * So the fetching moved to REST CALL activities, which run one at a time and
+   * carry the bearer token in a header where it belongs, and the payloads
+   * arrive here as bound parameters. That also makes this a plain parameterised
+   * query rather than dynamic SQL: nothing is concatenated, so nothing can be
+   * injected, and no CREATE SECRET or SET has to ride along as a second
+   * statement -- which the JDBC driver would not prepare anyway.
+   *
+   * ASOF LEFT JOIN is the point of doing this in SQL at all. "The newest
+   * position sample at or before this lap ended" is one join here and a
+   * bisect-and-loop anywhere else.
+   */
+  query GetOpenF1Laps
+    sql 'WITH laps AS (
+           SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
+                  j.lap_duration AS lap_duration, j.duration_sector_1 AS s1,
+                  j.duration_sector_2 AS s2, j.duration_sector_3 AS s3,
+                  j.i2_speed AS trap,
+                  CAST(j.date_start AS TIMESTAMP)
+                    + INTERVAL (COALESCE(j.lap_duration,0)) SECOND AS t1
+             FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i2_speed":"BIGINT","date_start":"VARCHAR"}]'')) AS j)
+            WHERE j.date_start IS NOT NULL
+         ), pos AS (
+           SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
+                  j.position AS position
+             FROM (SELECT unnest(from_json({posJson}::JSON,
+                   ''[{"driver_number":"BIGINT","date":"VARCHAR","position":"BIGINT"}]'')) AS j)
+            WHERE j.position IS NOT NULL
+         ), itv AS (
+           SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
+                  j.gap_to_leader AS gap_to_leader
+             FROM (SELECT unnest(from_json({itvJson}::JSON,
+                   ''[{"driver_number":"BIGINT","date":"VARCHAR","gap_to_leader":"VARCHAR"}]'')) AS j)
+            WHERE j.gap_to_leader IS NOT NULL
+         ), st AS (
+           SELECT j.driver_number AS driver_number, j.stint_number AS stint_number,
+                  j.compound AS compound, j.lap_start AS lap_start,
+                  j.lap_end AS lap_end, j.tyre_age_at_start AS tyre_age_at_start
+             FROM (SELECT unnest(from_json({stintsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]'')) AS j)
+         ), pits AS (
+           SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
+             FROM (SELECT unnest(from_json({pitJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS j)
+         )
+         SELECT {sessionKey} AS sessionKey, l.driver_number AS driverNumber,
+                l.lap_number AS lapNumber, p.position AS position,
+                i.gap_to_leader AS gapToLeader,
+                TRY_CAST(i.gap_to_leader AS DOUBLE) AS gapSeconds,
+                l.lap_duration AS lapSeconds, l.s1 AS sector1, l.s2 AS sector2,
+                l.s3 AS sector3, l.trap AS speedTrap, s.compound AS compound,
+                CASE WHEN s.lap_start IS NULL THEN NULL
+                     ELSE COALESCE(s.tyre_age_at_start,0)
+                          + (l.lap_number - s.lap_start) END AS tyreAge,
+                (SELECT count(*) FROM pits x
+                   WHERE x.driver_number = l.driver_number
+                     AND x.lap_number <= l.lap_number) AS pitStops
+           FROM laps l
+           ASOF LEFT JOIN pos p ON p.driver_number = l.driver_number AND p.t <= l.t1
+           ASOF LEFT JOIN itv i ON i.driver_number = l.driver_number AND i.t <= l.t1
+           LEFT JOIN st s ON s.driver_number = l.driver_number
+                AND l.lap_number >= s.lap_start
+                AND l.lap_number <= COALESCE(s.lap_end, 9999)'
+    parameter sessionKey: string
+    parameter lapsJson: string
+    parameter posJson: string
+    parameter itvJson: string
+    parameter stintsJson: string
+    parameter pitJson: string
+    returns Formula1Backend.Stg_SyncLap
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
+          lapNumber as LapNumber, position as Position,
+          gapToLeader as GapToLeader, gapSeconds as GapSeconds,
+          lapSeconds as LapSeconds, sector1 as Sector1, sector2 as Sector2,
+          sector3 as Sector3, speedTrap as SpeedTrap, compound as Compound,
+          tyreAge as TyreAge, pitStops as PitStops );
+
+  /*
+   * The entry list.
+   *
+   * This was a stub -- `SELECT '' ... WHERE {dataDir} = 'never'`, a shape with
+   * no rows behind it -- and nothing called it, so LiveDriver stayed empty
+   * through every session captured. What that costs is not cosmetic: a lap
+   * table keyed on driver_number and no entry list is a table of anonymous
+   * numbers, and the only way to read it is to supply the mapping from memory.
+   * Doing that put Verstappen third in the Zandvoort Sprint. He finished sixth;
+   * car 1 is Norris this season and Verstappen is car 3, which OpenF1 says
+   * plainly in a field we were not storing.
+   *
+   * team_colour comes back as bare hex with no '#', which is what the frontend
+   * wants for a CSS custom property, so it is stored as sent.
+   */
+  query GetOpenF1Drivers
+    sql 'SELECT {sessionKey} AS sessionKey, j.driver_number AS driverNumber,
+                COALESCE(j.name_acronym, '''') AS code,
+                COALESCE(j.full_name, j.broadcast_name, '''') AS driverName,
+                COALESCE(j.team_name, '''') AS team,
+                COALESCE(j.team_colour, '''') AS teamColour
+           FROM (SELECT unnest(from_json({driversJson}::JSON,
+                 ''[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]'')) AS j)
+          WHERE j.driver_number IS NOT NULL'
+    parameter sessionKey: string
+    parameter driversJson: string
+    returns Formula1Backend.Stg_SyncDriver
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber, code as Code,
+          driverName as DriverName, team as Team, teamColour as TeamColour );
+
+  query GetOpenF1Stints
+    sql 'SELECT '''' AS stintKey, '''' AS sessionKey, 0 AS driverNumber,
+                '''' AS code, 0 AS stintNumber, '''' AS compound,
+                0 AS lapStart, 0 AS lapEnd, 0 AS tyreAgeAtStart
+         WHERE {dataDir} = ''never'''
+    parameter dataDir: string
+    returns Formula1Backend.Stg_LiveStint
+    map ( stintKey as StintKey, sessionKey as SessionKey,
+          driverNumber as DriverNumber, code as Code, stintNumber as StintNumber,
+          compound as Compound, lapStart as LapStart, lapEnd as LapEnd,
+          tyreAgeAtStart as TyreAgeAtStart );
+
+  /*
+   * Race control: flags, safety cars, investigations, deleted lap times.
+   *
+   * Sixty-five messages in the Zandvoort sprint, and they are most of the story
+   * a replay would want to tell -- four separate investigations, a deleted lap
+   * for track limits, blue flags. All of it was being discarded.
+   *
+   * messageKey exists because two messages can share a second, so the timestamp
+   * alone is not unique; the row number inside the ordering closes it.
+   */
+  query GetOpenF1Messages
+    sql 'SELECT {sessionKey} AS sessionKey,
+                {sessionKey} || ''-'' || strftime(CAST(j.date AS TIMESTAMP), ''%Y%m%d%H%M%S'')
+                  || ''-'' || CAST(row_number() OVER (ORDER BY j.date) AS VARCHAR) AS messageKey,
+                strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
+                COALESCE(j.category, '''') AS category,
+                COALESCE(j.flag, '''') AS flag,
+                COALESCE(j.scope, '''') AS scope,
+                COALESCE(j.lap_number, 0) AS lap,
+                COALESCE(j.message, '''') AS message
+           FROM (SELECT unnest(from_json({messagesJson}::JSON,
+                 ''[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","lap_number":"BIGINT","message":"VARCHAR"}]'')) AS j)
+          WHERE j.date IS NOT NULL'
+    parameter sessionKey: string
+    parameter messagesJson: string
+    returns Formula1Backend.Stg_LiveMessage
+    map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
+          category as Category, flag as Flag, scope as Scope, lap as Lap,
+          message as Message );
+
+  /*
+   * Weather as a series. Eighty readings across a sprint, one a minute, which
+   * is what the header tiles show the latest of and what a chart would need
+   * the rest of.
+   */
+  query GetOpenF1Weather
+    sql 'SELECT {sessionKey} AS sessionKey,
+                strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
+                COALESCE(j.air_temperature, 0) AS airTemperature,
+                COALESCE(j.track_temperature, 0) AS trackTemperature,
+                COALESCE(j.humidity, 0) AS humidity,
+                COALESCE(j.rainfall, 0) AS rainfall,
+                COALESCE(j.wind_speed, 0) AS windSpeed
+           FROM (SELECT unnest(from_json({weatherJson}::JSON,
+                 ''[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","rainfall":"DOUBLE","wind_speed":"DOUBLE"}]'')) AS j)
+          WHERE j.date IS NOT NULL'
+    parameter sessionKey: string
+    parameter weatherJson: string
+    returns Formula1Backend.Stg_SyncWeather
+    map ( sessionKey as SessionKey, atTime as At,
+          airTemperature as AirTemperature, trackTemperature as TrackTemperature,
+          humidity as Humidity, rainfall as Rainfall, windSpeed as WindSpeed );
+
+  /*
+   * The session itself: what it is, where, and how far it has run.
+   *
+   * Another stub that nothing called, so LiveSessionRow stayed empty and the
+   * Narrate header had to come from a CSV. driverCount and leadLap are counted
+   * out of the lap feed rather than taken from the session record, because the
+   * session record does not carry them and the header wants both.
+   */
+  query GetOpenF1Session
+    sql 'SELECT {sessionKey} AS sessionKey,
+                COALESCE(j.session_name, '''') AS sessionName,
+                COALESCE(j.session_type, '''') AS sessionType,
+                COALESCE(j.location, '''') AS location,
+                COALESCE(j.country_name, '''') AS countryName,
+                COALESCE(j.circuit_short_name, '''') AS circuitName,
+                COALESCE(j.date_start, '''') AS dateStart,
+                COALESCE(j.year, 0) AS year,
+                (SELECT COUNT(DISTINCT l.driver_number) FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS l)) AS driverCount,
+                (SELECT COALESCE(MAX(l.lap_number), 0) FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS l)) AS leadLap
+           FROM (SELECT unnest(from_json({sessionJson}::JSON,
+                 ''[{"session_name":"VARCHAR","session_type":"VARCHAR","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","date_start":"VARCHAR","year":"BIGINT"}]'')) AS j)'
+    parameter sessionKey: string
+    parameter sessionJson: string
+    parameter lapsJson: string
+    returns Formula1Backend.Stg_SyncSession
+    map ( sessionKey as SessionKey, sessionName as SessionName,
+          sessionType as SessionType, location as Location,
+          countryName as CountryName, circuitName as CircuitName,
+          dateStart as DateStart, year as Year, driverCount as DriverCount,
+          leadLap as LeadLap );
+
+  /* ------------------------------------------------------ tiered retrieval -- */
+
+  /*
+   * Per-lap telemetry, from a window of samples.
+   *
+   * Only laps that fall entirely inside the fetched window are emitted. A lap
+   * half-covered by the window would aggregate to a confident wrong answer --
+   * a "top speed" from the three samples that happened to land inside it -- and
+   * because each cycle overwrites the lap it computes, a partial row would
+   * survive as though it were complete. Recomputing a whole lap on a later
+   * cycle is idempotent; averaging half of one is not.
+   *
+   * DRS is a small integer whose values mean different things: 8 is "eligible",
+   * 10, 12 and 14 are "open". The encoding is written down here rather than on
+   * a page.
+   */
+  query GetOpenF1Telemetry
+    sql 'WITH car AS (
+           SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
+                  j.speed AS speed, j.throttle AS throttle, j.brake AS brake,
+                  j.n_gear AS n_gear, j.rpm AS rpm, j.drs AS drs
+             FROM (SELECT unnest(from_json({carJson}::JSON,
+                   ''[{"driver_number":"BIGINT","date":"VARCHAR","speed":"BIGINT","throttle":"BIGINT","brake":"BIGINT","n_gear":"BIGINT","rpm":"BIGINT","drs":"BIGINT"}]'')) AS j)
+         ), laps AS (
+           SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
+                  CAST(j.date_start AS TIMESTAMP) AS t0,
+                  CAST(j.date_start AS TIMESTAMP)
+                    + INTERVAL (COALESCE(j.lap_duration,0)) SECOND AS t1
+             FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","date_start":"VARCHAR"}]'')) AS j)
+            WHERE j.date_start IS NOT NULL
+              AND CAST(j.date_start AS TIMESTAMP) >= CAST({fromTs} AS TIMESTAMP)
+         )
+         SELECT {sessionKey} AS sessionKey, l.driver_number AS driverNumber,
+                l.lap_number AS lapNumber, max(c.speed) AS topSpeed,
+                avg(c.throttle) AS avgThrottle, max(c.n_gear) AS maxGear,
+                avg(CASE WHEN c.drs IN (10,12,14) THEN 1.0 ELSE 0.0 END) AS drsOpenShare,
+                avg(CASE WHEN c.brake > 0 THEN 1.0 ELSE 0.0 END) AS brakeShare,
+                max(c.rpm) AS maxRpm, count(*) AS samples
+           FROM laps l
+           JOIN car c ON c.driver_number = l.driver_number
+                     AND c.t >= l.t0 AND c.t < l.t1
+          GROUP BY l.driver_number, l.lap_number'
+    parameter sessionKey: string
+    parameter carJson: string
+    parameter lapsJson: string
+    parameter fromTs: string
+    returns Formula1Backend.Stg_SyncTelemetry
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
+          lapNumber as LapNumber, topSpeed as TopSpeed,
+          avgThrottle as AvgThrottle, maxGear as MaxGear,
+          drsOpenShare as DrsOpenShare, brakeShare as BrakeShare,
+          maxRpm as MaxRpm, samples as Samples );
+
+  /*
+   * The rolling window, downsampled to one sample per car per second.
+   *
+   * The raw feed is roughly 3.7 Hz per car -- five thousand rows a minute for
+   * car_data alone -- and inserting that into Mendix every cycle costs far more
+   * than it shows. A track map and a speed trace read fine at 1 Hz, so one
+   * sample per car per second is kept and the rest discarded at the database
+   * rather than carried into the app.
+   */
+  /*
+   * The OAuth2 token response, taken apart here rather than by an import
+   * mapping.
+   *
+   * A JSON structure and an import mapping is the Mendix way to do this and it
+   * does not survive being written from MDL: the runtime answers a valid
+   * response with `key not found: Path(QName(None,),None,)`, both as the REST
+   * call''s RETURNS MAPPING and as a standalone Import activity, from a mapping
+   * whose paths read back correctly as `(Object)|access_token`.
+   *
+   * Every other OpenF1 response in this app is already parsed by passing the
+   * body to DuckDB as a bound parameter. The token is one more, and it costs
+   * nothing extra in exposure: it is written to LiveToken a few activities
+   * later regardless.
+   */
+  query GetOpenF1Token
+    sql 'SELECT s.access_token AS accessToken, s.expires_in AS expiresIn
+           FROM (SELECT from_json({tokenJson}::JSON,
+                 ''{"access_token":"VARCHAR","expires_in":"BIGINT"}'') AS s)'
+    parameter tokenJson: string
+    returns Formula1Backend.Stg_TokenParsed
+    map ( accessToken as AccessToken, expiresIn as ExpiresIn );
+
+  query GetOpenF1CarNow
+    sql 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
+                strftime(t, ''%Y-%m-%dT%H:%M:%S'') AS atTime, speed, throttle,
+                brake, n_gear AS gear, rpm, drs
+           FROM (
+             SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
+                    j.speed AS speed, j.throttle AS throttle, j.brake AS brake,
+                    j.n_gear AS n_gear, j.rpm AS rpm, j.drs AS drs,
+                    row_number() OVER (PARTITION BY j.driver_number,
+                                       date_trunc(''second'', CAST(j.date AS TIMESTAMP))
+                                       ORDER BY j.date) AS rn
+               FROM (SELECT unnest(from_json({carJson}::JSON,
+                     ''[{"driver_number":"BIGINT","date":"VARCHAR","speed":"BIGINT","throttle":"BIGINT","brake":"BIGINT","n_gear":"BIGINT","rpm":"BIGINT","drs":"BIGINT"}]'')) AS j)
+           ) WHERE rn = 1'
+    parameter sessionKey: string
+    parameter carJson: string
+    returns Formula1Backend.Stg_SyncCarNow
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber, atTime as At,
+          speed as Speed, throttle as Throttle, brake as Brake, gear as Gear,
+          rpm as Rpm, drs as Drs );
+
+  /* Track position, downsampled the same way and for the same reason. */
+  query GetOpenF1LocationNow
+    sql 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
+                strftime(t, ''%Y-%m-%dT%H:%M:%S'') AS atTime, x, y, z
+           FROM (
+             SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
+                    j.x AS x, j.y AS y, j.z AS z,
+                    row_number() OVER (PARTITION BY j.driver_number,
+                                       date_trunc(''second'', CAST(j.date AS TIMESTAMP))
+                                       ORDER BY j.date) AS rn
+               FROM (SELECT unnest(from_json({locJson}::JSON,
+                     ''[{"driver_number":"BIGINT","date":"VARCHAR","x":"DOUBLE","y":"DOUBLE","z":"DOUBLE"}]'')) AS j)
+              WHERE NOT (j.x = 0 AND j.y = 0)
+           ) WHERE rn = 1'
+    parameter sessionKey: string
+    parameter locJson: string
+    returns Formula1Backend.Stg_SyncLocationNow
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber, atTime as At,
+          x as X, y as Y, z as Z );
+
+  /* Overtakes and radio: small, and pass straight through. */
+  query GetOpenF1Overtakes
+    sql 'SELECT {sessionKey} AS sessionKey,
+                j.date AS atTime, j.lap_number AS lapNumber,
+                j.overtaking_driver_number AS overtaking,
+                j.overtaken_driver_number AS overtaken, j.position AS position
+           FROM (SELECT unnest(from_json({json}::JSON,
+                 ''[{"date":"VARCHAR","lap_number":"BIGINT","overtaking_driver_number":"BIGINT","overtaken_driver_number":"BIGINT","position":"BIGINT"}]'')) AS j)'
+    parameter sessionKey: string
+    parameter json: string
+    returns Formula1Backend.Stg_SyncOvertake
+    map ( sessionKey as SessionKey, atTime as At, lapNumber as LapNumber,
+          overtaking as OvertakingDriver, overtaken as OvertakenDriver,
+          position as Position );
+
+  query GetOpenF1Radio
+    sql 'SELECT {sessionKey} AS sessionKey, j.date AS atTime,
+                j.driver_number AS driverNumber, j.recording_url AS recordingUrl
+           FROM (SELECT unnest(from_json({json}::JSON,
+                 ''[{"date":"VARCHAR","driver_number":"BIGINT","recording_url":"VARCHAR"}]'')) AS j)'
+    parameter sessionKey: string
+    parameter json: string
+    returns Formula1Backend.Stg_SyncRadio
+    map ( sessionKey as SessionKey, atTime as At, driverNumber as DriverNumber,
+          recordingUrl as RecordingUrl );
+
+  /* ------------------------------------------------------------ track map -- */
+
+  /*
+   * Pick one representative lap to trace the circuit from.
+   *
+   * The driver with the most laps, and their median lap by duration -- median
+   * rather than fastest because the quickest lap of a race is often a late one
+   * on an empty track with a different line, and rather than first because lap
+   * one is the only lap that does not start on the start-finish straight.
+   *
+   * A lap under thirty seconds is a formation or in-lap fragment and is skipped;
+   * anything over five minutes is a safety-car crawl that would trace the pit
+   * lane as often as the circuit.
+   */
+  query GetOpenF1LapWindow
+    sql 'WITH laps AS (
+           SELECT j.driver_number AS driver_number, j.lap_duration AS dur,
+                  CAST(j.date_start AS TIMESTAMP) AS t0
+             FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","date_start":"VARCHAR"}]'')) AS j)
+            WHERE j.date_start IS NOT NULL AND j.lap_duration IS NOT NULL
+              AND j.lap_duration BETWEEN 30 AND 300
+         ), busiest AS (
+           SELECT driver_number FROM laps
+            GROUP BY driver_number ORDER BY count(*) DESC LIMIT 1
+         ), ranked AS (
+           /* Integer division. DuckDB''s / is float division, so (n+1)/2 over
+            * seventy laps is 35.5 and rn never equals it -- the query returned
+            * no window at all and the outline came back empty. // is the
+            * integer one. */
+           SELECT l.driver_number, l.dur, l.t0,
+                  row_number() OVER (ORDER BY l.dur) AS rn,
+                  count(*) OVER () AS n
+             FROM laps l JOIN busiest b ON b.driver_number = l.driver_number
+         )
+         SELECT driver_number AS driverNumber,
+                strftime(t0, ''%Y-%m-%dT%H:%M:%S'') AS fromTs,
+                strftime(t0 + INTERVAL (CAST(dur AS INTEGER) + 2) SECOND,
+                         ''%Y-%m-%dT%H:%M:%S'') AS toTs
+           FROM ranked WHERE rn = (n + 1) // 2'
+    parameter lapsJson: string
+    returns Formula1Backend.Stg_SyncLapWindow
+    map ( driverNumber as DriverNumber, fromTs as FromTs, toTs as ToTs );
+
+  /*
+   * The circuit, traced from one car's way round it.
+   *
+   * Not downsampled: this runs once per session and the shape is the whole
+   * point, so every sample the lap produced is kept. At roughly 3.7 Hz a
+   * Hungaroring lap is about three hundred points, which is a smooth outline
+   * and a small table.
+   */
+  query GetOpenF1TrackOutline
+    sql 'SELECT {sessionKey} AS sessionKey,
+                row_number() OVER (ORDER BY j.date) - 1 AS seq,
+                j.x AS x, j.y AS y
+           FROM (SELECT unnest(from_json({locJson}::JSON,
+                 ''[{"date":"VARCHAR","x":"DOUBLE","y":"DOUBLE"}]'')) AS j)
+          WHERE j.x IS NOT NULL AND j.y IS NOT NULL
+            AND NOT (j.x = 0 AND j.y = 0)'
+    parameter sessionKey: string
+    parameter locJson: string
+    returns Formula1Backend.Stg_SyncTrackPoint
+    map ( sessionKey as SessionKey, seq as Seq, x as X, y as Y );
 
 end;
