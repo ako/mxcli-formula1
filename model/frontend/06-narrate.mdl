@@ -39,58 +39,66 @@ create or replace page Formula1Frontend.Narrate
 
     dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSession) {
 
-      container head (class: 'pagehead') {
-        container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: '{1} · {2}',
-            contentparams: [{1} = sessionType, {2} = countryName],
-            class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = circuitName],
-                             rendermode: H2, class: 'pagehead-title')
-          /*
-           * The provenance line the comp puts in the header bar. It is one
-           * sentence and it does the whole job of the badge: which source,
-           * how fresh, and therefore how much to trust the numbers below.
-           */
-          dynamictext sub (content: 'openf1.org · snapshot taken {1}',
-            contentparams: [{1} = fetchedAt], class: 'pagehead-sub')
+      /*
+       * Identity and conditions on one line.
+       *
+       * They were two full-width bands stacked -- the circuit name over a
+       * six-across tile grid -- which is two rows of chrome before any data.
+       * The comp puts them on one: what this is on the left, what the air and
+       * track are doing on the right, one hairline under both.
+       *
+       * The Lead lap tile went with the merge: the LAP badge two inches to its
+       * left carried the same number.
+       */
+      container liveBar (class: 'live-bar') {
+        container head (class: 'pagehead') {
+          container headMain (class: 'pagehead-main') {
+            dynamictext eyebrow (content: '{1} · {2}',
+              contentparams: [{1} = sessionType, {2} = countryName],
+              class: 'pagehead-eyebrow')
+            dynamictext title (content: '{1}', contentparams: [{1} = circuitName],
+                               rendermode: H2, class: 'pagehead-title')
+            /*
+             * The provenance line the comp puts in the header bar. It is one
+             * sentence and it does the whole job of the badge: which source,
+             * how fresh, and therefore how much to trust the numbers below.
+             */
+            dynamictext sub (content: 'openf1.org · snapshot taken {1}',
+              contentparams: [{1} = fetchedAt], class: 'pagehead-sub')
+          }
+          container headBadge (class: 'pagehead-badge') {
+            dynamictext lap (content: 'LAP {1}', contentparams: [{1} = leadLap])
+          }
         }
-        container headBadge (class: 'pagehead-badge') {
-          dynamictext lap (content: 'LAP {1}', contentparams: [{1} = leadLap])
-        }
-      }
 
-      container kpis (class: 'kpis') {
-        container kCars (class: 'kpi') {
-          dynamictext kCarsL (content: 'Cars', class: 'kpi-label')
-          dynamictext kCarsV (content: '{1}', contentparams: [{1} = driverCount],
-                              class: 'kpi-value')
-        }
-        container kLap (class: 'kpi kpi-accent') {
-          dynamictext kLapL (content: 'Lead lap', class: 'kpi-label')
-          dynamictext kLapV (content: '{1}', contentparams: [{1} = leadLap],
-                             class: 'kpi-value')
-        }
-        container kAir (class: 'kpi') {
-          dynamictext kAirL (content: 'Air', class: 'kpi-label')
-          dynamictext kAirV (content: '{1}°C', contentparams: [{1} = airTemperature],
-                             class: 'kpi-value')
-        }
-        container kTrack (class: 'kpi') {
-          dynamictext kTrackL (content: 'Track', class: 'kpi-label')
-          dynamictext kTrackV (content: '{1}°C', contentparams: [{1} = trackTemperature],
+        container kpis (class: 'kpis') {
+          container kCars (class: 'kpi') {
+            dynamictext kCarsL (content: 'Cars', class: 'kpi-label')
+            dynamictext kCarsV (content: '{1}', contentparams: [{1} = driverCount],
+                                class: 'kpi-value')
+          }
+          container kAir (class: 'kpi') {
+            dynamictext kAirL (content: 'Air', class: 'kpi-label')
+            dynamictext kAirV (content: '{1}°C', contentparams: [{1} = airTemperature],
                                class: 'kpi-value')
-        }
-        container kRain (class: 'kpi') {
-          dynamictext kRainL (content: 'Rain', class: 'kpi-label')
-          dynamictext kRainV (content: '{1}', contentparams: [{1} = rainfall],
-                              class: 'kpi-value')
-          dynamictext kRainS (content: '0 = dry', class: 'kpi-sub')
-        }
-        container kWind (class: 'kpi') {
-          dynamictext kWindL (content: 'Wind', class: 'kpi-label')
-          dynamictext kWindV (content: '{1}', contentparams: [{1} = windSpeed],
-                              class: 'kpi-value')
-          dynamictext kWindS (content: 'm/s', class: 'kpi-sub')
+          }
+          container kTrack (class: 'kpi') {
+            dynamictext kTrackL (content: 'Track', class: 'kpi-label')
+            dynamictext kTrackV (content: '{1}°C', contentparams: [{1} = trackTemperature],
+                                 class: 'kpi-value')
+          }
+          container kRain (class: 'kpi') {
+            dynamictext kRainL (content: 'Rain', class: 'kpi-label')
+            dynamictext kRainV (content: '{1}', contentparams: [{1} = rainfall],
+                                class: 'kpi-value')
+            dynamictext kRainS (content: '0 = dry', class: 'kpi-sub')
+          }
+          container kWind (class: 'kpi') {
+            dynamictext kWindL (content: 'Wind', class: 'kpi-label')
+            dynamictext kWindV (content: '{1}', contentparams: [{1} = windSpeed],
+                                class: 'kpi-value')
+            dynamictext kWindS (content: 'm/s', class: 'kpi-sub')
+          }
         }
       }
     }

@@ -1241,3 +1241,60 @@
     .split-even { grid-template-columns: minmax(0, 1fr); }
   }
 }
+
+// One header row: what this is, and what the conditions are.
+//
+// Identity left, the LAP badge, then the condition tiles pushed right. Both
+// used to be full-width bands, so the screen spent two rows saying where it is
+// before showing anything that changes.
+//
+// The tiles lose their own top rules here -- the bar carries one hairline for
+// the whole row, and they separate with vertical ones, which is the comp's
+// habit of ruling between things rather than boxing them.
+.narrate-dense {
+  .live-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    border-bottom: 1px solid var(--mxt-line);
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .live-bar .pagehead {
+    flex: 0 1 auto;
+    gap: 10px;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: 0;
+    min-width: 0;
+  }
+
+  .live-bar .kpis {
+    flex: 1 1 420px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0;
+    min-width: 0;
+  }
+
+  .live-bar .kpi {
+    border-top: 0;
+    border-left: 1px solid var(--mxt-line);
+    padding: 1px 0 1px 12px;
+    margin-left: 12px;
+    min-width: 0;
+
+    &:first-child { border-left: 0; margin-left: 0; padding-left: 0; }
+  }
+
+  .live-bar .kpi-value { font-size: 15px; }
+  .live-bar .kpi-label { font-size: 9px; }
+  .live-bar .kpi-sub   { font-size: 9px; }
+
+  // Under about 1000px the tiles drop below the name rather than crushing it.
+  @media (max-width: 1000px) {
+    .live-bar .kpis { flex-basis: 100%; justify-content: flex-start; }
+  }
+}

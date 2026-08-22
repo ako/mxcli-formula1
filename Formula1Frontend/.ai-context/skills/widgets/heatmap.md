@@ -17,38 +17,40 @@ PLUGGABLEWIDGET 'com.mendix.widget.web.heatmap.HeatMap' widget1 {
 
 ## Properties
 
-| Property | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `seriesDataSource` | datasource | Yes |  |  |
-| `seriesValueAttribute` | attribute | Yes |  | The attribute used to display “heat” at an “x y” location. |
-| `seriesItemSelection` | selection | Yes |  |  |
-| `horizontalAxisAttribute` | attribute |  |  |  |
-| `horizontalSortAttribute` | attribute |  |  | Attribute to use for sorting the data. Sorting can only be used when data sou... |
-| `horizontalSortOrder` | enumeration | Yes | asc |  |
-| `verticalAxisAttribute` | attribute |  |  |  |
-| `verticalSortAttribute` | attribute |  |  | Attribute to use for sorting the data. Sorting can only be used when data sou... |
-| `verticalSortOrder` | enumeration | Yes | asc |  |
-| `enableAdvancedOptions` | boolean | Yes | false |  |
-| `showPlaygroundSlot` | boolean | Yes | false |  |
-| `playground` | widgets |  |  |  |
-| `xAxisLabel` | textTemplate |  |  |  |
-| `yAxisLabel` | textTemplate |  |  |  |
-| `showScale` | boolean | Yes | false |  |
-| `gridLines` | enumeration | Yes | none |  |
-| `scaleColors` | object |  |  | The percentages with the colors that should be applied. At least two values n... |
-| `smoothColor` | boolean | Yes | false | Gradual color gradient between data points |
-| `showValues` | boolean | Yes | false |  |
-| `valuesColor` | string |  |  |  |
-| `widthUnit` | enumeration | Yes | percentage | Percentage: portion of parent size. Pixels: absolute amount of pixels. |
-| `width` | integer | Yes | 100 |  |
-| `heightUnit` | enumeration | Yes | percentageOfWidth |  |
-| `height` | integer | Yes | 75 |  |
-| `onClickAction` | action |  |  |  |
-| `tooltipHoverText` | textTemplate |  |  |  |
-| `enableThemeConfig` | boolean | Yes | false |  |
-| `customLayout` | string |  |  |  |
-| `customConfigurations` | string |  |  |  |
-| `customSeriesOptions` | string |  |  |  |
+| Property | Type | Required | Default | Values / notes | Group | Description |
+|----------|------|----------|---------|----------------|-------|-------------|
+| `seriesDataSource` | datasource | Yes |  | list | General::Data source | Series |
+| `seriesValueAttribute` | attribute | Yes |  |  | General::Data source | The attribute used to display “heat” at an “x y” location. |
+| `seriesItemSelection` | selection | Yes |  |  | General::Data source | Selection type |
+| `horizontalAxisAttribute` | attribute |  |  |  | General::Axis | X Axis Attribute |
+| `horizontalSortAttribute` | attribute |  |  |  | General::Axis | Attribute to use for sorting the data. Sorting can only be used when data source is ‘Database’. For data source ‘Microflow’, the sorting should be done within the microflow. |
+| `horizontalSortOrder` | enumeration | Yes | asc | `asc` \| `desc` | General::Axis | X Axis Sort Order |
+| `verticalAxisAttribute` | attribute |  |  |  | General::Axis | Y Axis Attribute |
+| `verticalSortAttribute` | attribute |  |  |  | General::Axis | Attribute to use for sorting the data. Sorting can only be used when data source is ‘Database’. For data source ‘Microflow’, the sorting should be done within the microflow. |
+| `verticalSortOrder` | enumeration | Yes | asc | `asc` \| `desc` | General::Axis | Y Axis Sort Order |
+| `enableAdvancedOptions` | boolean | Yes | false |  | General::General | Enable Advanced Options |
+| `showPlaygroundSlot` | boolean | Yes | false |  | General::General | Show playground slot |
+| `playground` | widgets |  |  |  | General::General | Playground slot |
+| `xAxisLabel` | textTemplate |  |  |  | General::General | X axis label |
+| `yAxisLabel` | textTemplate |  |  |  | General::General | Y axis label |
+| `showScale` | boolean | Yes | false |  | General::General | Show Scale |
+| `gridLines` | enumeration | Yes | none | `none` \| `horizontal` \| `vertical` \| `both` | General::General | Grid lines |
+| `scaleColors` | object |  |  | list; 2 sub-properties below | Scale::Scale | The percentages with the colors that should be applied. At least two values needs to be specified, for 0% and 100%, else the default colors are used. |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ `valuePercentage` | integer | Yes | 0 |  |  | The percentage at which the color should be applied. This value must be between 0 and 100. |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ `colour` | string | Yes |  |  |  | The CSS value e.g. blue, #48B0F7 or rgb(0,0,0) |
+| `smoothColor` | boolean | Yes | false |  | Scale::Scale | Gradual color gradient between data points |
+| `showValues` | boolean | Yes | false |  | Scale::Scale | Show values |
+| `valuesColor` | string |  |  |  | Scale::Scale | Font value color |
+| `widthUnit` | enumeration | Yes | percentage | `percentage` \| `pixels` | Dimensions::Dimensions | Percentage: portion of parent size. Pixels: absolute amount of pixels. |
+| `width` | integer | Yes | 100 |  | Dimensions::Dimensions | Width |
+| `heightUnit` | enumeration | Yes | percentageOfWidth | `percentageOfWidth` \| `pixels` \| `percentageOfParent` | Dimensions::Dimensions | Height unit |
+| `height` | integer | Yes | 75 |  | Dimensions::Dimensions | Height |
+| `onClickAction` | action |  |  |  | Events::Events | On click action |
+| `tooltipHoverText` | textTemplate |  |  |  | Events::Events | Tooltip hover text |
+| `enableThemeConfig` | boolean | Yes | false |  | Advanced::Advanced | Enable theme folder config loading |
+| `customLayout` | string |  |  |  | Advanced::Advanced | Custom layout |
+| `customConfigurations` | string |  |  |  | Advanced::Advanced | Custom configurations |
+| `customSeriesOptions` | string |  |  |  | Advanced::Advanced | Custom series options |
 
 ## Child Slots (curly-brace blocks)
 
@@ -67,3 +69,6 @@ Item properties:
 | `valuePercentage` | primitive |
 | `colour` | primitive |
 
+---
+
+Regenerated by `mxcli widget docs` and by `refresh catalog`. For the same data live from the `.mpk` — including anything added by a widget upgrade since this file was written — run `mxcli widget describe heatmap -p <app.mpr>`.
