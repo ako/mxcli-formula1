@@ -4965,10 +4965,13 @@ shared key.
 
 ### Notes
 
-- Grouped over five pages rather than one, because sixteen grids on one page is
-  sixteen OData reads on open.
-- MDL has no tab container, so the grouping is pages rather than tabs.
-- The menu item is `PAGE Formula1Frontend.Admin_Sync`, and Mendix does not render
+- Sixteen grids on one visible surface is sixteen OData reads on open, so they
+  are grouped -- five tab pages, whose contents are not fetched until shown.
+- ~~MDL has no tab container, so the grouping is pages rather than tabs.~~
+  **Wrong, and corrected in 69.** MDL has `TABCONTAINER` and `TABPAGE`. This was
+  built as five separate pages with a hand-rolled chip row between them purely
+  because of that mistaken belief; it is now one tabbed page.
+- The menu item is `PAGE Formula1Frontend.Admin`, and Mendix does not render
   a menu item whose target the signed-in user cannot view — so the fan role never
   sees it, with no extra visibility rule.
 - Atlas icon names are not discoverable through `describe icon collection` as the
@@ -5405,3 +5408,86 @@ offending string costs one command and settles it.
 `frontmatter.FindSubmatch` matches the **first** block and checks its `name`
 against the directory, which is correct. A rename-and-prepend is invisible to a
 first-block check, and it is exactly the shape of change that produces one.
+
+---
+
+## 69. `mxcli syntax page widgets` is not the grammar
+
+The Admin screen was built as five separate pages with a hand-rolled chip row
+linking them, plus a bespoke `.admin-nav` SCSS block, because I had concluded
+MDL has no tab container.
+
+It has had one all along.
+
+```sql
+tabcontainer tabs {
+  tabpage tpA (caption: 'Cycle runs') { ... }
+  tabpage tpB (caption: 'Laps')       { ... }
+}
+```
+
+Built, read back with `describe` intact, `mx check` 0 errors. `TABCONTAINER` and
+`TABPAGE` are lexer keywords in `MDLLexer.g4:380-381`; `buildTabContainerV3`
+emits a proper `Forms$TabControl` with `Forms$TabPage` children and captions.
+
+### How the wrong conclusion was reached
+
+I searched the **documentation** — `mxcli syntax page widgets --json` — for
+`TABCONTAINER|TABPAGE|GROUPBOX|ACCORDION`, got nothing, and wrote "MDL has no
+tab container" into a design decision and twice into this document.
+
+The grammar was one `grep` away and was never consulted.
+
+**Absence from the documentation is not absence from the grammar.** For a
+question of the form "does this tool support X", the authority is the parser,
+and it is checkable in one command:
+
+```sh
+grep -iE 'TABCONTAINER|TABPAGE' .mxcli-src/mdl/grammar/MDLLexer.g4
+# or, better, just try it:
+mxcli check /tmp/probe.mdl -p app.mpr
+```
+
+Trying it costs twenty seconds and answers exactly the question asked. That is
+what settled it in the end, two days late.
+
+Worse: the evidence had already gone past. Verifying PRs 222/223 an hour earlier
+printed
+
+```
+--- PASS: TestParseRawWidget_TabControlPreservesTabPages
+--- PASS: TestOutputWidgetMDLV3_TabControlEmitsTabPageStructure
+```
+
+in output I read and summarised. A test named for the feature I had declared
+missing.
+
+### The documentation gap is real, and worth filing
+
+`mxcli syntax page widgets` describes itself as covering "Widget types:
+containers, data widgets, inputs, actions, display" and lists neither the tab
+container nor several other widgets the grammar accepts. Confirmed by probing
+each against `mxcli check`:
+
+| keyword | in `MDLLexer.g4` | in `syntax page widgets` | `mxcli check` |
+|---|---|---|---|
+| `TABCONTAINER` | yes | **no** | passes |
+| `TABPAGE` | yes | **no** | passes |
+| `GROUPBOX` | yes | **no** | passes |
+| `STATICIMAGE` | yes | **no** | passes |
+
+Four widgets that parse and build, undocumented in the command whose entire job
+is to say what can be written. The syntax reference is hand-maintained beside a
+generated parser, so it drifts silently — and it drifts in the direction that
+makes an agent reading it build the wrong thing, confidently.
+
+A generated cross-check would close it: every widget keyword in the lexer should
+appear in `syntax page widgets`, as a test.
+
+### What it cost
+
+Five pages, a chip sub-navigation, a `.admin-nav` grid, and a paragraph in 61
+explaining why tabs were impossible. All of it deleted. The replacement is one
+page with five `tabpage` blocks, and tab pages have the property the five-page
+split was reaching for anyway: **a tab's contents are not fetched until it is
+shown**, so sixteen grids still cost one tab's worth of OData reads on open.

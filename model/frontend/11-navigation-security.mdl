@@ -257,7 +257,7 @@ create or replace navigation Responsive
      * the comp. A menu item whose page the signed-in user cannot view is not
      * rendered, so a fan never sees this one.
      */
-    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin_Sync ICON Atlas_Core.Atlas."layout-list";
+    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin ICON Atlas_Core.Atlas."layout-list";
   );
 
 /* The circuit outline: the shape, the points behind it, and the chart. */
@@ -305,8 +305,4 @@ grant F1Admin.Reader ON F1Admin.Messages (READ *);
 grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
 grant F1Admin.Reader ON F1Admin.Radio (READ *);
 
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Sync TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Laps TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Telemetry TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Session TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Events TO Formula1Frontend.Administrator;
+GRANT VIEW ON PAGE Formula1Frontend.Admin TO Formula1Frontend.Administrator;
