@@ -5500,3 +5500,53 @@ explaining why tabs were impossible. All of it deleted. The replacement is one
 page with five `tabpage` blocks, and tab pages have the property the five-page
 split was reaching for anyway: **a tab's contents are not fetched until it is
 shown**, so sixteen grids still cost one tab's worth of OData reads on open.
+
+---
+
+## 70. The same duplicate-definition bug, three times, and the third one reverted a day of work
+
+The screen went back to showing the Hungarian Grand Prix of 26 July, and the
+track map back to drawing five circuits at once. Both had been fixed hours
+earlier and nothing had touched either fix.
+
+What touched them was publishing an unrelated resource. `Story` is published on
+`F1LiveNowApi`, which is defined in `15-live.mdl` — and `15-live.mdl` also
+carried its own copies of the seven read microflows behind that service, the
+CSV-and-DuckDB versions that `22-live-screen.mdl` was written to replace. One
+`mxcli exec` of 15 silently reverted all seven.
+
+The tell was a timestamp. `fetchedAt` read `2026-08-21 15:50:57Z` — space
+separated, the CSV's format — where `Sync_Context` writes ISO-8601 with a `T`.
+The screen was not showing stale data; it was running stale *code*.
+
+### Three times, same shape
+
+| | duplicated in | symptom |
+|---|---|---|
+| 59 | `SE_LiveSync` in 19 and 20 | script order decided which tiers a race captured |
+| 61 | `RowId` in 21 vs 19/20 | `CE1613`, the publish blocks lost their key |
+| 70 | seven `Read_Live*` in 15 and 22 | the screen reverted to CSVs a day after being repointed |
+
+**A definition that lives in two files belongs to whichever ran last.** Three
+times is no longer bad luck; it is what `create or replace` invites when a file
+is organised by *topic* rather than by *ownership*. 15 owns the service, so it
+felt natural to keep the service's read microflows beside it — and 22 was
+written to replace exactly those.
+
+The rule that would have prevented all three: **before adding a definition,
+grep the model for its name.** One command, and it is the same command that
+diagnosed each of them afterwards.
+
+15 now carries only the service and its publish blocks, plus a comment saying
+where the reads live and why they are not here.
+
+### It also hid behind a real fix
+
+Between the revert and noticing it, the circuit was "wrong" again — and I had
+already written 66 about misdiagnosing that same star twice. The fourth
+explanation was neither of the first three: the session filter was still in the
+source, just not in the model.
+
+**When a fixed thing breaks again, check that the fix is still deployed before
+re-deriving it.** `describe` on the microflow would have shown the CSV version
+immediately.

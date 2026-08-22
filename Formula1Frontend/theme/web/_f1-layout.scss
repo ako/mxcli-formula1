@@ -1396,3 +1396,43 @@
     .card-list { max-height: 380px; }
   }
 }
+
+// Narrate's left column: two bands, both horizontal.
+//
+// The order and the circuit share the fold -- twenty-two rows of ten columns is
+// about a screen-half, and so is a drawing of a circuit. Stacking them cost a
+// scroll to see either, which is what putting the circuit under the grid did.
+//
+// Below them the three series sit on one row. Gap, position and tyre are the
+// same lap axis read three ways, so they are small multiples; Tufte's whole
+// argument for those is that they go beside each other, not one per band.
+.narrate-dense {
+  .live-fold {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 448px;
+    gap: 8px;
+    align-items: stretch;
+    margin-bottom: 8px;
+  }
+
+  // Stretch, so the circuit panel matches the classification's height rather
+  // than floating in a band of its own.
+  .live-fold > .panel { margin-bottom: 0; display: flex; flex-direction: column; }
+  .live-fold .circuit-figure { flex: 1 1 auto; align-items: center; }
+
+  .live-traces {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-items: start;
+  }
+  .live-traces > .panel { margin-bottom: 0; min-width: 0; }
+
+  @media (max-width: 1500px) {
+    .live-traces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 1200px) {
+    .live-fold   { grid-template-columns: minmax(0, 1fr); }
+    .live-traces { grid-template-columns: minmax(0, 1fr); }
+  }
+}
