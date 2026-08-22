@@ -844,3 +844,17 @@ BEGIN
   RETRIEVE $Rows FROM F1Now.CarPositions;
   RETURN $Rows;
 END;
+
+/*
+ * The story rail: overtakes and the stewards, newest first.
+ *
+ * The ordering is here rather than in the backend read because MDL's SORT takes
+ * no direction — `SORT($List, attr DESC)` is documented and fails the parser —
+ * while a RETRIEVE does. `at` is ISO-8601, so it sorts correctly as text.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveStory ()
+  RETURNS List of F1Now.Story AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Story SORT BY at DESC;
+  RETURN $Rows;
+END;

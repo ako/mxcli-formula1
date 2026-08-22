@@ -1,0 +1,121 @@
+/*
+ * The story of the race, from what the sync already stores.
+ * =========================================================
+ *
+ * Narrate's comp has a story panel, and 06-narrate.mdl has carried a note since
+ * it was written saying the panel wants precedents and streaks read out of
+ * seventy-five years of results by an agent pass, and that no such resource
+ * exists. That is still true, and it is not a reason for the panel to hold
+ * nothing: two feeds already captured are narrative by nature.
+ *
+ * OVERTAKES. OpenF1 detects them and the sync has been storing them since the
+ * tiers were built -- 22 in the Zandvoort sprint, 262 in the Hungarian Grand
+ * Prix -- and nothing has ever read them. An overtake joined to the entry list
+ * is a sentence: who passed whom, for which position, on which lap.
+ *
+ * RACE CONTROL, minus the noise. Sixty-five messages in a sprint, of which the
+ * great majority are sector flags -- "YELLOW IN TRACK SECTOR 4" repeated as
+ * cars pass -- and waved blues for a car being lapped. Strip those and what is
+ * left is the story the stewards tell: the start, investigations, a lap time
+ * deleted for track limits, the flag.
+ *
+ * Both are stored, both are free, and neither needed a request to build this.
+ */
+
+@Position(120, 1500)
+create or modify non-persistent entity Formula1Backend.Stg_LiveStory (
+  StoryKey: string(80),
+  SessionKey: string(20),
+  At: string(40),
+  Lap: long,
+  Kind: string(20),
+  Headline: string(200),
+  Detail: string(400)
+);
+
+/*
+ * One list, newest first.
+ *
+ * Kind is what the screen colours by, not something the reader sees: an
+ * overtake and a stewards' note want different weight on the page and the same
+ * shape in the data.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveStory (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveStory AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveStory;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+
+  /* --- overtakes --- */
+  RETRIEVE $Overtakes FROM Formula1Backend.LiveOvertake
+    WHERE SessionKey = $Key SORT BY At DESC;
+  LOOP $O IN $Overtakes BEGIN
+    DECLARE $Passer String = 'Car ' + toString($O/OvertakingDriver);
+    DECLARE $Passed String = 'Car ' + toString($O/OvertakenDriver);
+    $DA = FIND($Drivers, DriverNumber = $O/OvertakingDriver);
+    IF $DA != empty THEN
+      SET $Passer = $DA/Code;
+    END IF;
+    $DB = FIND($Drivers, DriverNumber = $O/OvertakenDriver);
+    IF $DB != empty THEN
+      SET $Passed = $DB/Code;
+    END IF;
+    $Story = CREATE Formula1Backend.Stg_LiveStory (
+      StoryKey = 'ot-' + $O/SessionKey + '-' + toString($O/RowId),
+      SessionKey = $O/SessionKey, At = $O/At, Lap = $O/LapNumber,
+      Kind = 'overtake',
+      Headline = $Passer + ' passed ' + $Passed,
+      Detail = 'for P' + toString($O/Position) + ' on lap ' + toString($O/LapNumber));
+    ADD $Story TO $Rows;
+  END LOOP;
+
+  /*
+   * --- race control, with the sector chatter removed ---
+   *
+   * A sector flag fires once per car per sector, so a single yellow becomes a
+   * dozen identical lines and buries everything else. Waved blues are the same
+   * shape: information for one driver, not for a reader.
+   */
+  RETRIEVE $Msgs FROM Formula1Backend.LiveMessageRow
+    WHERE SessionKey = $Key SORT BY At DESC;
+  LOOP $M IN $Msgs BEGIN
+    IF contains(toUpperCase($M/Message), 'IN TRACK SECTOR') = false
+       AND contains(toUpperCase($M/Message), 'WAVED BLUE FLAG') = false THEN
+      DECLARE $Kind String = 'note';
+      IF trim($M/Flag) != '' THEN
+        SET $Kind = 'flag';
+      END IF;
+      IF contains(toUpperCase($M/Message), 'STEWARDS') THEN
+        SET $Kind = 'steward';
+      END IF;
+      $Line = CREATE Formula1Backend.Stg_LiveStory (
+        StoryKey = 'rc-' + $M/SessionKey + '-' + toString($M/RowId),
+        SessionKey = $M/SessionKey, At = $M/At, Lap = $M/Lap,
+        Kind = $Kind,
+        Headline = $M/Message,
+        Detail = $M/Category);
+      ADD $Line TO $Rows;
+    END IF;
+  END LOOP;
+
+  /*
+   * Returned in the order built, and ordered by the caller.
+   *
+   * Newest-first is what the rail wants, and SORT takes no direction -- the
+   * documented `SORT($List, attr DESC)` fails the parser. The frontend's own
+   * RETRIEVE does support one, so the ordering lives there. At is ISO-8601 and
+   * sorts correctly as text either way.
+   */
+  RETURN $Rows;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStory TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStory TO Formula1Backend.DataAdmin;

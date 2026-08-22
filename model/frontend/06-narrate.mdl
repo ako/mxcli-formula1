@@ -115,7 +115,23 @@ create or replace page Formula1Frontend.Narrate
      * Classification takes the width it needs for twenty cars and ten columns;
      * the circuit sits in the rail at the size a circuit actually needs.
      */
-    container liveTop (class: 'live-top') {
+    /*
+     * The race, and the talk about the race.
+     *
+     * Two columns for the whole screen rather than per band. The left is what
+     * the cars are doing -- order, where they are on the circuit, how the gaps
+     * and positions moved, what tyres they are on. The right is what is being
+     * said about it, and it runs the full height because reading is a column,
+     * not a strip: a race control message needs a line of text, not a table
+     * cell it gets truncated in.
+     *
+     * The circuit is no longer squeezed into a 336px rail. It sits under the
+     * classification at the same width and gets real vertical space -- a
+     * circuit is a shape, and a shape needs both dimensions.
+     */
+    container liveMain (class: 'live-main') {
+
+      container liveLeft (class: 'live-left') {
       /*
        * The classification.
        *
@@ -172,6 +188,7 @@ create or replace page Formula1Frontend.Narrate
         }
       }
 
+
       /*
        * Track position.
        *
@@ -200,15 +217,11 @@ create or replace page Formula1Frontend.Narrate
               chartHeight: 0,
               renderer: 'svg',
               showActions: false,
-              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":312,"height":300,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":10,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":120,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":8,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":760,"height":470,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":10,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":120,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":8,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
           }
         }
       }
-    }
 
-    /* The two traces, side by side rather than stacked: each is a small
-     * multiple of the same lap axis, and reading them against each other is
-     * the point. */
     container liveCharts (class: 'split-even') {
       /*
        * Gap to leader. The comp's headline chart and the one that carries the
@@ -253,43 +266,86 @@ create or replace page Formula1Frontend.Narrate
       }
     }
 
-
-    container liveSplit (class: 'split') {
-
-      container stintPanel (class: 'panel') {
-        container stintHead (class: 'panel-head') {
-          dynamictext stintTitle (content: 'Strategy', class: 'panel-title')
-          dynamictext stintSub (
-            content: 'one bar per stint, coloured by compound · a stint still running is closed at the lead lap',
-            class: 'panel-sub')
-        }
-        dataview dvStints (datasource: MICROFLOW Formula1Frontend.DSJ_LiveStints) {
-          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartStints (
-            chartData: json,
-            datasetName: 'table',
-            chartHeight: 0,
-            renderer: 'svg',
-            showActions: false,
-            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":250,"mark":{"type":"bar","height":6,"cornerRadius":1},"encoding":{"x":{"field":"from","type":"quantitative","title":"Lap","scale":{"zero":true,"nice":false},"axis":{"format":"d","tickMinStep":1}},"x2":{"field":"to"},"y":{"field":"code","type":"nominal","title":null,"sort":null},"color":{"field":"compound","type":"nominal","title":null,"scale":{"domain":["SOFT","MEDIUM","HARD","INTERMEDIATE","WET"],"range":["#F85149","#E3B341","#8B949E","#3FB950","#58A6FF"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"compound","title":"Tyre"},{"field":"from","title":"From lap"},{"field":"to","title":"To lap"}]}}')
+        container stintPanel (class: 'panel') {
+          container stintHead (class: 'panel-head') {
+            dynamictext stintTitle (content: 'Strategy', class: 'panel-title')
+            dynamictext stintSub (
+              content: 'one bar per stint, coloured by compound · a stint still running is closed at the lead lap',
+              class: 'panel-sub')
+          }
+          dataview dvStints (datasource: MICROFLOW Formula1Frontend.DSJ_LiveStints) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartStints (
+              chartData: json,
+              datasetName: 'table',
+              chartHeight: 0,
+              renderer: 'svg',
+              showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":230,"mark":{"type":"bar","height":6,"cornerRadius":1},"encoding":{"x":{"field":"from","type":"quantitative","title":"Lap","scale":{"zero":true,"nice":false},"axis":{"format":"d","tickMinStep":1}},"x2":{"field":"to"},"y":{"field":"code","type":"nominal","title":null,"sort":null},"color":{"field":"compound","type":"nominal","title":null,"scale":{"domain":["SOFT","MEDIUM","HARD","INTERMEDIATE","WET"],"range":["#F85149","#E3B341","#8B949E","#3FB950","#58A6FF"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"compound","title":"Tyre"},{"field":"from","title":"From lap"},{"field":"to","title":"To lap"}]}}')
+          }
         }
       }
 
-      container rcPanel (class: 'panel') {
-        container rcHead (class: 'panel-head') {
-          dynamictext rcTitle (content: 'Race control', class: 'panel-title')
-          dynamictext rcSub (content: 'most recent first', class: 'panel-sub')
+      container liveRail (class: 'live-rail') {
+
+        /*
+         * The story. Overtakes joined to the entry list, and the stewards with
+         * the sector chatter stripped out -- both already captured and never
+         * read until now. The comp's fuller narrative, the one that wants
+         * precedents read out of seventy-five years of results, still has no
+         * resource behind it; this is what the race itself says.
+         */
+        container storyPanel (class: 'panel rail-panel') {
+          container storyHead (class: 'panel-head') {
+            dynamictext storyTitle (content: 'Story', class: 'panel-title')
+            dynamictext storySub (content: 'overtakes and the stewards · newest first',
+                                  class: 'panel-sub')
+          }
+          container storyList (class: 'card-list') {
+            listview lvStory (datasource: MICROFLOW Formula1Frontend.DS_LiveStory,
+                              PageSize: 60) {
+              container storyCard (
+                class: 'story-card',
+                dynamicclasses: '''story-'' + $currentObject/kind'
+              ) {
+                container storyCardTop (class: 'card-meta') {
+                  dynamictext storyKind (content: '{1}', contentparams: [{1} = kind],
+                                         class: 'card-kind')
+                  dynamictext storyLap (content: 'lap {1}', contentparams: [{1} = lap],
+                                        class: 'card-lap')
+                }
+                dynamictext storyLine (content: '{1}', contentparams: [{1} = headline],
+                                       class: 'card-line')
+                dynamictext storyDetail (content: '{1}', contentparams: [{1} = detail],
+                                         class: 'card-detail')
+              }
+            }
+          }
         }
-        container rcGrid (class: 'grid-dense') {
-          datagrid dgMessages (
-            datasource: MICROFLOW Formula1Frontend.DS_LiveMessages,
-            PageSize: 20,
-            PagingPosition: bottom
-          ) {
-            column colLap (attribute: lap, caption: 'Lap', Alignment: right)
-            column colAt (attribute: at, caption: 'Time')
-            column colCat (attribute: category, caption: 'Category')
-            column colFlag (attribute: flag, caption: 'Flag')
-            column colMsg (attribute: message, caption: 'Message')
+
+        /*
+         * Race control in full. The story panel above is the edited version;
+         * this is everything, sector flags included, for when the question is
+         * "what exactly did they say".
+         */
+        container rcPanel (class: 'panel rail-panel') {
+          container rcHead (class: 'panel-head') {
+            dynamictext rcTitle (content: 'Race control', class: 'panel-title')
+            dynamictext rcSub (content: 'every message, newest first', class: 'panel-sub')
+          }
+          container rcList (class: 'card-list') {
+            listview lvMessages (datasource: MICROFLOW Formula1Frontend.DS_LiveMessages,
+                                 PageSize: 60) {
+              container rcCard (class: 'story-card story-rc') {
+                container rcCardTop (class: 'card-meta') {
+                  dynamictext rcFlag (content: '{1}', contentparams: [{1} = category],
+                                      class: 'card-kind')
+                  dynamictext rcAt (content: '{1}', contentparams: [{1} = at],
+                                    class: 'card-lap')
+                }
+                dynamictext rcLine (content: '{1}', contentparams: [{1} = message],
+                                    class: 'card-line')
+              }
+            }
           }
         }
       }

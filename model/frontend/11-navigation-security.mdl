@@ -306,3 +306,7 @@ grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
 grant F1Admin.Reader ON F1Admin.Radio (READ *);
 
 GRANT VIEW ON PAGE Formula1Frontend.Admin TO Formula1Frontend.Administrator;
+
+/* The story rail on Narrate. */
+grant F1Now.Reader ON F1Now.Story (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStory TO Formula1Frontend.Enthusiast;

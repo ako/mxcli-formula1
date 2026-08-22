@@ -380,6 +380,22 @@ authentication microflow Formula1Backend.AuthenticateApiClient
    * what lets a page draw a dot on the line without projecting anything: the
    * outline and the cars came from the same feed in the same units.
    */
+  /* The story of the race: overtakes and the stewards, built in 23. */
+  publish entity Formula1Backend.Stg_LiveStory as 'Story' (
+    ReadMode: microflow Formula1Backend.Read_LiveStory,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    StoryKey as 'storyKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    Kind as 'kind' (Filterable, Sortable),
+    Headline as 'headline' (Filterable, Sortable),
+    Detail as 'detail' (Filterable, Sortable)
+  );
+
   publish entity Formula1Backend.LiveTrackOutline as 'TrackOutline' (
     ReadMode: microflow Formula1Backend.Read_TrackOutline,
     InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,

@@ -1285,3 +1285,114 @@
     .live-bar .kpis { flex-basis: 100%; justify-content: flex-start; }
   }
 }
+
+// The Narrate fold, second cut: the race on the left, the talk on the right.
+//
+// The first version put the circuit in a 336px rail beside the classification,
+// which fixed "the circuit is the entire width" by going too far the other way
+// -- a shape squeezed into a third of a screen. And race control was a datagrid,
+// where a message is a truncated cell.
+//
+// So the split is now for the whole screen rather than per band. Left: the
+// order, the circuit at a size a shape deserves, the traces, the strategy.
+// Right: a reading column, full height, sticky, that scrolls on its own.
+.narrate-dense {
+  .live-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 8px;
+    align-items: start;
+  }
+
+  .live-left { min-width: 0; }
+
+  // Sticky so the story stays beside whatever part of the race you scroll to,
+  // and its own scrollbar so the page length is set by the left column.
+  .live-rail {
+    position: sticky;
+    top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 96px);
+    min-width: 0;
+  }
+
+  // Two panels sharing the rail's height: the story gets more of it, and each
+  // scrolls inside itself rather than pushing the other off.
+  .rail-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0;
+
+    &:first-child { flex: 3 1 0; }
+    &:last-child  { flex: 2 1 0; }
+  }
+
+  .card-list {
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+    @include f1-listview-reset;
+  }
+
+  // A card, not a row. The message gets a line of text and wraps, which is the
+  // whole reason this stopped being a datagrid.
+  .story-card {
+    border-left: 2px solid var(--mxt-line);
+    padding: 4px 0 5px 8px;
+    margin-bottom: 5px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 1px;
+  }
+
+  .card-kind {
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--mxt-ink-muted);
+  }
+
+  .card-lap {
+    font-family: var(--mxt-font-mono);
+    font-size: 9px;
+    color: var(--mxt-ink-faint, var(--mxt-ink-muted));
+  }
+
+  .card-line {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--mxt-ink);
+    white-space: normal;      // the point of the card
+  }
+
+  .card-detail {
+    font-size: 10px;
+    color: var(--mxt-ink-muted);
+    white-space: normal;
+  }
+
+  // Kind carries the accent, so the eye can sort the rail without reading it.
+  .story-overtake { border-left-color: var(--mxt-brand); }
+  .story-steward  { border-left-color: #E3B341; }
+  .story-flag     { border-left-color: #F85149; }
+  .story-note,
+  .story-rc       { border-left-color: var(--mxt-line); }
+
+  // The circuit is no longer in a rail, so it takes the column and a height
+  // at least equal to the classification beside it.
+  .circuit-figure { max-width: 100%; }
+
+  @media (max-width: 1200px) {
+    .live-main { grid-template-columns: minmax(0, 1fr); }
+    .live-rail { position: static; max-height: none; }
+    .card-list { max-height: 380px; }
+  }
+}
