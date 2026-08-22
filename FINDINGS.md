@@ -4463,3 +4463,769 @@ written, and it sits directly above the line that needs the quoting fix.
 57.1 is worth raising before the PR merges, because it is one line and it is
 inside the change. 57.2 and 57.3 are older than the PR and belong in their own
 issues — the PR made the first one visible and gave the second one a single home.
+
+---
+
+## 58. The rate limiter that stored an empty race
+
+Setting up to capture the Dutch GP (Sunday 23 August, session 11353), I pointed
+the sync at a session from earlier the same day — Zandvoort FP1, 11343 — as a
+rehearsal. It stored 692 laps and nothing else. No telemetry, no radio, no
+track outline. Every table but one, empty.
+
+Session 11342 — Hungary, captured a month earlier — was complete. Same code,
+same endpoints, one session works and one does not.
+
+### It was not the data
+
+`car_data?session_key=11343&date>=…&date<=…` returns HTTP 200 and 2.4 MB from
+curl, 14,652 rows in a three-minute window. The 11342 window returns 200 and
+2.5 MB. Same keys, same shapes, same sizes:
+
+```
+11342 keys: brake date driver_number drs meeting_key n_gear rpm session_key speed throttle
+11343 keys: brake date driver_number drs meeting_key n_gear rpm session_key speed throttle
+```
+
+The one visible difference is key *order*, which `from_json` does not care about.
+
+### The tell was in the timings
+
+`Sync_Telemetry` returned in **73 milliseconds** — having supposedly fetched
+three responses of a couple of megabytes each. The same microflow against 11342
+took four seconds. Whatever was happening, the requests were not going out and
+coming back.
+
+`Sync_Fetch` swallows everything with `ON ERROR CONTINUE` and substitutes `[]`
+for an empty body, so there was nothing in the log. One line fixed that:
+
+```
+LOG INFO NODE 'F1LiveSync' 'fetch ' + $Url + ' -> ' + toString(length($Body)) + ' chars';
+```
+
+and the answer was immediate:
+
+```
+21:39:23.111  fetch …/stints?session_key=11343 -> 14235 chars     pass 2
+21:39:43.461  fetch …/stints?session_key=11343 -> 2 chars         pass 3
+```
+
+**The same URL, twenty seconds apart, succeeded and then returned nothing.** No
+API does that over its data. Rate limiters do it over their clock.
+
+Twelve requests in a burst, from a shell:
+
+```
+0 200 14235
+1 200 14235
+2 200 14235
+3 HTTP 429 {"detail":"Rate limit exceeded. Max 3 requests/second."}
+4 200 14235
+...
+```
+
+### What actually happened
+
+The sync was written to be sequential, because parallel httpfs scans were what
+tripped this limit the first time (§53). Sequential is necessary and it is not
+sufficient: Mendix issues sequential REST calls *as fast as it can*, and a pass
+fired nine of them in 240 ms — roughly 37 requests a second against an allowance
+of three.
+
+So requests four onward came back 429. `ON ERROR CONTINUE` turned each one into
+an empty body, `Sync_Fetch` substituted `[]`, `[]` is valid JSON, and the
+derivation read it as a session containing no data. The laps tier ran first and
+got its three requests in under the wire, which is why exactly one table filled.
+
+Nothing failed. Nothing logged. The result string said `pass 1 | pass 2 | pass 3`
+for a cycle that stored a full race and for one that stored nothing, because it
+reported that the passes *happened* and never looked at what they returned.
+
+**A swallowed error plus a default that parses is indistinguishable from an
+empty API.** Both halves are needed for the failure and both were deliberate
+choices: `ON ERROR CONTINUE` so a 404 on a quiet window would not stop the sync,
+`[]` so DuckDB would not choke on an empty string. Each is right on its own.
+
+### The fix
+
+Three parts, all in `19-live-sync.mdl` and `20-live-tiers.mdl`:
+
+1. **An explicit gap before every fetch.** 700 ms unauthenticated (1.4/s against
+   an allowance of 3), 250 ms with a bearer (4/s against 6). `Sync_Sleep` now
+   takes milliseconds rather than seconds.
+
+2. **One retry on an empty body**, after 1.5 s. Empty means either a genuine 404
+   — the window holds no samples — or a 429. The two want opposite treatment and
+   a single extra request tells them apart.
+
+3. **The cycle sizes itself to the tier.** Three passes cost 28 requests, which
+   is under half of the authenticated 60/min and *over* what the free 30/min
+   leaves room to retry. Unauthenticated the cycle now runs one pass, 12
+   requests, on a one-minute cadence. The budget comment in the model had been
+   written against the authenticated allowance and the code ran unauthenticated.
+
+Plus the result string now carries what each tier returned, not that it ran.
+
+Zandvoort FP1, recaptured: 692 laps, 3,960 car samples, 1,826 location samples,
+8 radio messages, and a 301-point track outline traced from Leclerc's flying lap.
+
+### Two ordering bugs found on the way
+
+**`SE_LiveSync` was defined in both scripts** — pointing at `Sync_Live` in 19 and
+at `Sync_Cycle` in 20. Whichever ran last won, so the order the model scripts
+were applied in silently decided whether a race captured one tier or all of
+them. The definition now lives only in 20, next to the cycle it schedules.
+
+**`Sync_Sleep` was declared in 20 and is now called from 19**, which made the
+dependency circular: 19 needs 20's java action, 20 needs 19's entities. Moved
+the declaration into 19, next to `Sync_Fetch`, its first caller.
+
+### The scheduled event does fire locally
+
+Recorded as unverified since the sync was built. It does not fire under a plain
+`mxcli run --local`, and the boot log says why:
+
+```
+Core: Synchronizing scheduled events: None
+```
+
+That is the runtime's own setting, not an mxcli limitation, and mxcli passes it
+through:
+
+```
+mxcli run --local -p Formula1Backend.mpr --runtime-setting 'ScheduledEventExecution=ALL'
+```
+
+```
+Core: Synchronizing scheduled events: All
+```
+
+### And the thing none of this fixes
+
+OpenF1 classes data as live **from 30 minutes before a session starts until 30
+minutes after it ends**, and live data — REST, MQTT and WebSocket alike — is
+sponsor-only at €9.90/month. The free tier is historical-only, at 3 requests a
+second and 30 a minute.
+
+So the sync cannot follow Sunday's race as it runs, at any cadence, with any
+amount of pacing. It can capture the whole thing from half an hour after the
+flag, at full fidelity, and for replay that is the same data — the store is
+timestamped and append-only, so a race assembled afterwards replays exactly like
+one assembled live. What is lost is watching it arrive.
+
+---
+
+## 59. Authenticating: the import mapping that cannot be written from MDL
+
+Credentials went in as constants and `Sync_Cycle` started throwing:
+
+```
+com.mendix.modules.microflowengine.MicroflowException: key not found: Path(QName(None,),None,)
+	at Formula1Backend.Sync_EnsureToken (CallRest : 'Call REST (POST)')
+```
+
+`Path(QName(None,),None,)` is a lookup for an element whose name is empty. It
+names nothing that appears in the model, and `mx check` reports zero errors.
+
+### First: whose fault is the response?
+
+`Sync_EnsureToken` had never run against a real account — only against the
+endpoint's error path — so the response was the obvious suspect. The probe that
+settled it logs the *shape* and never a value, because the value is a bearer
+token:
+
+```
+LOG INFO NODE 'F1LiveSync' 'token probe: len=' + toString(length($Raw))
+  + ' head=' + substring($Raw, 0, 1)
+  + ' has_access_token=' + toString(contains($Raw, 'access_token'))
+  ...
+```
+
+```
+token probe: len=975 head={ has_access_token=true has_expires_in=true
+            has_token_type=true has_detail=false
+```
+
+Valid JSON, all three fields, credentials accepted. The response was never the
+problem.
+
+### Then: whose fault is the mapping?
+
+The generated model reads back correctly. Decoding the `.mxunit` directly:
+
+```
+JsonStructures$JsonElement   Path (Object)|access_token   ExposedName Access_token
+ImportMappings$ValueMappingElement
+                             JsonPath (Object)|access_token
+ImportMappings$ObjectMappingElement
+                             JsonPath (Object)   ExposedName Root
+```
+
+Nothing empty anywhere. So the next question was whether the fault lay in the
+mapping or in the REST call's `RETURNS MAPPING`, and MDL can ask that directly,
+because an import mapping is also a standalone activity:
+
+```
+$Raw      = REST CALL POST … RETURNS String ON ERROR CONTINUE;
+$Response = IMPORT FROM MAPPING Formula1Backend.IMM_OpenF1Token($Raw) FIRST;
+```
+
+Same failure, one frame over:
+
+```
+	at Formula1Backend.Sync_EnsureToken (Import with mapping : 'Import from JSON')
+```
+
+**Two ways of invoking it, one failure.** The mapping is the broken part.
+Written from MDL, checked clean by both checkers, and unusable at runtime — an
+mxcli defect, and a nasty class of one, because every static check passes.
+
+### Two routes that looked promising and were not
+
+**Jackson.** The runtime bundles `jackson-databind` — it is right there in
+`runtime/bundles/`. It is not on the *compile* classpath for user Java actions:
+
+```
+Sync_JsonField.java:38: error: package com.fasterxml.jackson.databind does not exist
+```
+
+That is a build failure, not a runtime one, so the app stops starting entirely.
+
+**JSLT.** Mendix 11.9+ has data transformers and mxcli can author them —
+`CREATE DATA TRANSFORMER … SOURCE JSON '{…}' { JSLT '…'; }`. Two things rule it
+out here. There is no MDL activity to *invoke* one from a microflow, and a
+transformer turns JSON into JSON, so landing the result in an entity still needs
+an import mapping — the thing that is broken.
+
+### What it is now
+
+The same parser every other OpenF1 response already uses. `GetOpenF1Token` in
+`01-foundation.mdl`:
+
+```sql
+SELECT s.access_token AS accessToken, s.expires_in AS expiresIn
+  FROM (SELECT from_json({tokenJson}::JSON,
+        '{"access_token":"VARCHAR","expires_in":"BIGINT"}') AS s)
+```
+
+Object shape, not array — `from_json` with an array schema against an object
+returns zero rows rather than failing, which would have been the next hour.
+Verified in DuckDB before it went near the model.
+
+The exposure argument is worth stating rather than assuming: routing a bearer
+token through the warehouse costs nothing, because the token is written to
+`LiveToken` a few activities later regardless. It is in the database either way.
+
+```
+F1LiveSync: OpenF1 token minted, valid for 60 minutes
+```
+
+and `LastResult` lost its `(unauthenticated)` suffix.
+
+### The deadlock that authentication uncovered
+
+The first authenticated cycle failed anyway:
+
+```
+com.mendix.datastorage.exception.UpdateConflictException
+	at Formula1Backend.Sync_Live (JavaAction : 'OQL_Execute')
+Caused by: org.postgresql.util.PSQLException: ERROR: deadlock detected
+```
+
+Two cycles in `Sync_Live` at once, both writing the staging table. The immediate
+cause was mine — a manual `LiveCycleNow` while the scheduled event was running —
+but the arithmetic says it would have happened on race day without any help:
+authenticated, three passes with twenty seconds between them take about
+sixty-four seconds, and the event fires every sixty.
+
+The model's own comment had worried about exactly this ("a pass that runs long
+overlaps the next minute's event and both are then in flight") and treated
+request headroom as the remedy. Headroom was never the issue; wall clock was.
+
+A guard flag on the state row does not fix it. **The whole cycle is one
+transaction**, so a second cycle cannot see the first one's flag until the first
+commits, by which point it has already done the writes that collide. Fitting
+inside the minute is the only version that does not require two transactions to
+agree:
+
+```
+DECLARE $Started DateTime = [%CurrentDateTime%];
+WHILE $Pass < $Passes AND [%CurrentDateTime%] < addSeconds($Started, 45) BEGIN
+```
+
+with the inter-pass gap cut to twelve seconds. A slow network now shortens the
+cycle instead of overrunning it.
+
+### Operationally
+
+Do not trigger `LiveCycleNow` by hand while `SE_LiveSync` is enabled and firing.
+The ops action exists because the event did not fire locally; now that
+`--runtime-setting 'ScheduledEventExecution=ALL'` makes it fire, the two
+collide. One or the other.
+
+---
+
+## 60. Ten cores at 100%: a trial licence, and a supervisor that spins on a dead child
+
+The container was pinned at 100% CPU. One process:
+
+```
+    PID USER      PR  NI    VIRT    RES  S  %CPU  %MEM     TIME+ COMMAND
+ 197669 vscode    20   0 5608596  39444  R 999.9   0.2      8,05 mxcli
+```
+
+`mxcli run --hub`, ten threads all runnable, eight hours and five minutes of CPU
+burned. Load average 10.19 on ten cores.
+
+### The app it was supervising had been dead for hours
+
+```
+$ ps -o pid,ppid,stat -p 198010
+    PID    PPID STAT
+ 198010  197669 Z          <- the runtime, a zombie, never reaped
+
+$ curl -o /dev/null -w '%{http_code}' http://localhost:8180/
+000
+```
+
+So: the Java runtime exited, `mxcli` neither reaped it nor noticed, and went into
+a busy-loop across every core. **Two mxcli defects in one process** — the spin,
+and the unreaped child. The tunnel client kept cheerfully reconnecting
+underneath it (`client: Connected (Latency 34.643ms)`), which is why the hub URL
+still answered while the app behind it was gone.
+
+### Why the runtime exited
+
+Not OOM — `memory.events` reports `oom_kill 0`. The runtime shut *itself* down:
+
+```
+	at com.mendix.basis.util.license.LicenseContextImpl.shutdownRuntime(LicenseContext.scala:125)
+	at com.mendix.basis.util.license.LicenseUtil.checkRuntimeDuration(LicenseUtil.scala:114)
+```
+
+```
+LicenseService: Maximum run time exceeded, framework is now terminating
+```
+
+The local runtime runs on a built-in developer licence with a maximum run time,
+and it had been saying so at every boot all along:
+
+```
+WARNING - LicenseService: The runtime has been started using a trial licence,
+          the framework will be terminated when the maximum time is exceeded!
+```
+
+Measured on this machine, from licence-initialised to termination:
+
+| app      | started  | terminated | ran for |
+|----------|----------|------------|---------|
+| frontend | 20:51:50 | 01:59:14   | 5h07m   |
+| backend  | 22:37:59 | 02:30:40   | 3h52m   |
+
+Not a fixed number, and shorter than a race weekend either way. `mxcli` has no
+licence command — `mxcli auth` handles Personal Access Tokens and tunnel-hub
+keys, nothing else — so the limit cannot be lifted from here.
+
+### Why this was nearly a disaster and is now merely a nuisance
+
+A race capture needs the app alive for the session plus the backfill. Four hours
+is not comfortably more than that, and the failure is silent: the app stops, the
+hub keeps answering, and the sync simply stops writing rows.
+
+What saves it is that **the sync keeps no state in memory**. `LiveLap` and
+friends are append-only, and `LiveSyncState.TelemetryCursor` records how far the
+backfill has walked. Killed mid-backfill and restarted, it resumed exactly:
+
+```
+ sessionkey | telemetrycursor     | runcount
+ 11344      | 2026-08-21 17:30:00 |      120
+```
+
+with 253 laps of Sprint Qualifying already stored, and carried on from there.
+That property was designed for replay and it turns out to pay for crash recovery
+too.
+
+So the answer is a supervisor rather than a licence: `scripts/keep-app-running.sh`
+polls the app's own URL and restarts it when it stops answering. It polls health
+rather than waiting for `mxcli` to exit, **because mxcli does not exit** — that
+is the whole finding — and it kills the process *group*, because mxcli leaves
+children behind.
+
+### For anyone else running an mxcli app for hours
+
+- The trial-licence warning at boot is not boilerplate. Budget for a restart.
+- Do not infer "the app is up" from the hub URL answering. The tunnel outlives
+  the app.
+- A `mxcli run` process at several hundred percent CPU is not working hard, it
+  is spinning on a dead child. Check for a zombie under it.
+
+---
+
+## 61. An admin screen over the raw tables, and the key that made it cheap
+
+Every screen in the frontend is an answer — a lap chart, a standings table, a
+track map. None of them can say what is *in* a table, so when a race looked
+wrong the only way to ask was psql against the backend's database. That is not
+available on Mendix Cloud, and not available at all to anyone who does not hold
+the connection string.
+
+Sixteen resources, one grid each, over five pages.
+
+### The obstacle was the key
+
+A published OData entity needs a key attribute carrying a unique validation rule
+(CE6585, then CE6624). Thirteen of the fifteen live tables had none: their
+natural keys are composite — `(SessionKey, DriverNumber, LapNumber)` and the
+like — and Mendix will not accept a composite key.
+
+The obvious answer was a computed string key on each, set on every write. That
+is thirteen schema changes *and* thirteen microflow changes, to the code that
+captures a race, the day before one.
+
+`autonumber` costs one line per table and no microflow change, because the
+runtime fills it in:
+
+```
+RowId: autonumber default 1 unique error 'LiveLap row id must be unique'
+```
+
+Two things worth knowing. It **needs a seed** — without `default 1` the build
+fails CE7247 "Value cannot be empty". And it **backfills an existing table
+cleanly**: LiveLap's 2,368 stored rows came out numbered 1..2368, all distinct,
+on the first boot after the migration. That was worth checking rather than
+assuming, so the live tables were pg_dumped first; the dump was not needed.
+
+`mx check` accepts an autonumber as an OData key. That was the whole question,
+and testing it on one table before touching the other twelve turned a day into
+an afternoon.
+
+### Where the key has to live
+
+Added as `ALTER ENTITY … ADD ATTRIBUTE` from the admin script, the keys survived
+exactly until the next run of 19 or 20:
+
+```
+[error] [CE1613] "The selected attribute 'Formula1Backend.LiveCarNow.RowId'
+        no longer exists." at Published attribute RowId
+```
+
+`create or modify persistent entity` rewrites the attribute list it is given, so
+an attribute added from elsewhere is dropped the next time the owning script
+runs. **An attribute belongs in the entity definition, not in an ALTER in
+another file** — the same lesson as the duplicated scheduled event in §59, in a
+different costume. The RowIds now sit in 19 and 20 beside the tables.
+
+### Do we already store the sync job history? Yes — twice, and neither is enough
+
+Mendix keeps it without being asked:
+
+```sql
+select name, starttime, endtime, status from system$scheduledeventinformation;
+ Formula1Backend.SE_LiveSync | 08:01:00.171 | 08:01:50.194 | Completed
+
+select microflowname, status, count(*), round(avg(duration)) from system$processedqueuetask group by 1,2;
+ Formula1Backend.Sync_Cycle | Completed |    74 | 205001
+ Formula1Backend.Sync_Cycle | Failed    |     6 |    247
+ Formula1Backend.Sync_Cycle | Aborted   |     3 |
+```
+
+`System.ProcessedQueueTask` carries status, duration and `ErrorMessage` per run;
+`System.ScheduledEventInformation` carries the event's own start and end. Both
+are genuinely useful and both are queryable right now — that 6 Failed / 3
+Aborted is the deadlock of §59 and the licence kill of §60, recorded without
+anyone building anything.
+
+Neither is a record of a race, for two reasons. The runtime's cluster-management
+job "cleanup old processed tasks from the database" prunes them, so the evidence
+expires. And neither knows what the cycle was *doing* — which session it
+followed, how many passes it fitted into its minute, whether it was
+authenticated.
+
+So `LiveSyncRun` is ours and holds what the System tables cannot:
+
+```
+ runid | startedat            |    ms | sessionkey | passes | outcome   | authenticated
+     9 | 2026-08-22 08:38:00  | 49966 | 11344      |      3 | Completed | t
+```
+
+Fifty seconds, three passes, inside the minute — which is the §59 deadline fix
+being confirmed by the thing it fixed.
+
+It is written **last**, so a cycle that threw leaves no row at all. That absence
+is the signal, read against the scheduled event's own record of having fired.
+
+### Two things deliberately absent
+
+`LiveToken` has no grid. It holds a bearer token, and an admin screen is exactly
+the sort of convenience that ends up on a shared display.
+
+Every grant is READ. The Admin screen is evidence, not a console — turning the
+sync on or repointing it at a session stays behind the backend's ops API and its
+shared key.
+
+### Notes
+
+- Grouped over five pages rather than one, because sixteen grids on one page is
+  sixteen OData reads on open.
+- MDL has no tab container, so the grouping is pages rather than tabs.
+- The menu item is `PAGE Formula1Frontend.Admin_Sync`, and Mendix does not render
+  a menu item whose target the signed-in user cannot view — so the fan role never
+  sees it, with no extra visibility rule.
+- Atlas icon names are not discoverable through `describe icon collection` as the
+  error message claims; `mxcli -c "describe icon collection Atlas_Core.Atlas"`
+  lists all 366. There is no `database` or `table` icon; `layout-list` is the
+  closest.
+
+---
+
+## 62. `mxcli test` blanks the running app
+
+Both apps went black. Both answered HTTP 200.
+
+```
+$ curl -o /dev/null -w '%{http_code} %{size_download}' http://localhost:8180/
+200 1718
+```
+
+1,718 bytes is Mendix's SPA shell — the `<div id="root">` and the script tag
+that fills it. The runtime was fine. What it served the shell *for* was gone:
+
+```
+ERROR - Connector: 404 - file not found for file: dist%2Findex.js
+```
+
+```
+$ ls deployment/web/dist
+ls: cannot access 'deployment/web/dist': No such file or directory
+```
+
+The backend had its `dist/` and served the bundle 200; only the frontend was
+broken. "Both are black" was one real failure and one page — the backend's
+default `Home_Web` — that had simply never been looked at before.
+
+### What removed it
+
+`deployment/web/` was rewritten at 08:39:16 by something that was not the app,
+which had booted at 08:38:05. The candidates were the two mxcli commands run
+against the project in between. Testing it takes twenty seconds:
+
+```
+before:           deployment/web/dist
+after mxcli test: MISSING
+bundle now:       404
+```
+
+**`mxcli test … --local` rebuilds the deployment directory of a project that
+another `mxcli run` is currently serving, and its build does not include the web
+client bundle.** The tests pass, the run keeps running, and the app it is
+serving goes blank. Nothing reports an error, at either end.
+
+Reproduced on demand, so it is a defect rather than a coincidence, and a
+mean-tempered one: the natural thing to do after changing a model is to run the
+tests, and the natural thing to do after that is to look at the app.
+
+### The health check that did not catch it
+
+`keep-app-running.sh` from §60 polled `/`, which answered 200 throughout. That
+is the §60 lesson again in a new costume — there, the hub tunnel outlived the
+app; here, the runtime outlives the client it serves. **A 200 from the front
+door does not mean the building is furnished.**
+
+The supervisor now polls `/dist/index.js`: the bundle the shell loads, so a 404
+there is exactly the failure a visitor sees. It caught the deliberate
+reproduction in sixty seconds and restarted the app without being asked:
+
+```
+[supervisor 08:50:41] health check failed (1/3) on http://localhost:8180/dist/index.js
+[supervisor 08:51:01] health check failed (2/3) on ...
+[supervisor 08:51:21] health check failed (3/3) on ...
+[supervisor 08:51:31] started pid 285504: mxcli run --hub ...
+```
+
+### Working rule
+
+Run tests against an app you are *not* also serving, or expect to restart it
+afterwards. With the supervisor in place the restart happens on its own, at the
+cost of a minute of blankness — which is fine for a laptop and would not be fine
+during a session you were capturing.
+
+### And one about pkill, again
+
+`pkill -f "keep-app-running.sh /workspaces"` matched the shell running it, which
+died with 144 before killing anything — so a second supervisor started while the
+first app still held port 8080. mxcli refused it, correctly and informatively:
+
+```
+A stale process is silently adopted otherwise, so edits appear to do nothing.
+  Held by pid 273513: /usr/lib/jvm/…/java …
+  That is not a process mxcli started, so it is not a leftover run —
+  pick another port rather than killing it.
+```
+
+Enumerate with `ps` and kill by PID. The §55 note about pkill patterns matching
+the invoking shell has now cost time three times in this project.
+
+---
+
+## 63. Four stubs, and the entry list that made a result unreadable
+
+The Zandvoort sprint captured cleanly: 485 lap rows, 22 cars, 24 laps, gaps
+matching OpenF1's official result to the millisecond. Reading it out, I put
+Verstappen third.
+
+He finished sixth. Car 1 is Norris this season; Verstappen is car 3.
+
+The mapping was not in our database to check against. `LiveDriver` was empty —
+and had been empty in every session ever captured, because `GetOpenF1Drivers`
+was a stub:
+
+```sql
+SELECT '' AS sessionKey, 0 AS driverNumber, '' AS code,
+       '' AS driverName, '' AS team, '' AS teamColour
+ WHERE {dataDir} = 'never'
+```
+
+A shape with no rows behind it, and nothing called it. `GetOpenF1Session`,
+`GetOpenF1Weather` and `GetOpenF1Messages` were the same: scaffolding from the
+CSV era, left in place, silently returning nothing. Four of the sync's fifteen
+tables could not fill by construction.
+
+**The cost is not cosmetic.** A lap table keyed on `driver_number` with no entry
+list is a table of anonymous numbers, and the only way to read it is to supply
+the mapping from somewhere else — memory, in my case, using last season's. The
+confirmation was sitting in a feed we were not storing:
+
+```
+INCIDENT INVOLVING CAR 3 (VER) NOTED - FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS
+```
+
+I had that text on screen while fetching race control and read past it.
+
+`race_control` also carries what *changes* a result — 65 messages in one sprint,
+four investigations, a lap time deleted for track limits. All discarded.
+
+The four queries are now real. Each was verified in DuckDB against the archived
+session before going near the model, which is worth the two minutes every time:
+`from_json` with an array schema against an object body returns zero rows rather
+than failing, so a wrong schema looks exactly like no data.
+
+`Sync_Entry` captures the entry list once per session and returns early
+thereafter. `Sync_Context` rewrites session, weather and race control every
+pass — 77 and 118 rows is cheaper than the watermark bookkeeping to avoid it,
+and rewriting is idempotent by construction.
+
+### A commit is not visible until the cycle ends
+
+`Sync_Context` logged `1 session, 77 weather, 118 race control` while the tables
+read empty from psql. Nothing had failed. **The whole cycle is one transaction**,
+so `COMMIT` inside a sub-microflow is not visible to another connection until
+the outer cycle finishes, forty seconds later. The same property that made a
+guard flag useless against the §59 deadlock.
+
+Worth knowing before diagnosing a write that "did not happen".
+
+---
+
+## 64. Archiving the API, and the mock that falls out of it
+
+Two problems with one artefact, and the second was the user's idea.
+
+The capture lived only in Postgres, so `mxcli setup` would take a race weekend
+with it. Worse, what is stored is *derived* — `LiveLap` is an ASOF join of five
+endpoints, `LiveCarNow` a downsample — so no dump of our tables can rebuild what
+we did not already think to keep.
+
+`scripts/archive-session.sh` stores the raw responses instead. The Zandvoort
+sprint is 4.9 MB gzipped and holds **341,308 car_data and 331,958 location
+rows** — the telemetry the sync itself only ever kept a rolling minute of.
+
+### The backup had the bug the backup was written to prevent
+
+The first version computed a row count and treated "could not parse one" as
+"zero rows", deleting the file. Four sessions back to back tripped the rate
+limit:
+
+```
+run 1:  location  185,306 rows
+run 2:  location        0 rows
+```
+
+Both wrong, neither complained. That is §58 verbatim — an error swallowed, and a
+default that parses, are indistinguishable from an empty API — written that
+morning and committed again that afternoon. **Knowing a failure mode is not the
+same as recognising it in new clothes.**
+
+It now retries 429s with backoff, distinguishes a real 404 from a failure, and
+exits non-zero rather than leaving a plausible archive. The corrected run gets
+331,958.
+
+### The recording was already in the design
+
+`OpenF1BaseUrl` has been documented as *"override to point at a mirror or a
+recording"* since it was written. `scripts/openf1-mock.py` is that recording:
+the archive served with OpenF1's URL shape, so the whole sync runs against it
+unchanged, at disk speed, with no rate limit and no live-session gate.
+
+Verified row-for-row against the live API across five endpoints. Getting there
+took one real bug worth recording:
+
+**`date>=X` percent-encodes to `date%3E=X`, so `parse_qs` returns the key
+`date>` — the `=` is eaten as the key/value separator.** Reading that as a
+strict `>`, and truncating stored timestamps to the filter's width to compare
+them, dropped every row in a window's first second. ISO-8601 compares correctly
+as plain text and must not be truncated first.
+
+---
+
+## 65. Narrate was bound correctly and aimed at the wrong source
+
+The screen showed the Hungarian Grand Prix of 26 July while the app captured
+Zandvoort perfectly into tables nothing read.
+
+The five resources behind it — Order, Session, Messages, Trace, Stints — were
+read by microflows scanning `data/live/*.csv` through DuckDB. Those CSVs are
+written by `scripts/fetch-f1-live.sh`, the thing the in-app sync replaced. So
+the screen had been showing whatever was last on disk.
+
+**The fix is backend-only.** The frontend was bound correctly all along: same
+resources, same attribute names, same keys. Repointing the five read microflows
+at `LiveLap`, `LiveDriver`, `LiveSessionRow`, `LiveWeatherRow` and
+`LiveMessageRow` changed nothing about the published contract, so not one line
+of the frontend moved. It is worth checking which end is wrong before rewiring
+the end that is not.
+
+Two details:
+
+**The classification takes each driver's own latest lap, not the leader's.** A
+car a lap down has no row on the current lap, and dropping it off the timing
+screen would be wrong. Laps come back newest-first and a driver is taken the
+first time it is seen.
+
+**Stints are reconstructed rather than fetched.** `LiveStintRow` is still empty,
+but `Sync_Live` already stamps compound and tyre age onto every lap, so a stint
+is a run of consecutive laps on one compound. Sainz's three stints and his pit
+stop fall out of the lap table with no extra request.
+
+### The pushdown was dropped on purpose
+
+The CSV readers used `ODataPushdown.Parse` to push `$filter` and `$top` into
+DuckDB, because scanning a race of CSV is expensive. These read a few hundred
+Postgres rows of one session, so the pushdown earns nothing and costs a Java
+action per request. Removed.
+
+### Two mxcli notes
+
+`FIND($List, cond)` takes **one** condition. A two-part `AND` fails the build
+with `CE0117 "Error(s) in expression"` naming only the activity, not the
+expression. Match on a computed key instead.
+
+`SORT($List, attr ASC)` is the documented syntax and the grammar rejects it —
+`extraneous input 'ASC' expecting ')'`. Only `SORT($List, attr)` parses;
+ascending is the default. Worth filing.
+
+### Still empty, and honestly so
+
+Interval, DRS and the sector marks stay blank. `LiveLap` does not carry interval
+— the feed is read for the gap and discarded — and OpenF1 sent **null DRS for
+the entire weekend**, which the per-lap aggregate had been averaging to a
+confident `0.0000` across all 504 rows. A zero reads as a fact; empty does not.

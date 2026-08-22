@@ -29,6 +29,11 @@ create or modify module role F1Now.Reader
   description 'Read the near-live timing snapshot from OpenF1.';
 create or modify module role F1Fan.Reader
   description 'Read the derived career, season and reliability views, and the sourced facts.';
+create or modify module role F1Admin.Reader
+  description 'Read the raw backend tables behind the Admin screen.';
+create or modify module role Formula1Frontend.Administrator
+  description 'See the Admin screen. Read-only, like every other role here -- the
+    grids are evidence, not a console.';
 
 /* Live external entities */
 grant F1Live.Reader ON F1Live.Seasons (READ *);
@@ -218,6 +223,17 @@ create or modify user role Enthusiast (
 );
 
 /*
+ * An administrator is an enthusiast who can also see the plumbing, so the role
+ * is additive rather than parallel -- signing in as admin should not cost you
+ * the five screens the app is actually for.
+ */
+create or modify user role Administrator (
+  Formula1Frontend.Administrator, Formula1Frontend.Enthusiast,
+  F1Live.Reader, F1Cached.Reader, F1Fan.Reader, F1Now.Reader,
+  F1Admin.Reader, System.User
+);
+
+/*
  * The rail. Five items, in the order the comp puts them: the race happening
  * now, then the season it belongs to, then one weekend of it, then the two
  * ways of cutting it up.
@@ -236,6 +252,12 @@ create or replace navigation Responsive
     MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
     MENU ITEM 'Driver' MICROFLOW Formula1Frontend.NAV_Driver ICON Atlas_Core.Atlas."user-neutral-group";
+    /*
+     * Admin sits last and below the fold of interest, because it is not part of
+     * the comp. A menu item whose page the signed-in user cannot view is not
+     * rendered, so a fan never sees this one.
+     */
+    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin_Sync ICON Atlas_Core.Atlas."layout-list";
   );
 
 /* The circuit outline: the shape, the points behind it, and the chart. */
@@ -255,3 +277,36 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CarPositions TO Formula1Frontend.
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TrackMap TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_TrackOutlinePoints TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_TrackMapBuilds TO Formula1Frontend.Enthusiast;
+
+
+/* ------------------------------------------------------------------ admin -- */
+
+/*
+ * The raw tables, read-only, and the five screens that show them.
+ *
+ * READ only and no write anywhere: the Admin screen answers questions, it does
+ * not change anything. Turning the sync on or repointing it at a session stays
+ * where it was, behind the backend's ops API and its shared key.
+ */
+grant F1Admin.Reader ON F1Admin.SyncRuns (READ *);
+grant F1Admin.Reader ON F1Admin.SyncState (READ *);
+grant F1Admin.Reader ON F1Admin.Watermarks (READ *);
+grant F1Admin.Reader ON F1Admin.Laps (READ *);
+grant F1Admin.Reader ON F1Admin.LapTelemetry (READ *);
+grant F1Admin.Reader ON F1Admin.LapStage (READ *);
+grant F1Admin.Reader ON F1Admin.CarNow (READ *);
+grant F1Admin.Reader ON F1Admin.CarPositions (READ *);
+grant F1Admin.Reader ON F1Admin.TrackOutline (READ *);
+grant F1Admin.Reader ON F1Admin.Sessions (READ *);
+grant F1Admin.Reader ON F1Admin.Drivers (READ *);
+grant F1Admin.Reader ON F1Admin.Stints (READ *);
+grant F1Admin.Reader ON F1Admin.Weather (READ *);
+grant F1Admin.Reader ON F1Admin.Messages (READ *);
+grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
+grant F1Admin.Reader ON F1Admin.Radio (READ *);
+
+GRANT VIEW ON PAGE Formula1Frontend.Admin_Sync TO Formula1Frontend.Administrator;
+GRANT VIEW ON PAGE Formula1Frontend.Admin_Laps TO Formula1Frontend.Administrator;
+GRANT VIEW ON PAGE Formula1Frontend.Admin_Telemetry TO Formula1Frontend.Administrator;
+GRANT VIEW ON PAGE Formula1Frontend.Admin_Session TO Formula1Frontend.Administrator;
+GRANT VIEW ON PAGE Formula1Frontend.Admin_Events TO Formula1Frontend.Administrator;

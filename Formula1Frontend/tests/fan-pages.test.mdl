@@ -196,3 +196,28 @@ $result = CALL MICROFLOW Formula1Frontend.Test_TrackOutlinePoints();
  */
 $result = CALL MICROFLOW Formula1Frontend.Test_TrackMapBuilds();
 /
+
+/**
+ * Admin: the raw sync-run log is readable through the admin client.
+ * A break anywhere in external entity -> OData client -> published resource
+ * -> Postgres shows up on the screen as an empty grid, so count instead.
+ *
+ * @test Admin: the cycle log has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminSyncRuns();
+/
+
+/**
+ * @test Admin: the raw lap table has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminLaps();
+/
+
+/**
+ * @test Admin: the raw track outline has rows
+ * @expect $result > 0
+ */
+$result = CALL MICROFLOW Formula1Frontend.Test_AdminTrackOutline();
+/

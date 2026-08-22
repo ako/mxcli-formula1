@@ -5,3 +5,6 @@
  */
 
 CREATE DEMO USER 'fan' PASSWORD 'F1Enthusiast!2345' (Enthusiast);
+
+/* The Admin screen's user. Same app, one more role. */
+CREATE DEMO USER 'admin' PASSWORD 'F1Paddock!2345' (Administrator);

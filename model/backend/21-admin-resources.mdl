@@ -1,0 +1,325 @@
+/*
+ * The admin surface: every raw table, read-only, over OData.
+ * =========================================================
+ *
+ * The frontend's Admin screen is a grid per table. Nothing here derives,
+ * aggregates or prettifies -- that is the whole point. When a race looks wrong
+ * on the Narrate screen the question is always "what is actually in the table",
+ * and until now the only way to answer it was psql.
+ *
+ * ------------------------------------------------------------- the key --
+ *
+ * A published OData entity needs a key attribute carrying a unique validation
+ * rule (CE6585, then CE6624). Thirteen of these tables had no such attribute:
+ * their natural keys are composite -- (SessionKey, DriverNumber, LapNumber) and
+ * the like -- and Mendix will not accept a composite one.
+ *
+ * The cheap answer would have been to add a computed string key to each and set
+ * it on every write, which is thirteen schema changes AND thirteen microflow
+ * changes, the day before a race, to the code that captures it.
+ *
+ * `autonumber` costs one line and no microflow change, because the runtime
+ * fills it in. It needs a seed -- without `default 1` the build fails CE7247
+ * "Value cannot be empty" -- and it backfills an existing table cleanly:
+ * LiveLap's 2,368 stored rows came out numbered 1..2368, all distinct, on the
+ * first boot after the migration.
+ *
+ * The RowId attributes live in 19 and 20, beside the tables they identify,
+ * rather than as ALTERs here. Added from here they lasted exactly until the
+ * next run of 19 or 20: `create or modify persistent entity` rewrites the
+ * attribute list it is given, so the key vanished and the build failed CE1613
+ * "The selected attribute ... no longer exists" on the publish blocks.
+ *
+ * LiveLocationNow and LiveTrackOutline already carry SampleKey and PointKey, so
+ * they keep those rather than growing a second identifier.
+ *
+ * LiveToken is deliberately absent. It holds a bearer token, and an admin grid
+ * is exactly the sort of convenience that ends up on a shared screen.
+ */
+
+/* ------------------------------------------------------- the run log -- */
+
+/*
+ * One row per cycle, because Mendix's own record of them does not last.
+ *
+ * The runtime already stores this: System.ProcessedQueueTask holds every
+ * Sync_Cycle run with its status, duration and error message, and
+ * System.ScheduledEventInformation holds the event's own start and end. Both
+ * are genuinely useful and both are queryable right now.
+ *
+ * Neither is a record of a race. The runtime's cluster-management job "cleanup
+ * old processed tasks from the database" prunes them on a schedule, so the
+ * evidence for what happened during a Grand Prix expires. This table is ours
+ * and is not pruned.
+ *
+ * It also records what the System tables cannot: which session the cycle was
+ * following, how many passes it managed inside its minute, and whether it was
+ * running authenticated.
+ */
+create or modify persistent entity Formula1Backend.LiveSyncRun (
+  RunId: autonumber default 1 unique error 'Sync run id must be unique',
+  StartedAt: datetime,
+  FinishedAt: datetime,
+  DurationMs: decimal,
+  SessionKey: string(20),
+  Passes: long,
+  Outcome: string(20),
+  Detail: string(2000),
+  LapsWritten: long,
+  Authenticated: boolean
+) index (StartedAt);
+
+
+/* ------------------------------------------------------------ service -- */
+
+create or modify odata service Formula1Backend.F1AdminApi (
+  path: 'odata/f1-admin/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'Formula1Backend.Admin'
+)
+authentication microflow Formula1Backend.AuthenticateApiClient
+{
+  publish entity Formula1Backend.LiveLap as 'Laps' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    Position as 'position' (Filterable, Sortable),
+    GapToLeader as 'gapToLeader' (Filterable, Sortable),
+    GapSeconds as 'gapSeconds' (Filterable, Sortable),
+    LapSeconds as 'lapSeconds' (Filterable, Sortable),
+    Sector1 as 'sector1' (Filterable, Sortable),
+    Sector2 as 'sector2' (Filterable, Sortable),
+    Sector3 as 'sector3' (Filterable, Sortable),
+    SpeedTrap as 'speedTrap' (Filterable, Sortable),
+    Compound as 'compound' (Filterable, Sortable),
+    TyreAge as 'tyreAge' (Filterable, Sortable),
+    PitStops as 'pitStops' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveDriver as 'Drivers' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Team as 'team' (Filterable, Sortable),
+    TeamColour as 'teamColour' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveStintRow as 'Stints' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    StintNumber as 'stintNumber' (Filterable, Sortable),
+    Compound as 'compound' (Filterable, Sortable),
+    LapStart as 'lapStart' (Filterable, Sortable),
+    LapEnd as 'lapEnd' (Filterable, Sortable),
+    TyreAgeAtStart as 'tyreAgeAtStart' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveMessageRow as 'Messages' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    Category as 'category' (Filterable, Sortable),
+    Flag as 'flag' (Filterable, Sortable),
+    Scope as 'scope' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    Message as 'message' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveWeatherRow as 'Weather' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    AirTemperature as 'airTemperature' (Filterable, Sortable),
+    TrackTemperature as 'trackTemperature' (Filterable, Sortable),
+    Humidity as 'humidity' (Filterable, Sortable),
+    Rainfall as 'rainfall' (Filterable, Sortable),
+    WindSpeed as 'windSpeed' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveSessionRow as 'Sessions' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    SessionName as 'sessionName' (Filterable, Sortable),
+    SessionType as 'sessionType' (Filterable, Sortable),
+    Location as 'location' (Filterable, Sortable),
+    CountryName as 'countryName' (Filterable, Sortable),
+    CircuitName as 'circuitName' (Filterable, Sortable),
+    DateStart as 'dateStart' (Filterable, Sortable),
+    Year as 'year' (Filterable, Sortable),
+    DriverCount as 'driverCount' (Filterable, Sortable),
+    LeadLap as 'leadLap' (Filterable, Sortable),
+    FetchedAt as 'fetchedAt' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveSyncState as 'SyncState' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    Enabled as 'enabled' (Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    TelemetryCursor as 'telemetryCursor' (Filterable, Sortable),
+    LastRunAt as 'lastRunAt' (Filterable, Sortable),
+    LastResult as 'lastResult' (Filterable, Sortable),
+    LapsWritten as 'lapsWritten' (Filterable, Sortable),
+    RunCount as 'runCount' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveLapStage as 'LapStage' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    Position as 'position' (Filterable, Sortable),
+    GapToLeader as 'gapToLeader' (Filterable, Sortable),
+    GapSeconds as 'gapSeconds' (Filterable, Sortable),
+    LapSeconds as 'lapSeconds' (Filterable, Sortable),
+    Sector1 as 'sector1' (Filterable, Sortable),
+    Sector2 as 'sector2' (Filterable, Sortable),
+    Sector3 as 'sector3' (Filterable, Sortable),
+    SpeedTrap as 'speedTrap' (Filterable, Sortable),
+    Compound as 'compound' (Filterable, Sortable),
+    TyreAge as 'tyreAge' (Filterable, Sortable),
+    PitStops as 'pitStops' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveWatermark as 'Watermarks' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Endpoint as 'endpoint' (Filterable, Sortable),
+    LastSeen as 'lastSeen' (Filterable, Sortable),
+    LastRunAt as 'lastRunAt' (Filterable, Sortable),
+    RowsLastRun as 'rowsLastRun' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveOvertake as 'Overtakes' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    OvertakingDriver as 'overtakingDriver' (Filterable, Sortable),
+    OvertakenDriver as 'overtakenDriver' (Filterable, Sortable),
+    Position as 'position' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveRadio as 'Radio' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    RecordingUrl as 'recordingUrl' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveLapTelemetry as 'LapTelemetry' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    LapNumber as 'lapNumber' (Filterable, Sortable),
+    TopSpeed as 'topSpeed' (Filterable, Sortable),
+    AvgThrottle as 'avgThrottle' (Filterable, Sortable),
+    MaxGear as 'maxGear' (Filterable, Sortable),
+    DrsOpenShare as 'drsOpenShare' (Filterable, Sortable),
+    BrakeShare as 'brakeShare' (Filterable, Sortable),
+    MaxRpm as 'maxRpm' (Filterable, Sortable),
+    Samples as 'samples' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveCarNow as 'CarNow' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    Speed as 'speed' (Filterable, Sortable),
+    Throttle as 'throttle' (Filterable, Sortable),
+    Brake as 'brake' (Filterable, Sortable),
+    Gear as 'gear' (Filterable, Sortable),
+    Rpm as 'rpm' (Filterable, Sortable),
+    Drs as 'drs' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveLocationNow as 'CarPositions' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    SampleKey as 'sampleKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    At as 'at' (Filterable, Sortable),
+    X as 'x' (Filterable, Sortable),
+    Y as 'y' (Filterable, Sortable),
+    Z as 'z' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveTrackOutline as 'TrackOutline' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    PointKey as 'pointKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Seq as 'seq' (Filterable, Sortable),
+    X as 'x' (Filterable, Sortable),
+    Y as 'y' (Filterable, Sortable)
+  );
+  publish entity Formula1Backend.LiveSyncRun as 'SyncRuns' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RunId as 'runId' (KEY, Filterable, Sortable),
+    StartedAt as 'startedAt' (Filterable, Sortable),
+    FinishedAt as 'finishedAt' (Filterable, Sortable),
+    DurationMs as 'durationMs' (Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Passes as 'passes' (Filterable, Sortable),
+    Outcome as 'outcome' (Filterable, Sortable),
+    Detail as 'detail' (Filterable, Sortable),
+    LapsWritten as 'lapsWritten' (Filterable, Sortable),
+    Authenticated as 'authenticated' (Filterable, Sortable)
+  );
+};
+
+/* Same two roles as every other service on this backend. */
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.DataAdmin;

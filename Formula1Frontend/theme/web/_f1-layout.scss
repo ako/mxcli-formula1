@@ -166,6 +166,19 @@
 // The row is a list view, which renders <ul><li>, so the flex goes on the <ul>
 // and the <li> is unwrapped — same shape as the strip below. Setting it on the
 // outer container instead lays out one child, and the chips come back stacked.
+// The Admin screen's own sub-navigation.
+//
+// Five pages behind one rail item, so the pages have to link to each other.
+// .chips-row cannot be reused: it lays out through `> .mx-listview > ul`,
+// because on the detail screens the chips come from a datasource. These five
+// are static, so they are plain containers and need their own flex row.
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
 .chips-row {
   margin-bottom: 14px;
   @include f1-listview-reset;

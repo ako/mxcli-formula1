@@ -53,6 +53,10 @@
  * plots; a chart that coerced "+1 LAP" would draw the car at the front.
  */
 create or modify persistent entity Formula1Backend.LiveLap (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveLap row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -75,6 +79,10 @@ create or modify persistent entity Formula1Backend.LiveLap (
  * avoid one join is not a saving.
  */
 create or modify persistent entity Formula1Backend.LiveDriver (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveDriver row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   Code: string(10),
@@ -85,6 +93,10 @@ create or modify persistent entity Formula1Backend.LiveDriver (
 
 /* Every stint, reconciled per sync: LapEnd is empty until the car pits. */
 create or modify persistent entity Formula1Backend.LiveStintRow (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveStintRow row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   StintNumber: long,
@@ -96,6 +108,10 @@ create or modify persistent entity Formula1Backend.LiveStintRow (
 
 /* Race control, append-only. */
 create or modify persistent entity Formula1Backend.LiveMessageRow (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveMessageRow row id must be unique',
   SessionKey: string(20),
   At: string(20),
   Category: string(40),
@@ -110,6 +126,10 @@ create or modify persistent entity Formula1Backend.LiveMessageRow (
  * sample; a replay wants the curve, and it is one row a minute.
  */
 create or modify persistent entity Formula1Backend.LiveWeatherRow (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveWeatherRow row id must be unique',
   SessionKey: string(20),
   At: string(20),
   AirTemperature: decimal,
@@ -121,6 +141,10 @@ create or modify persistent entity Formula1Backend.LiveWeatherRow (
 
 /* One row per session, reconciled per sync. */
 create or modify persistent entity Formula1Backend.LiveSessionRow (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveSessionRow row id must be unique',
   SessionKey: string(20),
   SessionName: string(60),
   SessionType: string(40),
@@ -159,6 +183,10 @@ create or modify persistent entity Formula1Backend.LiveToken (
  * SessionKey empty means "the session OpenF1 calls latest".
  */
 create or modify persistent entity Formula1Backend.LiveSyncState (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveSyncState row id must be unique',
   Enabled: boolean,
   SessionKey: string(20),
   /*
@@ -241,43 +269,24 @@ create or modify constant Formula1Backend.OpenF1Username type string default ''
 create or modify constant Formula1Backend.OpenF1Password type string default '' PRIVATE;
 
 /*
- * The token response. Three fields, one of which OpenF1 sends as a string even
- * though it is a number of seconds, so the snippet says "3600" in quotes and
- * the mapping reads it as text.
- */
-CREATE OR MODIFY JSON STRUCTURE Formula1Backend.JSON_OpenF1Token
-  SNIPPET '{"access_token": "abc", "token_type": "bearer", "expires_in": "3600"}';
-
-@Position(100, 1100)
-create or modify non-persistent entity Formula1Backend.Stg_TokenResponse (
-  AccessToken: string(4000),
-  TokenType: string(40),
-  ExpiresIn: string(20)
-);
-
-CREATE OR MODIFY IMPORT MAPPING Formula1Backend.IMM_OpenF1Token
-  WITH JSON STRUCTURE Formula1Backend.JSON_OpenF1Token
-{
-  create Formula1Backend.Stg_TokenResponse {
-    AccessToken = access_token,
-    TokenType = token_type,
-    ExpiresIn = expires_in
-  }
-};
-
-/*
- * Mint a token, or hand back the one already held.
+ * The token response is parsed by the warehouse, not by an import mapping.
  *
- * An hour is shorter than a Grand Prix, so this is asked on every sync and
- * answers from the stored row until that row is within five minutes of expiry.
- * Five rather than one because a sync is several HTTPS reads and a token that
- * expires half way through fails the rest of them silently.
+ * A JSON structure plus an import mapping is the Mendix way to do this, and it
+ * does not survive being written from MDL. The runtime answers a valid 975-char
+ * response with
  *
- * Returns empty rather than throwing when there are no credentials. Empty is a
- * working state: it means unauthenticated, which serves every historical
- * session and fails only while a session is live -- and the caller reports that
- * rather than the sync dying on a configuration that is deliberate.
+ *   key not found: Path(QName(None,),None,)
+ *
+ * -- an empty element name -- both as the REST call''s RETURNS MAPPING and as a
+ * standalone Import activity, from a mapping whose model reads back correctly
+ * (`(Object)|access_token`, root `(Object)`). `mx check` passes. Two ways of
+ * invoking it, one failure, so the mapping is the broken part rather than the
+ * call. Filed as an mxcli defect.
+ *
+ * `GetOpenF1Token` in 01-foundation takes its place, which is how every other
+ * OpenF1 response in this app is already parsed.
  */
+
 CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_EnsureToken ()
   RETURNS String AS $Token
 BEGIN
@@ -295,26 +304,54 @@ BEGIN
     RETURN $Token;
   END IF;
 
-  $Response = REST CALL POST '{1}'
+  $Raw = REST CALL POST '{1}'
     WITH ({1} = @Formula1Backend.OpenF1TokenUrl)
     HEADER 'Content-Type' = 'application/x-www-form-urlencoded'
     BODY 'username={1}&password={2}'
       WITH ({1} = urlEncode(@Formula1Backend.OpenF1Username),
             {2} = urlEncode(@Formula1Backend.OpenF1Password))
     TIMEOUT 30
-    RETURNS MAPPING Formula1Backend.IMM_OpenF1Token AS Formula1Backend.Stg_TokenResponse;
+    RETURNS String
+    ON ERROR CONTINUE;
 
-  IF $Response = empty OR trim($Response/AccessToken) = '' THEN
+  IF trim($Raw) = '' THEN
     LOG WARNING NODE 'F1LiveSync' 'OpenF1 token request returned nothing';
     RETURN $Token;
   END IF;
 
-  SET $Token = $Response/AccessToken;
+  /*
+   * Mapped as its own activity rather than as the REST call's RETURNS MAPPING.
+   *
+   * The same mapping, applied the second way, fails on a perfectly good
+   * response with `key not found: Path(QName(None,),None,)` -- an empty element
+   * name, from a structure whose paths read back correctly as `(Object)|access_token`.
+   * Fetching the body as text and mapping it in the next activity is the same
+   * two steps in the same order, and it works.
+   */
+  $Parsed = execute database query Formula1Backend.F1Warehouse.GetOpenF1Token
+    (tokenJson = $Raw);
 
+  /* One row, but a query returns a list, and a list is read with a loop. */
+  DECLARE $Access String = '';
   DECLARE $Ttl Integer = 3600;
-  IF trim($Response/ExpiresIn) != '' THEN
-    SET $Ttl = parseInteger($Response/ExpiresIn);
+  LOOP $R IN $Parsed BEGIN
+    SET $Access = $R/AccessToken;
+    IF $R/ExpiresIn != empty AND $R/ExpiresIn > 0 THEN
+      SET $Ttl = $R/ExpiresIn;
+    END IF;
+  END LOOP;
+
+  /* A body that parsed but carries no token is a rejection -- a wrong password,
+   * or an account that is not a sponsor. Say which, rather than returning empty
+   * and letting the sync quietly carry on at the free tier. */
+  IF trim($Access) = '' THEN
+    LOG WARNING NODE 'F1LiveSync'
+      'OpenF1 token response carried no access_token ('
+      + toString(length($Raw)) + ' chars); check the credentials';
+    RETURN $Token;
   END IF;
+
+  SET $Token = $Access;
 
   IF $Stored = empty THEN
     $New = CREATE Formula1Backend.LiveToken (
@@ -345,6 +382,10 @@ END;
  * statement instead of fourteen hundred existence checks.
  */
 create or modify persistent entity Formula1Backend.LiveLapStage (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveLapStage row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -362,12 +403,54 @@ create or modify persistent entity Formula1Backend.LiveLapStage (
 ) index (SessionKey, DriverNumber, LapNumber);
 
 /*
- * One OpenF1 GET.
+ * Wait, so that a scheduled event can be a worker rather than a tick.
+ *
+ * Mendix schedules no finer than a minute. A cycle that wants to run every ten
+ * seconds therefore cannot be a schedule -- it has to be a loop inside one, and
+ * a loop that polls an API needs to pause between passes. There is no activity
+ * for that, so this is the smallest possible Java action.
+ *
+ * Milliseconds rather than seconds, because the other thing that needs to wait
+ * is the gap between two API calls, and that gap is a fraction of a second.
+ *
+ * Capped at sixty seconds. An unbounded sleep inside a scheduled event is a way
+ * to occupy a runtime thread indefinitely, and the cap makes that a typo rather
+ * than an outage.
+ */
+create or replace java action Formula1Backend.Sync_Sleep (
+  Millis: Integer NOT NULL
+) RETURNS Boolean
+AS $$
+    long ms = Millis == null ? 0L : Millis.longValue();
+    if (ms < 0) ms = 0;
+    if (ms > 60000) ms = 60000;
+    try {
+        Thread.sleep(ms);
+        return true;
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return false;
+    }
+$$;
+
+/*
+ * One OpenF1 GET, paced.
  *
  * Its own microflow so the bearer-or-not branch is written once rather than
  * five times, and so the five calls are unmistakably sequential: OpenF1 allows
  * three requests a second, and the previous design's parallel scans are exactly
  * what tripped that.
+ *
+ * Sequential turned out not to be enough. Mendix issues these back to back --
+ * a pass fired nine requests in 240ms -- and OpenF1 answers the fourth onward
+ * with 429 "Max 3 requests/second". `ON ERROR CONTINUE` turns each 429 into an
+ * empty body, `[]` is valid JSON, and the derivation reads it as a session with
+ * no data in it. Nothing failed: the laps table filled and every other table
+ * stayed empty, which looks exactly like an API that has nothing to give.
+ *
+ * So the gap is explicit. 700ms unauthenticated (1.4/s against an allowance of
+ * 3) and 250ms with a bearer (4/s against 6) -- both comfortably under, because
+ * the cost of being wrong is silence rather than an error.
  *
  * Returns the body as text. Nothing parses it here -- it goes to DuckDB as a
  * bound parameter and is taken apart there.
@@ -380,6 +463,12 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Fetch (
 BEGIN
   DECLARE $Body String = '';
   DECLARE $Url String = @Formula1Backend.OpenF1BaseUrl + '/' + $Path;
+
+  DECLARE $Gap Integer = 700;
+  IF trim($Token) != '' THEN
+    SET $Gap = 250;
+  END IF;
+  $Paced = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = $Gap);
 
   IF trim($Token) != '' THEN
     $Authed = REST CALL GET '{1}'
@@ -401,18 +490,46 @@ BEGIN
   END IF;
 
   /*
-   * An empty body would reach DuckDB as invalid JSON; an empty array is a shape
-   * from_json can read and the derivation simply yields nothing.
-   *
-   * This also absorbs a 404, which car_data and location return when the
-   * requested window holds no samples rather than returning an empty list. That
-   * is a normal answer -- between sessions, during a red flag, or when the
-   * window has run past the end of the race -- and failing the cycle over it
-   * would stop the sync every time a race finished.
+   * An empty body is ambiguous, and the two things it means want opposite
+   * treatment: a 404 (the window genuinely holds no samples) is the end of the
+   * matter, and a 429 (we asked too fast) means the data is there and we threw
+   * it away. One retry after a second and a half tells them apart for the price
+   * of a single request, and it is the difference between a race captured and a
+   * race missed.
+   */
+  IF trim($Body) = '' THEN
+    $Backoff = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = 1500);
+    IF trim($Token) != '' THEN
+      $Retry = REST CALL GET '{1}'
+        WITH ({1} = $Url)
+        HEADER 'Accept' = 'application/json'
+        HEADER 'Authorization' = 'Bearer ' + $Token
+        TIMEOUT 120
+        RETURNS String
+        ON ERROR CONTINUE;
+      SET $Body = $Retry;
+    ELSE
+      $RetryPlain = REST CALL GET '{1}'
+        WITH ({1} = $Url)
+        HEADER 'Accept' = 'application/json'
+        TIMEOUT 120
+        RETURNS String
+        ON ERROR CONTINUE;
+      SET $Body = $RetryPlain;
+    END IF;
+  END IF;
+
+  /*
+   * Still empty: a real 404. car_data and location answer that way when the
+   * requested window holds no samples rather than returning an empty list, and
+   * that is a normal answer -- between sessions, during a red flag, or when the
+   * window has run past the end of the race. An empty array is a shape from_json
+   * can read and the derivation simply yields nothing.
    */
   IF trim($Body) = '' THEN
     SET $Body = '[]';
   END IF;
+  LOG INFO NODE 'F1LiveSync' 'fetch ' + $Url + ' -> ' + toString(length($Body)) + ' chars';
   RETURN $Body;
 END;
 
@@ -560,22 +677,9 @@ END;
 /* -------------------------------------------------------------- the timer -- */
 
 /*
- * Minutely is as fine as Mendix goes -- Repeat takes a multiplier in minutes,
- * so one minute is the floor. The shell script polls every thirty seconds, so
- * moving the sync in-app costs about half a minute of freshness: OpenF1's own
- * ~3s delay plus up to sixty seconds of waiting, against up to thirty. That is
- * the price of running somewhere a shell script cannot, and it is worth saying
- * out loud rather than discovering.
+ * The scheduled event lives in 20, not here.
  *
- * The event is created enabled; the *sync* is what defaults to off, through
- * LiveSyncState. So the timer fires every minute from the first deploy and does
- * nothing at all until somebody switches the sync on, which is the cheap
- * arrangement: no schedule to remember to enable when the race starts.
+ * It used to be defined in both, pointing at Sync_Live here and at Sync_Cycle
+ * there, so whichever script ran last decided which tiers a race captured. The
+ * cycle is the one that should be scheduled; the core sync is one tier of it.
  */
-CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_LiveSync (
-  Microflow: Formula1Backend.Sync_Live,
-  Enabled: true,
-  Repeat: Minutely,
-  Multiplier: 1,
-  TimeZone: Server
-);

@@ -14,15 +14,15 @@ import com.mendix.systemwideinterfaces.core.UserAction;
 
 public class Sync_Sleep extends UserAction<java.lang.Boolean>
 {
-	private final java.lang.Long Seconds;
+	private final java.lang.Long Millis;
 
 	public Sync_Sleep(
 		IContext context,
-		java.lang.Long _seconds
+		java.lang.Long _millis
 	)
 	{
 		super(context);
-		this.Seconds = _seconds;
+		this.Millis = _millis;
 	}
 
 	@java.lang.Override
@@ -30,11 +30,11 @@ public class Sync_Sleep extends UserAction<java.lang.Boolean>
 	{
 		// BEGIN USER CODE
 
-		long s = Seconds == null ? 0L : Seconds.longValue();
-		    if (s < 0) s = 0;
-		    if (s > 60) s = 60;
+		long ms = Millis == null ? 0L : Millis.longValue();
+		    if (ms < 0) ms = 0;
+		    if (ms > 60000) ms = 60000;
 		    try {
-		        Thread.sleep(s * 1000L);
+		        Thread.sleep(ms);
 		        return true;
 		    } catch (InterruptedException e) {
 		        Thread.currentThread().interrupt();

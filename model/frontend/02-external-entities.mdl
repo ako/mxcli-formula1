@@ -17,3 +17,5 @@ create external entities from F1Cached.CachedApi into F1Cached;
 create external entities from F1Fan.FanApi into F1Fan;
 
 create external entities from F1Now.NowApi into F1Now;
+
+create external entities from F1Admin.AdminApi into F1Admin;

@@ -1,0 +1,290 @@
+/*
+ * The Narrate screen, fed from the live tables instead of the CSVs.
+ * =================================================================
+ *
+ * The five resources on F1LiveNowApi -- Order, Session, Messages, Trace,
+ * Stints -- were read by microflows that scanned data/live/*.csv through
+ * DuckDB. Those CSVs are written by scripts/fetch-f1-live.sh, which is the
+ * thing the in-app sync replaced, so the screen has been showing whatever was
+ * on disk the last time anyone ran that script. Yesterday that was the
+ * Hungarian Grand Prix of 26 July, while the app captured Zandvoort perfectly
+ * into tables nothing read.
+ *
+ * This file repoints the reads at LiveLap, LiveDriver, LiveSessionRow,
+ * LiveWeatherRow and LiveMessageRow. Nothing about the published contract
+ * changes -- same resources, same attribute names, same keys -- so the frontend
+ * needs no change at all. The screen is already bound correctly; it was aimed
+ * at the wrong source.
+ *
+ * ------------------------------------------------------- reading, not pushing
+ *
+ * The CSV readers used ODataPushdown.Parse to push $filter and $top into
+ * DuckDB, because a scan of a race's worth of CSV is expensive and worth
+ * bounding. These read Postgres through Mendix retrieves over a few hundred
+ * rows of one session, so the pushdown earns nothing and costs a Java action
+ * per request. The whole set is returned and Mendix pages it.
+ */
+
+/* ------------------------------------------------------------ which session -- */
+
+/*
+ * The session the screen is about.
+ *
+ * The sync's own state is the authority: it is what the cycle is following, and
+ * on a race Sunday that is the race. When the state names no session -- the
+ * "latest" configuration -- the newest session actually captured stands in, so
+ * the screen still has something to show.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Live_CurrentKey ()
+  RETURNS String AS $Key
+BEGIN
+  DECLARE $Key String = '';
+  $State = CALL MICROFLOW Formula1Backend.Sync_State();
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    SET $Key = trim($State/SessionKey);
+    RETURN $Key;
+  END IF;
+  RETRIEVE $Newest FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC LIMIT 1;
+  IF $Newest != empty THEN
+    SET $Key = $Newest/SessionKey;
+  END IF;
+  RETURN $Key;
+END;
+
+/* ------------------------------------------------------------- the header -- */
+
+/*
+ * Session plus the latest weather reading, which is what the six tiles across
+ * the top of Narrate are: cars, lead lap, air, track, rain, wind.
+ *
+ * Weather is stored as a series, so "the weather" is its last row.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveSession AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveSession;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $S FROM Formula1Backend.LiveSessionRow WHERE SessionKey = $Key LIMIT 1;
+  IF $S = empty THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $W FROM Formula1Backend.LiveWeatherRow
+    WHERE SessionKey = $Key SORT BY At DESC LIMIT 1;
+
+  $Row = CREATE Formula1Backend.Stg_LiveSession (
+    SessionKey = $S/SessionKey, SessionName = $S/SessionName,
+    SessionType = $S/SessionType, Location = $S/Location,
+    CountryName = $S/CountryName, CircuitName = $S/CircuitName,
+    DateStart = $S/DateStart, Year = $S/Year,
+    DriverCount = $S/DriverCount, LeadLap = $S/LeadLap,
+    FetchedAt = $S/FetchedAt);
+  IF $W != empty THEN
+    CHANGE $Row (
+      AirTemperature = $W/AirTemperature, TrackTemperature = $W/TrackTemperature,
+      Humidity = $W/Humidity, Rainfall = $W/Rainfall, WindSpeed = $W/WindSpeed);
+  END IF;
+  ADD $Row TO $Rows;
+  RETURN $Rows;
+END;
+
+/* ------------------------------------------------------ the classification -- */
+
+/*
+ * One row per car, at the last lap that car completed.
+ *
+ * Not "the leader's lap": a car a lap down has no row on the current lap, and
+ * dropping it off the timing screen would be wrong. Laps come back newest
+ * first and a driver is taken the first time it is seen, which is that driver's
+ * latest lap.
+ *
+ * Interval, DRS and the sector marks stay empty. LiveLap does not carry them --
+ * the intervals feed is read for the gap and then discarded, and OpenF1 sent
+ * null DRS for the whole Zandvoort sprint. Empty is the honest answer; a zero
+ * would read as a fact.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveEntry AS $Ordered
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveEntry;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Laps FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $Key SORT BY LapNumber DESC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+
+  LOOP $L IN $Laps BEGIN
+    $Seen = FIND($Rows, DriverNumber = $L/DriverNumber);
+    IF $Seen = empty THEN
+      $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+      $Row = CREATE Formula1Backend.Stg_LiveEntry (
+        EntryKey = $L/SessionKey + '-' + toString($L/DriverNumber),
+        SessionKey = $L/SessionKey, DriverNumber = $L/DriverNumber,
+        Position = $L/Position, GapToLeader = $L/GapToLeader,
+        LapNumber = $L/LapNumber, LastLapSeconds = $L/LapSeconds,
+        Sector1 = $L/Sector1, Sector2 = $L/Sector2, Sector3 = $L/Sector3,
+        SpeedTrap = $L/SpeedTrap, Compound = $L/Compound,
+        TyreAge = $L/TyreAge, PitStops = $L/PitStops);
+      IF $D != empty THEN
+        CHANGE $Row (Code = $D/Code, DriverName = $D/DriverName,
+                     Team = $D/Team, TeamColour = $D/TeamColour);
+      END IF;
+      ADD $Row TO $Rows;
+    END IF;
+  END LOOP;
+
+  /* Sorted here rather than left to the caller. The rows come out of the loop
+   * in lap order because that is how they were retrieved, and a timing screen
+   * that is not in position order is not a timing screen. */
+  /* SORT takes no direction: the documented `SORT($List, attr ASC)` fails the
+   * parser with "extraneous input ASC". Ascending is the default. */
+  $Ordered = SORT($Rows, Position);
+  RETURN $Ordered;
+END;
+
+/* --------------------------------------------------------------- the trace -- */
+
+/*
+ * Every lap of every car: the gap chart and the position chart are both drawn
+ * from this, one line per driver.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveTrace (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveTrace AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveTrace;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Laps FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $Key SORT BY LapNumber ASC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+
+  LOOP $L IN $Laps BEGIN
+    $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+    $Row = CREATE Formula1Backend.Stg_LiveTrace (
+      TraceKey = $L/SessionKey + '-' + toString($L/DriverNumber)
+                 + '-' + toString($L/LapNumber),
+      SessionKey = $L/SessionKey, DriverNumber = $L/DriverNumber,
+      LapNumber = $L/LapNumber, Position = $L/Position,
+      GapToLeader = $L/GapToLeader, GapSeconds = $L/GapSeconds,
+      LapSeconds = $L/LapSeconds);
+    IF $D != empty THEN
+      CHANGE $Row (Code = $D/Code);
+    END IF;
+    ADD $Row TO $Rows;
+  END LOOP;
+  RETURN $Rows;
+END;
+
+/* ------------------------------------------------------------ race control -- */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveMessage AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveMessage;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Msgs FROM Formula1Backend.LiveMessageRow
+    WHERE SessionKey = $Key SORT BY At DESC;
+  LOOP $M IN $Msgs BEGIN
+    $Row = CREATE Formula1Backend.Stg_LiveMessage (
+      MessageKey = $M/SessionKey + '-' + $M/At + '-' + toString($M/RowId),
+      SessionKey = $M/SessionKey, At = $M/At, Category = $M/Category,
+      Flag = $M/Flag, Scope = $M/Scope, Lap = $M/Lap, Message = $M/Message);
+    ADD $Row TO $Rows;
+  END LOOP;
+  RETURN $Rows;
+END;
+
+/* ---------------------------------------------------------------- stints -- */
+
+/*
+ * Stints, derived from the lap table rather than from the stints feed.
+ *
+ * LiveStintRow is still empty -- Sync_Live reads the stints endpoint only to
+ * stamp compound and tyre age onto each lap, and throws the rest away. Those
+ * stamps are enough: a stint is a run of consecutive laps on one compound, so
+ * walking a driver's laps in order and starting a new stint whenever the
+ * compound changes reconstructs it without another request.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveStints (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveStint AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveStint;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+  RETRIEVE $Laps FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $Key SORT BY DriverNumber ASC, LapNumber ASC;
+
+  DECLARE $PrevDriver Long = -1;
+  DECLARE $PrevCompound String = '';
+  DECLARE $StintNo Long = 0;
+  DECLARE $OpenKey String = '';
+  LOOP $L IN $Laps BEGIN
+    IF $L/DriverNumber != $PrevDriver THEN
+      SET $StintNo = 0;
+      SET $PrevCompound = '';
+    END IF;
+
+    IF trim($L/Compound) != $PrevCompound THEN
+      SET $StintNo = $StintNo + 1;
+      $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+      $Row = CREATE Formula1Backend.Stg_LiveStint (
+        StintKey = $L/SessionKey + '-' + toString($L/DriverNumber)
+                   + '-' + toString($StintNo),
+        SessionKey = $L/SessionKey, DriverNumber = $L/DriverNumber,
+        StintNumber = $StintNo, Compound = $L/Compound,
+        LapStart = $L/LapNumber, LapEnd = $L/LapNumber,
+        TyreAgeAtStart = $L/TyreAge);
+      IF $D != empty THEN
+        CHANGE $Row (Code = $D/Code);
+      END IF;
+      ADD $Row TO $Rows;
+      SET $PrevCompound = trim($L/Compound);
+    ELSE
+      /* Same compound, so this lap extends the stint already open for this
+       * driver. Matched on the stint key rather than on driver-and-number:
+       * FIND takes one condition, and a two-part `AND` fails the build with
+       * CE0117 "Error(s) in expression" pointing only at the activity. */
+      SET $OpenKey = $L/SessionKey + '-' + toString($L/DriverNumber)
+                     + '-' + toString($StintNo);
+      $Open = FIND($Rows, StintKey = $OpenKey);
+      IF $Open != empty THEN
+        CHANGE $Open (LapEnd = $L/LapNumber);
+      END IF;
+    END IF;
+    SET $PrevDriver = $L/DriverNumber;
+  END LOOP;
+  RETURN $Rows;
+END;

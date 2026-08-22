@@ -491,11 +491,24 @@ BEGIN
   DECLARE $Result String = '';
   $State = CALL MICROFLOW Formula1Backend.Sync_State();
   CHANGE $State (Enabled = $Enabled, SessionKey = trim($SessionKey)) COMMIT;
-  /* A telemetry start point turns the sync into a backfill walker; empty
-   * leaves it following the wall clock, which is what a live race wants. */
-  IF trim($TelemetryFrom) != '' THEN
-    CHANGE $State (TelemetryCursor = parseDateTimeUTC(
-      trim($TelemetryFrom), 'yyyy-MM-dd''T''HH:mm:ss')) COMMIT;
+  /*
+   * A telemetry start point turns the sync into a backfill walker; no cursor
+   * leaves it following the wall clock, which is what a live session wants.
+   *
+   * Empty could not mean "no cursor", because empty is also what you pass when
+   * you only meant to change the session key -- so once a cursor had been set
+   * there was no way back to live except editing the row by hand. The literal
+   * `live` is that way back. It matters on a race Sunday: a sync left in
+   * backfill mode from the previous session walks a clock three weeks stale and
+   * fetches nothing at all, while looking exactly as busy as one that works.
+   */
+  IF toLowerCase(trim($TelemetryFrom)) = 'live' THEN
+    CHANGE $State (TelemetryCursor = empty) COMMIT;
+  ELSE
+    IF trim($TelemetryFrom) != '' THEN
+      CHANGE $State (TelemetryCursor = parseDateTimeUTC(
+        trim($TelemetryFrom), 'yyyy-MM-dd''T''HH:mm:ss')) COMMIT;
+    END IF;
   END IF;
   SET $Result = 'live sync enabled=' + toString($Enabled)
     + ' session=' + trim($SessionKey);

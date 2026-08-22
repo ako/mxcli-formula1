@@ -78,6 +78,10 @@
  * a derivation that cannot fall through a boundary.
  */
 create or modify persistent entity Formula1Backend.LiveWatermark (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveWatermark row id must be unique',
   SessionKey: string(20),
   Endpoint: string(40),
   LastSeen: string(40),
@@ -90,6 +94,10 @@ create or modify persistent entity Formula1Backend.LiveWatermark (
 /* Who passed whom, and on which lap. Small, and the single most replay-worthy
  * thing OpenF1 publishes after the lap table itself. */
 create or modify persistent entity Formula1Backend.LiveOvertake (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveOvertake row id must be unique',
   SessionKey: string(20),
   At: string(40),
   LapNumber: long,
@@ -101,6 +109,10 @@ create or modify persistent entity Formula1Backend.LiveOvertake (
 /* Team radio. A URL to an audio clip rather than the audio, which is what makes
  * it cheap to keep. */
 create or modify persistent entity Formula1Backend.LiveRadio (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveRadio row id must be unique',
   SessionKey: string(20),
   At: string(40),
   DriverNumber: long,
@@ -118,6 +130,10 @@ create or modify persistent entity Formula1Backend.LiveRadio (
  * where the encoding is written down once, rather than on a page.
  */
 create or modify persistent entity Formula1Backend.LiveLapTelemetry (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveLapTelemetry row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -139,6 +155,10 @@ create or modify persistent entity Formula1Backend.LiveLapTelemetry (
  * than a record.
  */
 create or modify persistent entity Formula1Backend.LiveCarNow (
+  /* An OData key. Composite natural keys are what these tables actually have,
+   * and Mendix will not publish one, so the runtime supplies a surrogate.
+   * `default 1` is the seed; without it the build fails CE7247. */
+  RowId: autonumber default 1 unique error 'LiveCarNow row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   At: string(40),
@@ -161,36 +181,6 @@ create or modify persistent entity Formula1Backend.LiveLocationNow (
   Y: decimal,
   Z: decimal
 ) index (SessionKey, At);
-
-/* ------------------------------------------------------------ the worker -- */
-
-/*
- * Wait, so that a scheduled event can be a worker rather than a tick.
- *
- * Mendix schedules no finer than a minute. A cycle that wants to run every ten
- * seconds therefore cannot be a schedule -- it has to be a loop inside one, and
- * a loop that polls an API needs to pause between passes. There is no activity
- * for that, so this is the smallest possible Java action.
- *
- * Capped at sixty seconds. An unbounded sleep inside a scheduled event is a way
- * to occupy a runtime thread indefinitely, and the cap makes that a typo rather
- * than an outage.
- */
-create or replace java action Formula1Backend.Sync_Sleep (
-  Seconds: Integer NOT NULL
-) RETURNS Boolean
-AS $$
-    long s = Seconds == null ? 0L : Seconds.longValue();
-    if (s < 0) s = 0;
-    if (s > 60) s = 60;
-    try {
-        Thread.sleep(s * 1000L);
-        return true;
-    } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return false;
-    }
-$$;
 
 /* ----------------------------------------------------------- the telemetry -- */
 
@@ -423,9 +413,49 @@ BEGIN
 
   $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
 
+  /*
+   * How many passes fit in the minute depends on which tier we are on, and
+   * getting that wrong is silent.
+   *
+   * Three passes cost 28 requests. Authenticated that is under half of 60 and
+   * the headroom absorbs a pass that runs long. Unauthenticated the allowance
+   * is 30 a minute, 28 leaves nothing for a retry, and a cycle that overruns
+   * its minute overlaps the next one and doubles the rate -- at which point
+   * every 429 comes back as an empty body and the sync stores a race with no
+   * data in it. One pass costs 12, which fits with room to spare.
+   *
+   * The unauthenticated cadence is therefore a minute rather than twenty
+   * seconds. That is the honest shape of the free tier, and it is not a
+   * limitation for a backfill, which is what the free tier is for: live data is
+   * closed to it either way.
+   */
+  DECLARE $Passes Integer = 1;
+  IF trim($Token) != '' THEN
+    SET $Passes = 3;
+  END IF;
+
+  /*
+   * The cycle has to finish inside its minute.
+   *
+   * It did not. Authenticated, three passes with twenty seconds between them
+   * come to about sixty-four seconds, so the scheduled event fired again while
+   * the previous cycle was still working -- two of them in `Sync_Live` at once,
+   * both writing the staging table, and Postgres broke the tie:
+   *
+   *   com.mendix.datastorage.exception.UpdateConflictException
+   *   Caused by: PSQLException: ERROR: deadlock detected
+   *
+   * The gap between passes is now twelve seconds and the loop carries a
+   * deadline, so a slow network shortens the cycle rather than overrunning it.
+   * A guard flag on the state row would not work here: the whole cycle is one
+   * transaction, so a second cycle cannot see the first one''s flag until the
+   * first has committed, by which time it has already done the damage. Fitting
+   * in the minute is the only version that does not need two cycles to agree.
+   */
+  DECLARE $Started DateTime = [%CurrentDateTime%];
   DECLARE $Pass Integer = 0;
   DECLARE $Notes String = '';
-  WHILE $Pass < 3 BEGIN
+  WHILE $Pass < $Passes AND [%CurrentDateTime%] < addSeconds($Started, 45) BEGIN
     SET $Pass = $Pass + 1;
 
     /* Rollback rather than Continue: Mendix requires it inside a loop, and it
@@ -442,17 +472,51 @@ BEGIN
        * requests on the first cycle of a session and nothing thereafter. */
       $Track = CALL MICROFLOW Formula1Backend.Sync_TrackMap(Key = $Key, Token = $Token)
         ON ERROR ROLLBACK;
+      /* Also once per session, and one request. */
+      $Entry = CALL MICROFLOW Formula1Backend.Sync_Entry(Key = $Key, Token = $Token)
+        ON ERROR ROLLBACK;
+      /* Session, weather and flags. Three requests, and they grow with the
+       * session, so this rides the slow tier rather than the once-per-session
+       * captures above. */
+      $Ctx = CALL MICROFLOW Formula1Backend.Sync_Context(Key = $Key, Token = $Token)
+        ON ERROR ROLLBACK;
     END IF;
 
-    SET $Notes = $Notes + ' | pass ' + toString($Pass);
+    /*
+     * What each tier returned, not just that the pass happened.
+     *
+     * `pass 1 | pass 2 | pass 3` was true of a cycle that stored a full race
+     * and equally true of one that stored nothing, because the tiers swallow
+     * their own errors and the cycle never looked at what they said.
+     */
+    SET $Notes = $Notes + ' | pass ' + toString($Pass) + ': ' + $Core + '; ' + $Tele;
 
     /* No wait after the last pass: the next scheduled event is the wait. */
-    IF $Pass < 3 THEN
-      $Waited = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Seconds = 20);
+    IF $Pass < $Passes AND [%CurrentDateTime%] < addSeconds($Started, 33) THEN
+      $Waited = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = 12000);
     END IF;
   END WHILE;
 
   SET $Result = 'cycle for ' + $Key + $Notes;
+
+  /*
+   * The run log. Written last, so a cycle that threw leaves no row -- which is
+   * itself the signal, read against the scheduled event's own record of having
+   * fired. Mendix keeps that in System.ProcessedQueueTask with the exception
+   * text, until its cleanup job prunes it.
+   */
+  $Logged = CREATE Formula1Backend.LiveSyncRun (
+    StartedAt = $Started,
+    FinishedAt = [%CurrentDateTime%],
+    DurationMs = millisecondsBetween($Started, [%CurrentDateTime%]),
+    SessionKey = $Key,
+    Passes = $Pass,
+    Outcome = 'Completed',
+    Detail = $Notes,
+    LapsWritten = $State/LapsWritten,
+    Authenticated = (trim($Token) != '')
+  ) COMMIT;
+
   LOG INFO NODE 'F1LiveSync' $Result;
   RETURN $Result;
 END;
@@ -496,6 +560,149 @@ create or modify persistent entity Formula1Backend.LiveTrackOutline (
   X: decimal,
   Y: decimal
 ) index (SessionKey, Seq);
+
+/* ------------------------------------------------------------- the context -- */
+
+/*
+ * The session, the weather and race control.
+ *
+ * Three tables that the sync declared and never filled, so the Narrate header
+ * came from a CSV and the flags came from nowhere at all. Sixty-five race
+ * control messages in the Zandvoort sprint went in the bin: four investigations,
+ * a lap time deleted for track limits, the blue flags. For a replay that is most
+ * of the story.
+ *
+ * Cleared and rewritten per session rather than appended with a watermark.
+ * Weather is eighty rows a session and race control sixty-five, so rewriting
+ * both costs less than the bookkeeping to avoid it, and it is idempotent by
+ * construction -- a cycle that runs twice leaves the same rows.
+ *
+ * Runs every pass, not once per session: unlike the entry list, all three grow
+ * while the session does.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Context (
+  $Key: String,
+  $Token: String
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  /* --- the session itself, plus the two counts the header wants --- */
+  $SessJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'sessions?session_key=' + $Key, Token = $Token);
+  $LapsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'laps?session_key=' + $Key, Token = $Token);
+  $SessRows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Session
+    (sessionKey = $Key, sessionJson = $SessJson, lapsJson = $LapsJson);
+
+  $GoneS = CALL JAVA ACTION Formula1Backend.OQL_ExecuteWith(
+    Statement = 'delete from Formula1Backend.LiveSessionRow where SessionKey = $k',
+    Name1 = 'k', Value1 = $Key, Type1 = 'String',
+    Name2 = '', Value2 = '', Type2 = '',
+    Name3 = '', Value3 = '', Type3 = '');
+  DECLARE $Sessions Long = 0;
+  LOOP $S IN $SessRows BEGIN
+    $NewS = CREATE Formula1Backend.LiveSessionRow (
+      SessionKey = $S/SessionKey, SessionName = $S/SessionName,
+      SessionType = $S/SessionType, Location = $S/Location,
+      CountryName = $S/CountryName, CircuitName = $S/CircuitName,
+      DateStart = $S/DateStart, Year = $S/Year,
+      DriverCount = $S/DriverCount, LeadLap = $S/LeadLap,
+      FetchedAt = formatDateTimeUTC([%CurrentDateTime%], 'yyyy-MM-dd''T''HH:mm:ss')) COMMIT;
+    SET $Sessions = $Sessions + 1;
+  END LOOP;
+
+  /* --- weather --- */
+  $WxJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'weather?session_key=' + $Key, Token = $Token);
+  $WxRows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Weather
+    (sessionKey = $Key, weatherJson = $WxJson);
+
+  $GoneW = CALL JAVA ACTION Formula1Backend.OQL_ExecuteWith(
+    Statement = 'delete from Formula1Backend.LiveWeatherRow where SessionKey = $k',
+    Name1 = 'k', Value1 = $Key, Type1 = 'String',
+    Name2 = '', Value2 = '', Type2 = '',
+    Name3 = '', Value3 = '', Type3 = '');
+  DECLARE $Weather Long = 0;
+  LOOP $W IN $WxRows BEGIN
+    $NewW = CREATE Formula1Backend.LiveWeatherRow (
+      SessionKey = $W/SessionKey, At = $W/At,
+      AirTemperature = $W/AirTemperature, TrackTemperature = $W/TrackTemperature,
+      Humidity = $W/Humidity, Rainfall = $W/Rainfall, WindSpeed = $W/WindSpeed) COMMIT;
+    SET $Weather = $Weather + 1;
+  END LOOP;
+
+  /* --- race control --- */
+  $RcJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'race_control?session_key=' + $Key, Token = $Token);
+  $RcRows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Messages
+    (sessionKey = $Key, messagesJson = $RcJson);
+
+  $GoneM = CALL JAVA ACTION Formula1Backend.OQL_ExecuteWith(
+    Statement = 'delete from Formula1Backend.LiveMessageRow where SessionKey = $k',
+    Name1 = 'k', Value1 = $Key, Type1 = 'String',
+    Name2 = '', Value2 = '', Type2 = '',
+    Name3 = '', Value3 = '', Type3 = '');
+  DECLARE $Messages Long = 0;
+  LOOP $M IN $RcRows BEGIN
+    $NewM = CREATE Formula1Backend.LiveMessageRow (
+      SessionKey = $M/SessionKey, At = $M/At, Category = $M/Category,
+      Flag = $M/Flag, Scope = $M/Scope, Lap = $M/Lap,
+      Message = $M/Message) COMMIT;
+    SET $Messages = $Messages + 1;
+  END LOOP;
+
+  SET $Result = 'context: ' + toString($Sessions) + ' session, '
+    + toString($Weather) + ' weather, ' + toString($Messages) + ' race control';
+  LOG INFO NODE 'F1LiveSync' $Result;
+  RETURN $Result;
+END;
+
+/* ---------------------------------------------------------- the entry list -- */
+
+/*
+ * Who is driving what, captured once per session.
+ *
+ * An entry list does not change during a session, so this returns immediately
+ * once the session has one -- one request on the first cycle and nothing after.
+ *
+ * It is the cheapest row in the whole sync and the one whose absence did the
+ * most damage: without it every other table is keyed on a bare driver_number,
+ * and reading a result means supplying the mapping from somewhere else.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Entry (
+  $Key: String,
+  $Token: String
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  RETRIEVE $Have FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key LIMIT 1;
+  IF $Have != empty THEN
+    SET $Result = 'entry list already captured';
+    RETURN $Result;
+  END IF;
+
+  $Json = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'drivers?session_key=' + $Key, Token = $Token);
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Drivers
+    (sessionKey = $Key, driversJson = $Json);
+
+  DECLARE $Kept Long = 0;
+  LOOP $R IN $Rows BEGIN
+    $New = CREATE Formula1Backend.LiveDriver (
+      SessionKey = $R/SessionKey, DriverNumber = $R/DriverNumber,
+      Code = $R/Code, DriverName = $R/DriverName,
+      Team = $R/Team, TeamColour = $R/TeamColour) COMMIT;
+    SET $Kept = $Kept + 1;
+  END LOOP;
+
+  SET $Result = 'entry list: ' + toString($Kept) + ' drivers';
+  LOG INFO NODE 'F1LiveSync' $Result;
+  RETURN $Result;
+END;
 
 CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_TrackMap (
   $Key: String,

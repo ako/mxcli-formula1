@@ -134,3 +134,36 @@ create or modify odata client F1Now.NowApi (
   ServiceUrl: @F1Now.ServiceUrl
 )
 HEADERS ('X-Api-Key': @F1Now.ApiKey);
+
+/* ------------------------------------------------------------------ admin -- */
+
+/*
+ * The fifth service: the raw tables, unprocessed.
+ *
+ * Every other client here is a view of the data shaped for a screen -- a lap
+ * chart, a standings table, a session summary. This one is deliberately not. It
+ * exposes the backend's live tables as they are, one resource per table, so the
+ * Admin screen can answer "what is actually stored" without a shell.
+ *
+ * Same key-in-a-header authentication as the rest, which is doing real work
+ * here: the resources behind it are the whole capture, including the sync's own
+ * state. LiveToken is not published at all -- see 21-admin-resources.mdl.
+ */
+
+create module F1Admin;
+
+create or modify constant F1Admin.ServiceUrl type string
+  default 'http://backend.local:8080/odata/f1-admin/'
+  comment 'Base URL of the backend admin service. Override per environment.';
+
+create or modify constant F1Admin.ApiKey type string
+  default 'f1-ops-key-2f8a1c' PRIVATE;
+
+create or modify odata client F1Admin.AdminApi (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/f1-admin-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: @F1Admin.ServiceUrl
+)
+HEADERS ('X-Api-Key': @F1Admin.ApiKey);

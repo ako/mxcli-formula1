@@ -740,6 +740,10 @@ create or modify non-persistent entity Formula1Backend.Stg_SyncTelemetry (
   BrakeShare: decimal, MaxRpm: long, Samples: long
 );
 
+create or modify non-persistent entity Formula1Backend.Stg_TokenParsed (
+  AccessToken: string(4000), ExpiresIn: long
+);
+
 create or modify non-persistent entity Formula1Backend.Stg_SyncCarNow (
   SessionKey: string(20), DriverNumber: long, At: string(40), Speed: long,
   Throttle: long, Brake: long, Gear: long, Rpm: long, Drs: long
@@ -1674,11 +1678,32 @@ begin
           sector3 as Sector3, speedTrap as SpeedTrap, compound as Compound,
           tyreAge as TyreAge, pitStops as PitStops );
 
+  /*
+   * The entry list.
+   *
+   * This was a stub -- `SELECT '' ... WHERE {dataDir} = 'never'`, a shape with
+   * no rows behind it -- and nothing called it, so LiveDriver stayed empty
+   * through every session captured. What that costs is not cosmetic: a lap
+   * table keyed on driver_number and no entry list is a table of anonymous
+   * numbers, and the only way to read it is to supply the mapping from memory.
+   * Doing that put Verstappen third in the Zandvoort Sprint. He finished sixth;
+   * car 1 is Norris this season and Verstappen is car 3, which OpenF1 says
+   * plainly in a field we were not storing.
+   *
+   * team_colour comes back as bare hex with no '#', which is what the frontend
+   * wants for a CSS custom property, so it is stored as sent.
+   */
   query GetOpenF1Drivers
-    sql 'SELECT '''' AS sessionKey, 0 AS driverNumber, '''' AS code,
-                '''' AS driverName, '''' AS team, '''' AS teamColour
-         WHERE {dataDir} = ''never'''
-    parameter dataDir: string
+    sql 'SELECT {sessionKey} AS sessionKey, j.driver_number AS driverNumber,
+                COALESCE(j.name_acronym, '''') AS code,
+                COALESCE(j.full_name, j.broadcast_name, '''') AS driverName,
+                COALESCE(j.team_name, '''') AS team,
+                COALESCE(j.team_colour, '''') AS teamColour
+           FROM (SELECT unnest(from_json({driversJson}::JSON,
+                 ''[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]'')) AS j)
+          WHERE j.driver_number IS NOT NULL'
+    parameter sessionKey: string
+    parameter driversJson: string
     returns Formula1Backend.Stg_SyncDriver
     map ( sessionKey as SessionKey, driverNumber as DriverNumber, code as Code,
           driverName as DriverName, team as Team, teamColour as TeamColour );
@@ -1695,34 +1720,85 @@ begin
           compound as Compound, lapStart as LapStart, lapEnd as LapEnd,
           tyreAgeAtStart as TyreAgeAtStart );
 
+  /*
+   * Race control: flags, safety cars, investigations, deleted lap times.
+   *
+   * Sixty-five messages in the Zandvoort sprint, and they are most of the story
+   * a replay would want to tell -- four separate investigations, a deleted lap
+   * for track limits, blue flags. All of it was being discarded.
+   *
+   * messageKey exists because two messages can share a second, so the timestamp
+   * alone is not unique; the row number inside the ordering closes it.
+   */
   query GetOpenF1Messages
-    sql 'SELECT '''' AS messageKey, '''' AS sessionKey, '''' AS atTime,
-                '''' AS category, '''' AS flag, '''' AS scope, 0 AS lap,
-                '''' AS message
-         WHERE {dataDir} = ''never'''
-    parameter dataDir: string
+    sql 'SELECT {sessionKey} AS sessionKey,
+                {sessionKey} || ''-'' || strftime(CAST(j.date AS TIMESTAMP), ''%Y%m%d%H%M%S'')
+                  || ''-'' || CAST(row_number() OVER (ORDER BY j.date) AS VARCHAR) AS messageKey,
+                strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
+                COALESCE(j.category, '''') AS category,
+                COALESCE(j.flag, '''') AS flag,
+                COALESCE(j.scope, '''') AS scope,
+                COALESCE(j.lap_number, 0) AS lap,
+                COALESCE(j.message, '''') AS message
+           FROM (SELECT unnest(from_json({messagesJson}::JSON,
+                 ''[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","lap_number":"BIGINT","message":"VARCHAR"}]'')) AS j)
+          WHERE j.date IS NOT NULL'
+    parameter sessionKey: string
+    parameter messagesJson: string
     returns Formula1Backend.Stg_LiveMessage
     map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
           category as Category, flag as Flag, scope as Scope, lap as Lap,
           message as Message );
 
+  /*
+   * Weather as a series. Eighty readings across a sprint, one a minute, which
+   * is what the header tiles show the latest of and what a chart would need
+   * the rest of.
+   */
   query GetOpenF1Weather
-    sql 'SELECT '''' AS sessionKey, '''' AS atTime, 0.0 AS airTemperature,
-                0.0 AS trackTemperature, 0.0 AS humidity, 0.0 AS rainfall,
-                0.0 AS windSpeed
-         WHERE {dataDir} = ''never'''
-    parameter dataDir: string
+    sql 'SELECT {sessionKey} AS sessionKey,
+                strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
+                COALESCE(j.air_temperature, 0) AS airTemperature,
+                COALESCE(j.track_temperature, 0) AS trackTemperature,
+                COALESCE(j.humidity, 0) AS humidity,
+                COALESCE(j.rainfall, 0) AS rainfall,
+                COALESCE(j.wind_speed, 0) AS windSpeed
+           FROM (SELECT unnest(from_json({weatherJson}::JSON,
+                 ''[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","rainfall":"DOUBLE","wind_speed":"DOUBLE"}]'')) AS j)
+          WHERE j.date IS NOT NULL'
+    parameter sessionKey: string
+    parameter weatherJson: string
     returns Formula1Backend.Stg_SyncWeather
     map ( sessionKey as SessionKey, atTime as At,
           airTemperature as AirTemperature, trackTemperature as TrackTemperature,
           humidity as Humidity, rainfall as Rainfall, windSpeed as WindSpeed );
 
+  /*
+   * The session itself: what it is, where, and how far it has run.
+   *
+   * Another stub that nothing called, so LiveSessionRow stayed empty and the
+   * Narrate header had to come from a CSV. driverCount and leadLap are counted
+   * out of the lap feed rather than taken from the session record, because the
+   * session record does not carry them and the header wants both.
+   */
   query GetOpenF1Session
-    sql 'SELECT '''' AS sessionKey, '''' AS sessionName, '''' AS sessionType,
-                '''' AS location, '''' AS countryName, '''' AS circuitName,
-                '''' AS dateStart, 0 AS year, 0 AS driverCount, 0 AS leadLap
-         WHERE {dataDir} = ''never'''
-    parameter dataDir: string
+    sql 'SELECT {sessionKey} AS sessionKey,
+                COALESCE(j.session_name, '''') AS sessionName,
+                COALESCE(j.session_type, '''') AS sessionType,
+                COALESCE(j.location, '''') AS location,
+                COALESCE(j.country_name, '''') AS countryName,
+                COALESCE(j.circuit_short_name, '''') AS circuitName,
+                COALESCE(j.date_start, '''') AS dateStart,
+                COALESCE(j.year, 0) AS year,
+                (SELECT COUNT(DISTINCT l.driver_number) FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS l)) AS driverCount,
+                (SELECT COALESCE(MAX(l.lap_number), 0) FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS l)) AS leadLap
+           FROM (SELECT unnest(from_json({sessionJson}::JSON,
+                 ''[{"session_name":"VARCHAR","session_type":"VARCHAR","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","date_start":"VARCHAR","year":"BIGINT"}]'')) AS j)'
+    parameter sessionKey: string
+    parameter sessionJson: string
+    parameter lapsJson: string
     returns Formula1Backend.Stg_SyncSession
     map ( sessionKey as SessionKey, sessionName as SessionName,
           sessionType as SessionType, location as Location,
@@ -1793,6 +1869,29 @@ begin
    * sample per car per second is kept and the rest discarded at the database
    * rather than carried into the app.
    */
+  /*
+   * The OAuth2 token response, taken apart here rather than by an import
+   * mapping.
+   *
+   * A JSON structure and an import mapping is the Mendix way to do this and it
+   * does not survive being written from MDL: the runtime answers a valid
+   * response with `key not found: Path(QName(None,),None,)`, both as the REST
+   * call''s RETURNS MAPPING and as a standalone Import activity, from a mapping
+   * whose paths read back correctly as `(Object)|access_token`.
+   *
+   * Every other OpenF1 response in this app is already parsed by passing the
+   * body to DuckDB as a bound parameter. The token is one more, and it costs
+   * nothing extra in exposure: it is written to LiveToken a few activities
+   * later regardless.
+   */
+  query GetOpenF1Token
+    sql 'SELECT s.access_token AS accessToken, s.expires_in AS expiresIn
+           FROM (SELECT from_json({tokenJson}::JSON,
+                 ''{"access_token":"VARCHAR","expires_in":"BIGINT"}'') AS s)'
+    parameter tokenJson: string
+    returns Formula1Backend.Stg_TokenParsed
+    map ( accessToken as AccessToken, expiresIn as ExpiresIn );
+
   query GetOpenF1CarNow
     sql 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
                 strftime(t, ''%Y-%m-%dT%H:%M:%S'') AS atTime, speed, throttle,
