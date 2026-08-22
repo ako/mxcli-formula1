@@ -5330,3 +5330,78 @@ The comp's inline per-row position sparkline — its `Position` column is a
 sparkline, not a number — needs a per-row widget a Mendix datagrid column cannot
 host. And the fixed-viewport shell with a 54px icon rail; ours scrolls inside
 Atlas's layout. Both structural rather than cosmetic.
+
+---
+
+## 68. Verifying two mxcli PRs: a build step, and a defect that was not theirs
+
+ako/mxcli #222 (generated widget docs become a real skill; bundled skills adopt
+the Agent Skills standard) and #223 (the largest skills split into `SKILL.md`
+plus `reference/` files). Both merge cleanly onto `origin/main` and the full
+suite passes: **79 packages, 0 failures**.
+
+### Six failures that were mine
+
+The first run failed six tests, all in `cmd/mxcli`, all in the skills area the
+PRs touch. It looked exactly like the PRs breaking their own subject.
+
+```
+--- FAIL: TestEmbeddedSkillsCarryAgentSkillsFrontmatter
+    init_skills_standard_test.go:25: no embedded skills; the embed directive is broken
+```
+
+Isolating across refs made it look worse and then better: `origin/main` failed
+4, #222 failed 4, #223 failed 6. A pre-existing breakage plus two new ones —
+a tidy, plausible, wrong story.
+
+`//go:embed all:skills` reads `cmd/mxcli/skills`, which is **generated**: the
+Makefile's `sync-skills` target rsyncs it from `.claude/skills/mendix/`. I built
+with `make grammar` and a bare `go build`, so that directory still held stale
+flat files from an earlier build. `make sync-all` first and every ref is green.
+
+Two things worth keeping:
+
+**The error names the wrong thing.** "the embed directive is broken" points at
+the `go:embed` line, which is fine; what is missing is a build step. A message
+naming `cmd/mxcli/skills` and `make sync-skills` would have saved the detour.
+
+**Comparing across refs did not save me.** Running the same wrong build on four
+refs produced a clean-looking differential — the counts differed because #223
+adds two tests, not because it breaks anything. **A differential is only as
+sound as the procedure both sides share.**
+
+### The claims, checked against a real project
+
+Not just the fixtures. `mxcli widget docs` on this two-app solution produced 42
+and 43 widget files plus a `SKILL.md` linking all of them, our own
+`f1.widget.web.vegachart.VegaChart` among them with its full property table.
+
+The substantive change is `_index.md` → `SKILL.md`. An `_`-prefixed file is
+skipped by a plain `go:embed` and is not a skill entry point, so those property
+tables sat in both apps undiscoverable.
+
+#223's split holds: largest `SKILL.md` 1,906 → 647 lines, total 29,588 →
+23,487. Its `TestEverySupportingFileIsLinkedFromItsSkill` is the better of its
+two new tests — it stops a split orphaning content.
+
+### One defect, and it was not the PR's
+
+`custom-widgets/SKILL.md` carries **two frontmatter blocks**: the current one,
+then the pre-rename `name: mendix-custom-widgets`. Everything after the first
+`---` is body, so the skill opens with a stray YAML fence and a duplicate name.
+
+I reported this as "a real defect from PR 222". It is not. `git log -S 'name:
+mendix-custom-widgets'` puts it at **ff81a24**, the *"adopt the Agent Skills
+standard"* commit itself — the new block was prepended and the old one left.
+#222's diff on that file changes only the `description:` inside the first block,
+and the stray `---` appears as *unchanged context* on the line below. The
+evidence that it was pre-existing was inside the diff I had already read.
+
+**Attributing a defect to the change you happen to be looking at is the same
+error as blaming the code you happen to be reading.** `git log -S` on the
+offending string costs one command and settles it.
+
+`TestEmbeddedSkillsCarryAgentSkillsFrontmatter` cannot see it:
+`frontmatter.FindSubmatch` matches the **first** block and checks its `name`
+against the directory, which is correct. A rename-and-prepend is invisible to a
+first-block check, and it is exactly the shape of change that produces one.
