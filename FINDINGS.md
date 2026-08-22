@@ -5404,7 +5404,12 @@ evidence that it was pre-existing was inside the diff I had already read.
 error as blaming the code you happen to be reading.** `git log -S` on the
 offending string costs one command and settles it.
 
-`TestEmbeddedSkillsCarryAgentSkillsFrontmatter` cannot see it:
+**Fixed upstream.** Reported, and ako/mxcli#224 closed both halves: one
+frontmatter block per skill (the two competing descriptions merged rather than
+one discarded), a guard test for a stray second block, and the sync message now
+names `make sync-skills` instead of blaming the embed directive.
+
+`TestEmbeddedSkillsCarryAgentSkillsFrontmatter` could not see it:
 `frontmatter.FindSubmatch` matches the **first** block and checks its `name`
 against the directory, which is correct. A rename-and-prepend is invisible to a
 first-block check, and it is exactly the shape of change that produces one.
@@ -5483,6 +5488,10 @@ makes an agent reading it build the wrong thing, confidently.
 
 A generated cross-check would close it: every widget keyword in the lexer should
 appear in `syntax page widgets`, as a test.
+
+**Still open** as of ako/mxcli `85c9708` (222, 223 and 224 all merged): all
+four keywords remain absent from the command while parsing and building fine.
+Unlike the duplicate frontmatter, this one has not been reported.
 
 ### What it cost
 
