@@ -30,24 +30,46 @@
 /*
  * The session the screen is about.
  *
- * The sync's own state is the authority: it is what the cycle is following, and
- * on a race Sunday that is the race. When the state names no session -- the
- * "latest" configuration -- the newest session actually captured stands in, so
- * the screen still has something to show.
+ * The sync's target is the authority -- it is what the cycle is following, and
+ * on a race Sunday that is the race -- but only once that session has produced
+ * something. Parking the sync on tomorrow's race the night before is the
+ * sensible thing to do and it blanked every panel on the screen: the target
+ * existed, held nothing, and the reads faithfully returned nothing.
+ *
+ * So the target wins when it has laps, and otherwise the newest session that
+ * does stands in. The screen shows the last real session until the race puts
+ * its first lap on the board, and switches itself the moment it does. No blank
+ * screen while waiting for lights out, and no blank screen if the key is wrong.
  */
 CREATE OR REPLACE MICROFLOW Formula1Backend.Live_CurrentKey ()
   RETURNS String AS $Key
 BEGIN
   DECLARE $Key String = '';
+
   $State = CALL MICROFLOW Formula1Backend.Sync_State();
   IF $State != empty AND trim($State/SessionKey) != '' THEN
-    SET $Key = trim($State/SessionKey);
-    RETURN $Key;
+    DECLARE $Target String = trim($State/SessionKey);
+    RETRIEVE $Has FROM Formula1Backend.LiveLap
+      WHERE SessionKey = $Target LIMIT 1;
+    IF $Has != empty THEN
+      SET $Key = $Target;
+      RETURN $Key;
+    END IF;
   END IF;
-  RETRIEVE $Newest FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC LIMIT 1;
-  IF $Newest != empty THEN
-    SET $Key = $Newest/SessionKey;
-  END IF;
+
+  /* Newest first, and the first one with laps behind it wins. A session row
+   * can exist for a session that has not run yet, so having a row is not the
+   * same as having a race. */
+  RETRIEVE $Sessions FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC;
+  LOOP $S IN $Sessions BEGIN
+    IF trim($Key) = '' THEN
+      RETRIEVE $Laps FROM Formula1Backend.LiveLap
+        WHERE SessionKey = $S/SessionKey LIMIT 1;
+      IF $Laps != empty THEN
+        SET $Key = $S/SessionKey;
+      END IF;
+    END IF;
+  END LOOP;
   RETURN $Key;
 END;
 
@@ -288,3 +310,59 @@ BEGIN
   END LOOP;
   RETURN $Rows;
 END;
+
+/* ------------------------------------------------------------ the circuit -- */
+
+/*
+ * The outline, and the cars on it -- for THIS session only.
+ *
+ * Both reads returned every row in the table. LiveTrackOutline accumulates one
+ * outline per session and never clears, so by the Zandvoort weekend it held
+ * 1,630 points across five sessions and two coordinate frames -- Hungary in one,
+ * four Zandvoort sessions in another. Sorted by Seq and drawn as a single line,
+ * that is seq 0 of Hungary, seq 0 of each Zandvoort session, then seq 1 of each,
+ * ricocheting between circuits: the spiky star the screen has been showing.
+ *
+ * The outline itself was never wrong. A plot of one session's rows is
+ * recognisably Zandvoort, with a median step of 131 units and one jump over
+ * 600. It was five circuits drawn on top of each other.
+ *
+ * LiveLocationNow is cleared and refilled every pass so it only ever holds the
+ * current session, but it is filtered too rather than relying on that.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TrackOutline (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.LiveTrackOutline AS $Rows
+BEGIN
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  RETRIEVE $Rows FROM Formula1Backend.LiveTrackOutline
+    WHERE SessionKey = $Key SORT BY Seq ASC;
+  IF $Response != empty THEN
+    $Total = COUNT($Rows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+  RETURN $Rows;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CarPositions (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.LiveLocationNow AS $Rows
+BEGIN
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  RETRIEVE $Rows FROM Formula1Backend.LiveLocationNow
+    WHERE SessionKey = $Key SORT BY At ASC;
+  IF $Response != empty THEN
+    $Total = COUNT($Rows);
+    CHANGE $Response (Count = $Total);
+  END IF;
+  RETURN $Rows;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CarPositions TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CarPositions TO Formula1Backend.DataAdmin;

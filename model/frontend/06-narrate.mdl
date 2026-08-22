@@ -35,7 +35,7 @@ create or replace page Formula1Frontend.Narrate
   url: 'narrate'
 )
 {
-  container pageBody {
+  container pageBody (class: 'narrate-dense') {
 
     dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSession) {
 
@@ -96,134 +96,155 @@ create or replace page Formula1Frontend.Narrate
     }
 
     /*
-     * Track position.
+     * Above the fold: the two things you look at while a race runs.
      *
-     * The circuit is not drawn from a map. OpenF1 reports position in a
-     * track-local frame with no relation to latitude and longitude, so an
-     * outline from OpenStreetMap could not carry these dots -- the two would be
-     * in different coordinate systems with no transform between them. The
-     * outline here is traced from one car's lap of the same feed, which puts
-     * the cars on the line by construction rather than by fitting.
+     * These were five full-width panels stacked down the page, and the track
+     * map alone was a 450px band holding one small figure -- so the
+     * classification, which is the screen's whole reason to exist, started
+     * below the fold. The comp does not do that: it is a fixed viewport with a
+     * main column and a 336px rail beside it.
      *
-     * Captured once per session by Sync_TrackMap and served with the current
-     * position of every car that has one.
+     * Classification takes the width it needs for twenty cars and ten columns;
+     * the circuit sits in the rail at the size a circuit actually needs.
      */
-    container trackPanel (class: 'panel') {
-      container trackHead (class: 'panel-head') {
-        dynamictext trackTitle (content: 'Track position', class: 'panel-title')
-        dynamictext trackSub (
-          content: 'the circuit traced from one car''s lap · a dot per car, numbered · as of the last snapshot',
-          class: 'panel-sub')
+    container liveTop (class: 'live-top') {
+      /*
+       * The classification.
+       *
+       * The comp puts a position sparkline in every row. A Mendix data grid
+       * column holds an attribute, not a widget, so that is drawn once for
+       * everybody as the chart below instead.
+       *
+       * The three sector marks are cells rather than glyphs, coloured by
+       * DynamicCellClass: purple for the best anybody has set this session,
+       * green for the best this driver has. On a finished race they are all
+       * blank, and correctly so — the last lap is rarely anyone's best.
+       */
+      container orderPanel (class: 'panel') {
+        container orderHead (class: 'panel-head') {
+          dynamictext orderTitle (content: 'Classification', class: 'panel-title')
+          dynamictext orderSub (
+            content: 'gap to leader and to the car ahead · last lap and its three sectors · tyre, age and stops',
+            class: 'panel-sub')
+        }
+        container orderGrid (class: 'grid-dense') {
+          datagrid dgOrder (
+            datasource: MICROFLOW Formula1Frontend.DS_LiveOrder,
+            PageSize: 24,
+            PagingPosition: bottom
+          ) {
+            column colPos (attribute: position, caption: 'P', Alignment: right)
+            column colCode (attribute: code, caption: 'Code')
+            column colDriver (attribute: driverName, caption: 'Driver')
+            column colTeam (attribute: team, caption: 'Team')
+            column colGap (attribute: gapToLeader, caption: 'Gap', Alignment: right)
+            column colInt (attribute: interval, caption: 'Int', Alignment: right)
+            column colLast (attribute: lastLapSeconds, caption: 'Last', Alignment: right)
+            column colS1 (attribute: sector1, caption: 'S1', Alignment: right,
+              DynamicCellClass:
+                'if $currentObject/sector1Mark = ''p'' then ''sec-best''
+                 else if $currentObject/sector1Mark = ''g'' then ''sec-personal'' else ''''')
+            column colS2 (attribute: sector2, caption: 'S2', Alignment: right,
+              DynamicCellClass:
+                'if $currentObject/sector2Mark = ''p'' then ''sec-best''
+                 else if $currentObject/sector2Mark = ''g'' then ''sec-personal'' else ''''')
+            column colS3 (attribute: sector3, caption: 'S3', Alignment: right,
+              DynamicCellClass:
+                'if $currentObject/sector3Mark = ''p'' then ''sec-best''
+                 else if $currentObject/sector3Mark = ''g'' then ''sec-personal'' else ''''')
+            column colTrap (attribute: speedTrap, caption: 'Trap', Alignment: right)
+            column colTyre (attribute: compound, caption: 'Tyre')
+            column colAge (attribute: tyreAge, caption: 'Age', Alignment: right)
+            column colStops (attribute: pitStops, caption: 'St', Alignment: right)
+          }
+        }
+        container orderKey (class: 'legend-key') {
+          dynamictext okBest (content: 'Session best sector', class: 'legend-item legend-podium')
+          dynamictext okPers (content: 'Personal best sector', class: 'legend-item legend-points')
+        }
       }
-      container trackFigure (class: 'circuit-figure') {
-        dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMap) {
-          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTrackMap (
+
+      /*
+       * Track position.
+       *
+       * The circuit is not drawn from a map. OpenF1 reports position in a
+       * track-local frame with no relation to latitude and longitude, so an
+       * outline from OpenStreetMap could not carry these dots -- the two would be
+       * in different coordinate systems with no transform between them. The
+       * outline here is traced from one car's lap of the same feed, which puts
+       * the cars on the line by construction rather than by fitting.
+       *
+       * Captured once per session by Sync_TrackMap and served with the current
+       * position of every car that has one.
+       */
+      container trackPanel (class: 'panel') {
+        container trackHead (class: 'panel-head') {
+          dynamictext trackTitle (content: 'Track position', class: 'panel-title')
+          dynamictext trackSub (
+            content: 'the circuit traced from one car''s lap · a dot per car, numbered · as of the last snapshot',
+            class: 'panel-sub')
+        }
+        container trackFigure (class: 'circuit-figure') {
+          dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMap) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTrackMap (
+              chartData: json,
+              datasetName: 'table',
+              chartHeight: 0,
+              renderer: 'svg',
+              showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":312,"height":300,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":10,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":120,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":8,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+          }
+        }
+      }
+    }
+
+    /* The two traces, side by side rather than stacked: each is a small
+     * multiple of the same lap axis, and reading them against each other is
+     * the point. */
+    container liveCharts (class: 'split-even') {
+      /*
+       * Gap to leader. The comp's headline chart and the one that carries the
+       * shape of the race — a pit stop is a step, a safety car is every line
+       * collapsing at once.
+       */
+      container gapPanel (class: 'panel') {
+        container gapHead (class: 'panel-head') {
+          dynamictext gapTitle (content: 'Gap to leader', class: 'panel-title')
+          dynamictext gapSub (
+            content: 'the five cars at the front · seconds · a lapped car stops having a gap, so its line ends',
+            class: 'panel-sub')
+        }
+        dataview dvGaps (datasource: MICROFLOW Formula1Frontend.DSJ_LiveGaps) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartGaps (
             chartData: json,
             datasetName: 'table',
             chartHeight: 0,
             renderer: 'svg',
             showActions: false,
-            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":420,"height":420,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":13,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2.5,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":190,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":9,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":150,"mark":{"type":"line","strokeWidth":1.3,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"gap","type":"quantitative","title":"Gap to leader (s)","scale":{"reverse":true,"zero":true}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA"]},"legend":{"orient":"top","columns":5,"offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"gap","title":"Gap (s)"}]}}')
+        }
+      }
+
+
+      container posPanel (class: 'panel') {
+        container posHead (class: 'panel-head') {
+          dynamictext posTitle (content: 'Position by lap', class: 'panel-title')
+          dynamictext posSub (
+            content: 'every car, lap one to now · first place at the top · the crossings are the race',
+            class: 'panel-sub')
+        }
+        dataview dvPositions (datasource: MICROFLOW Formula1Frontend.DSJ_LivePositions) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPositions (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":190,"mark":{"type":"line","strokeWidth":1.2,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
         }
       }
     }
 
-    /*
-     * Gap to leader. The comp's headline chart and the one that carries the
-     * shape of the race — a pit stop is a step, a safety car is every line
-     * collapsing at once.
-     */
-    container gapPanel (class: 'panel') {
-      container gapHead (class: 'panel-head') {
-        dynamictext gapTitle (content: 'Gap to leader', class: 'panel-title')
-        dynamictext gapSub (
-          content: 'the five cars at the front · seconds · a lapped car stops having a gap, so its line ends',
-          class: 'panel-sub')
-      }
-      dataview dvGaps (datasource: MICROFLOW Formula1Frontend.DSJ_LiveGaps) {
-        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartGaps (
-          chartData: json,
-          datasetName: 'table',
-          chartHeight: 0,
-          renderer: 'svg',
-          showActions: false,
-          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11,"symbolType":"stroke","symbolStrokeWidth":3}},"height":260,"mark":{"type":"line","strokeWidth":1.6,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"gap","type":"quantitative","title":"Gap to leader (s)","scale":{"reverse":true,"zero":true}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA"]},"legend":{"orient":"top","columns":5,"offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"gap","title":"Gap (s)"}]}}')
-      }
-    }
-
-    /*
-     * The classification.
-     *
-     * The comp puts a position sparkline in every row. A Mendix data grid
-     * column holds an attribute, not a widget, so that is drawn once for
-     * everybody as the chart below instead.
-     *
-     * The three sector marks are cells rather than glyphs, coloured by
-     * DynamicCellClass: purple for the best anybody has set this session,
-     * green for the best this driver has. On a finished race they are all
-     * blank, and correctly so — the last lap is rarely anyone's best.
-     */
-    container orderPanel (class: 'panel') {
-      container orderHead (class: 'panel-head') {
-        dynamictext orderTitle (content: 'Classification', class: 'panel-title')
-        dynamictext orderSub (
-          content: 'gap to leader and to the car ahead · last lap and its three sectors · tyre, age and stops',
-          class: 'panel-sub')
-      }
-      container orderGrid (class: 'grid-dense') {
-        datagrid dgOrder (
-          datasource: MICROFLOW Formula1Frontend.DS_LiveOrder,
-          PageSize: 24,
-          PagingPosition: bottom
-        ) {
-          column colPos (attribute: position, caption: 'P', Alignment: right)
-          column colCode (attribute: code, caption: 'Code')
-          column colDriver (attribute: driverName, caption: 'Driver')
-          column colTeam (attribute: team, caption: 'Team')
-          column colGap (attribute: gapToLeader, caption: 'Gap', Alignment: right)
-          column colInt (attribute: interval, caption: 'Int', Alignment: right)
-          column colLast (attribute: lastLapSeconds, caption: 'Last', Alignment: right)
-          column colS1 (attribute: sector1, caption: 'S1', Alignment: right,
-            DynamicCellClass:
-              'if $currentObject/sector1Mark = ''p'' then ''sec-best''
-               else if $currentObject/sector1Mark = ''g'' then ''sec-personal'' else ''''')
-          column colS2 (attribute: sector2, caption: 'S2', Alignment: right,
-            DynamicCellClass:
-              'if $currentObject/sector2Mark = ''p'' then ''sec-best''
-               else if $currentObject/sector2Mark = ''g'' then ''sec-personal'' else ''''')
-          column colS3 (attribute: sector3, caption: 'S3', Alignment: right,
-            DynamicCellClass:
-              'if $currentObject/sector3Mark = ''p'' then ''sec-best''
-               else if $currentObject/sector3Mark = ''g'' then ''sec-personal'' else ''''')
-          column colTrap (attribute: speedTrap, caption: 'Trap', Alignment: right)
-          column colTyre (attribute: compound, caption: 'Tyre')
-          column colAge (attribute: tyreAge, caption: 'Age', Alignment: right)
-          column colStops (attribute: pitStops, caption: 'St', Alignment: right)
-        }
-      }
-      container orderKey (class: 'legend-key') {
-        dynamictext okBest (content: 'Session best sector', class: 'legend-item legend-podium')
-        dynamictext okPers (content: 'Personal best sector', class: 'legend-item legend-points')
-      }
-    }
-
-    container posPanel (class: 'panel') {
-      container posHead (class: 'panel-head') {
-        dynamictext posTitle (content: 'Position by lap', class: 'panel-title')
-        dynamictext posSub (
-          content: 'every car, lap one to now · first place at the top · the crossings are the race',
-          class: 'panel-sub')
-      }
-      dataview dvPositions (datasource: MICROFLOW Formula1Frontend.DSJ_LivePositions) {
-        pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPositions (
-          chartData: json,
-          datasetName: 'table',
-          chartHeight: 0,
-          renderer: 'svg',
-          showActions: false,
-          spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":320,"mark":{"type":"line","strokeWidth":1.2,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}]}}')
-      }
-    }
 
     container liveSplit (class: 'split') {
 
@@ -241,7 +262,7 @@ create or replace page Formula1Frontend.Narrate
             chartHeight: 0,
             renderer: 'svg',
             showActions: false,
-            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":10,"titleFontSize":11,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":420,"mark":{"type":"bar","height":9,"cornerRadius":1},"encoding":{"x":{"field":"from","type":"quantitative","title":"Lap","scale":{"zero":true,"nice":false},"axis":{"format":"d","tickMinStep":1}},"x2":{"field":"to"},"y":{"field":"code","type":"nominal","title":null,"sort":null},"color":{"field":"compound","type":"nominal","title":null,"scale":{"domain":["SOFT","MEDIUM","HARD","INTERMEDIATE","WET"],"range":["#F85149","#E3B341","#8B949E","#3FB950","#58A6FF"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"compound","title":"Tyre"},{"field":"from","title":"From lap"},{"field":"to","title":"To lap"}]}}')
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":11}},"height":250,"mark":{"type":"bar","height":6,"cornerRadius":1},"encoding":{"x":{"field":"from","type":"quantitative","title":"Lap","scale":{"zero":true,"nice":false},"axis":{"format":"d","tickMinStep":1}},"x2":{"field":"to"},"y":{"field":"code","type":"nominal","title":null,"sort":null},"color":{"field":"compound","type":"nominal","title":null,"scale":{"domain":["SOFT","MEDIUM","HARD","INTERMEDIATE","WET"],"range":["#F85149","#E3B341","#8B949E","#3FB950","#58A6FF"]},"legend":{"orient":"top","offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"compound","title":"Tyre"},{"field":"from","title":"From lap"},{"field":"to","title":"To lap"}]}}')
         }
       }
 

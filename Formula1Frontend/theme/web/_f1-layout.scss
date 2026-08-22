@@ -1065,3 +1065,179 @@
   justify-content: center;
   padding: 4px 0 2px;
 }
+
+// ---------------------------------------------------------------------------
+// Narrate at the comp's density.
+//
+// The comp is a fixed-viewport instrument panel, not a document: 9-12px type
+// throughout, 1-8px gaps, hairline rules instead of padding, everything on one
+// grid. What was built instead was a stack of airy Atlas panels with 24px
+// headings and 420px charts, which reads as a different design wearing the same
+// palette.
+//
+// Measured off the comp, by frequency:
+//   font-size   10px x47, 11px x34, 12px x19, 9px x9   (ours: 24 / 22 / 14)
+//   gap         8px x20, 1px x17, 2px x6, 3px x5       (ours: 12-18)
+//   header row  22px, labels 10px uppercase .06em
+//   table       18px 44px 56px 50px 50px 62px 24px 64px 34px 18px
+//
+// Scoped to .narrate-dense rather than applied to .panel and friends globally,
+// because Season, Weekend, Constructor and Driver are reading screens where the
+// airier scale is right. This one is a timing screen.
+// ---------------------------------------------------------------------------
+
+.narrate-dense {
+  font-size: 12px;
+
+  // --- the header bar -----------------------------------------------------
+  .pagehead {
+    gap: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+  .pagehead-eyebrow { font-size: 10px; letter-spacing: .10em; }
+  .pagehead-title,
+  .pagehead-title h1,
+  .pagehead-title h2 { font-size: 15px; letter-spacing: -.01em; }
+  .pagehead-sub { font-size: 11px; }
+  .pagehead-badge {
+    font-size: 13px;
+    padding: 2px 7px;
+  }
+
+  // --- the tile strip -----------------------------------------------------
+  //
+  // The comp's tiles are a label and a number, not a card: a hairline above,
+  // no fill, no border box. The number carries the weight, at the size a
+  // number needs and no larger.
+  .kpis { gap: 1px; }
+  .kpi {
+    padding: 5px 9px 6px;
+    border: 0;
+    border-top: 1px solid var(--mxt-line);
+    border-radius: 0;
+    background: transparent;
+    gap: 1px;
+  }
+  .kpi-accent { border-top-color: var(--mxt-brand); }
+  .kpi-label {
+    font-size: 10px;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .kpi-value { font-size: 17px; line-height: 1.15; }
+  .kpi-sub { font-size: 10px; }
+
+  // --- panels -------------------------------------------------------------
+  //
+  // Title and note share a baseline on one line, which is what stops a header
+  // costing two rows. 10px uppercase for the label is the comp's rhythm.
+  .panel {
+    padding: 8px 10px 10px;
+    margin-bottom: 8px;
+  }
+  .panel-head {
+    gap: 8px;
+    row-gap: 1px;
+    margin-bottom: 5px;
+  }
+  .panel-title,
+  .panel-head h3,
+  .panel-head h4 {
+    font-size: 10px;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--mxt-ink-muted);
+  }
+  .panel-sub { font-size: 11px; }
+
+  .split { gap: 8px; }
+
+  // --- the timing table ---------------------------------------------------
+  //
+  // 12px body on a 22px header, uppercase 10px column labels, and rows tight
+  // enough that twenty cars fit without scrolling. Numeric columns are
+  // tabular-figure monospace so digits line up down the column -- the whole
+  // point of a timing screen is comparing one row against another.
+  .grid-dense {
+    font-size: 12px;
+
+    th, .mx-name-gridColumnHeader, [role="columnheader"] {
+      height: 22px;
+      padding: 0 4px !important;
+      font-size: 10px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--mxt-ink-muted);
+      border-bottom: 1px solid var(--mxt-line-strong, var(--mxt-line));
+      white-space: nowrap;
+    }
+
+    td, [role="gridcell"] {
+      padding: 2px 4px !important;
+      height: 22px;
+      border-bottom: 1px solid color-mix(in srgb, var(--mxt-line) 55%, transparent);
+      white-space: nowrap;
+    }
+
+    // Digits align down the column, letters stay in the text face.
+    td:not(:nth-child(2)):not(:nth-child(3)),
+    [role="gridcell"]:not(:nth-child(2)):not(:nth-child(3)) {
+      font-family: var(--mxt-font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    // The grid's own chrome is scaffolding, not data.
+    .mx-grid-controlbar,
+    .mx-datagrid-head-wrapper > .mx-datagrid-filter { display: none; }
+  }
+
+  // --- charts -------------------------------------------------------------
+  //
+  // Halved. A gap trace does not read better at 260px than at 150 -- it just
+  // pushes the classification below the fold, and on a timing screen the thing
+  // below the fold is the thing you wanted.
+  .circuit-figure { max-width: 340px; margin: 0 auto; }
+
+  .data-note { font-size: 11px; padding: 6px 10px; }
+  .data-note-lead { font-size: 11px; }
+  .legend-item { font-size: 10px; }
+}
+
+// The Narrate fold: main column, then a rail for the circuit.
+//
+// Mirrors the comp's `minmax(0, 1fr) 336px`. The classification is the screen's
+// reason to exist and gets the width; the circuit is a locator, not a
+// centrepiece, and needs about a third of a screen at most.
+.narrate-dense {
+  .live-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 336px;
+    gap: 8px;
+    align-items: start;
+  }
+
+  // The figure is square-ish, so the panel should be too -- the old full-width
+  // band was ~450px tall for a 330px drawing, which is how the classification
+  // ended up below the fold.
+  .circuit-figure {
+    padding: 0;
+    max-width: 100%;
+
+    .mx-name-vegaTrack, canvas, svg { max-width: 100% !important; height: auto !important; }
+  }
+
+  // Twenty cars at 22px a row is 440px, and the header takes 22. Anything
+  // taller than the rail beside it is wasted, anything shorter scrolls.
+  .grid-dense { max-height: 470px; overflow-y: auto; }
+
+  .split-even { gap: 8px; }
+
+  @media (max-width: 1100px) {
+    .live-top { grid-template-columns: minmax(0, 1fr); }
+    .split-even { grid-template-columns: minmax(0, 1fr); }
+  }
+}

@@ -5229,3 +5229,104 @@ Interval, DRS and the sector marks stay blank. `LiveLap` does not carry interval
 — the feed is read for the gap and discarded — and OpenF1 sent **null DRS for
 the entire weekend**, which the per-lap aggregate had been averaging to a
 confident `0.0000` across all 504 rows. A zero reads as a fact; empty does not.
+
+---
+
+## 66. The circuit was never wrong: five tracks drawn on top of each other
+
+The track map rendered a spiky star. I diagnosed it twice and was wrong twice.
+
+**First diagnosis:** the outline has 336 rows but only 26 distinct positions, so
+tracing from one driver's single lap does not yield enough points. I proposed
+rebuilding the derivation to use all twenty cars.
+
+**Second diagnosis, after checking the other sessions:** three of four traced
+cleanly (301, 343 and 300 distinct points, median step 131 units), so only
+Hungary's capture was degenerate — bad luck with a stale feed on a month-old
+session. I proposed a sanity check to refuse a degenerate outline.
+
+**What it actually was:** `Read_TrackOutline` and `DS_TrackOutline` both did
+
+```
+RETRIEVE $Rows FROM ... SORT BY Seq ASC;
+```
+
+with no session filter. `LiveTrackOutline` accumulates one outline per session
+and never clears, so by the Zandvoort weekend it held **1,630 points across five
+sessions and two coordinate frames** — Hungary in one, four Zandvoort sessions
+in another. Sorted by `Seq` and drawn as a single line, that is seq 0 of
+Hungary, seq 0 of each Zandvoort session, then seq 1 of each, ricocheting
+between circuits for 336 steps. The star.
+
+Plot one session alone and it is unmistakably Zandvoort.
+
+### The 26 distinct points were real, and a red herring
+
+Hungary genuinely stored 336 rows with 26 distinct positions. That is a real
+defect and it is not the one on the screen. Having found a true fact that
+explained the symptom, I stopped looking — and the true fact was a coincidence.
+
+**The question I never asked was "how many sessions does this read return?"**
+One `SELECT sessionkey, count(*) GROUP BY 1` would have ended it in ten seconds,
+at any point over two days. I ran percentile analyses of step distance,
+reconstructed the loop closure, plotted the geometry, and never checked the
+cardinality of the query feeding the chart.
+
+A chart that draws the wrong thing has two candidate causes — bad data, or the
+right data plus the wrong rows — and the second is cheaper to rule out.
+
+### Both reads now filter to the session
+
+`Live_CurrentKey()` supplies it, so the outline and the car positions agree with
+the rest of the screen by construction.
+
+---
+
+## 67. Narrate at the comp's density, and what "above the fold" costs
+
+The screen was built from the same comp as the other four and did not look like
+it. Measuring rather than eyeballing:
+
+| | comp | was |
+|---|---|---|
+| font-size, by frequency | 10px ×47, 11px ×34, 12px ×19, 9px ×9 | 24 / 22 / 14 |
+| gap | 8px ×20, 1px ×17, 2px ×6, 3px ×5 | 12–18 |
+| header row | 22px, labels 10px uppercase .06em | auto |
+| main grid | `repeat(24, …)`, `subgrid` ×7 | flex stacks |
+| shell | `100vh`, panes scroll internally | page scrolls |
+
+The comp is an instrument panel: hairline rules instead of padding, everything
+on one grid, data-ink maximised. What was built was airy Atlas panels wearing
+the same palette.
+
+The density pass is scoped to `.narrate-dense` rather than applied to `.panel`
+globally — Season, Weekend, Constructor and Driver are reading screens where the
+larger scale is right. This one is a timing screen.
+
+### Layout was the bigger half
+
+Type size was not the main problem. Five full-width panels stacked down the
+page, with the track map alone a ~450px band holding one 330px figure, put the
+classification — the screen's reason to exist — below the fold.
+
+Regrouped to the comp's `minmax(0, 1fr) 336px`: classification in the main
+column, circuit in the rail, the two lap-axis traces side by side as the small
+multiples they are. The grid caps at 470px (22 rows plus header) and scrolls
+internally rather than growing the page.
+
+**A figure sized to the space it is given rather than to the job it does will
+take the whole width if you let it.** The circuit is a locator; it needs about a
+third of a screen.
+
+### Numeric columns are monospace on purpose
+
+Every column but Driver and Team is tabular-figure monospace. Comparing one row
+against another down a column is the entire point of a timing screen, and
+proportional digits do not line up.
+
+### Not matched
+
+The comp's inline per-row position sparkline — its `Position` column is a
+sparkline, not a number — needs a per-row widget a Mendix datagrid column cannot
+host. And the fixed-viewport shell with a 54px icon rail; ours scrolls inside
+Atlas's layout. Both structural rather than cosmetic.
