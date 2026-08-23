@@ -1308,13 +1308,20 @@
 
   // Sticky so the story stays beside whatever part of the race you scroll to,
   // and its own scrollbar so the page length is set by the left column.
+  // A definite height, not a maximum.
+  //
+  // .live-main sets align-items: start, so the rail is only as tall as its
+  // content -- and its children are flex items on a zero basis, which then
+  // collapse to their headers. `max-height` cannot create height where there is
+  // none. Both panels showed as a title and nothing else until this was a
+  // `height`.
   .live-rail {
     position: sticky;
     top: 8px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: calc(100vh - 96px);
+    height: calc(100vh - 108px);
     min-width: 0;
   }
 
@@ -1392,7 +1399,7 @@
 
   @media (max-width: 1200px) {
     .live-main { grid-template-columns: minmax(0, 1fr); }
-    .live-rail { position: static; max-height: none; }
+    .live-rail { position: static; height: auto; }
     .card-list { max-height: 380px; }
   }
 }

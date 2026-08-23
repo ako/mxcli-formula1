@@ -5550,3 +5550,119 @@ source, just not in the model.
 **When a fixed thing breaks again, check that the fix is still deployed before
 re-deriving it.** `describe` on the microflow would have shown the CSV version
 immediately.
+
+## 71. A watermark that only rises, and the cars it left behind
+
+> "In the position by lap i would expect all (or most) lines to end at lap 24,
+> but only 2 lines end there. Seems to suggest only 2 drivers finished the
+> complete race?"
+
+Two answers, and the first one hid the second for a day.
+
+**The screen was showing qualifying, not a race.** The sync was parked on
+Sunday's race, which had not run, so `Live_CurrentKey` fell back to the newest
+session that had laps — Saturday's qualifying. In qualifying cars run wildly
+different lap counts by design: knocked out in Q1 you do ten laps and go home,
+survive to Q3 and you do twenty-five. Lines ending at different laps is what
+qualifying *looks like*.
+
+That explanation is true and it is not sufficient. Ground truth for the session
+is 377 laps. The database held 255.
+
+### The watermark
+
+```
+DECLARE $From Long = 1;
+RETRIEVE $Seen FROM Formula1Backend.LiveLap
+  WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
+IF $Seen != empty AND $Seen/LapNumber > 2 THEN
+  SET $From = $Seen/LapNumber - 1;
+END IF;
+```
+
+Fetch only the laps you do not already have. Sound, and the comment beside it
+was proud of the arithmetic: *steady state is twenty rows a minute, not
+fourteen hundred.*
+
+The flaw is in the first line of the retrieve. `SORT BY LapNumber DESC LIMIT 1`
+is a maximum **across all cars**, and cars are not all on the same lap. The
+moment one car's lap number runs ahead, the window closes over everyone behind
+it — and because the watermark only ever rises, those laps are never asked for
+again. Not fetched late. Fetched never.
+
+Diffing the stored session against the API says it exactly:
+
+| car | stored last lap | actual last lap |
+|---|---|---|
+| 44 | 25 | 25 |
+| 30 | 25 | 25 |
+| 16 | **8** | 23 |
+| 41 | **9** | 22 |
+| 1 | **9** | 21 |
+| 27 | 19 | 19 |
+| 11 | 10 | 10 |
+
+The pattern is the mechanism. The two cars that ran the most laps are complete,
+because they are the ones that set the watermark. The Q1 casualties are
+complete, because they finished before the watermark passed them. Everyone in
+the middle is cut off at whatever lap the leader had reached while they were
+still running.
+
+### It was not only qualifying
+
+Qualifying is the extreme case, so it is where it became visible. The sprint —
+a real race, everyone within a lap of each other — was quietly missing 21 of
+506 rows, twenty of them a single lapped car's entire race after lap 1. It had
+been captured live, checked, written up as complete, and committed as the mock
+fixture.
+
+**In a race the bug is rarer and worse.** Rarer because lap numbers stay
+roughly synchronised; worse because the car it silently deletes is always a
+lapped one, and a lapped car is exactly the car whose story the chart is there
+to tell.
+
+### The narrowing was not buying anything
+
+The fix is to delete it. What made that easy was measuring what it saved, for
+one full grand prix:
+
+| endpoint | rows | raw |
+|---|---:|---:|
+| intervals | 29,593 | 4.36 MB |
+| laps | 1,423 | 0.71 MB |
+| position | 536 | 0.06 MB |
+| stints | 67 | 0.01 MB |
+| pit | 44 | 0.01 MB |
+
+Four of the five were already unfiltered — the ASOF join wants position samples
+from *before* the current lap, so trimming them would break the derivation
+rather than speed it up. **Laps were 13% of the bytes and 100% of the data
+loss.**
+
+A load test settled the rest: pointed at Hungary — 70 laps, 1,423 laps, 29,593
+intervals — a cycle completes all three passes in **49 seconds**, inside both
+the 45-second internal deadline and the 60-second schedule.
+
+### Repair
+
+Because every fetch now asks for the whole session and merges over what is
+stored, repairing a damaged capture is just pointing the sync at it for a
+cycle:
+
+| session | before | after | truth |
+|---|---:|---:|---:|
+| qualifying 11349 | 255 | 375 | 377 |
+| sprint 11348 | 485 | 506 | 506 |
+
+The two qualifying rows still missing are car 27 lap 1 and car 87 lap 1, both
+of which OpenF1 returns with `date_start: null` and `lap_duration: null`. The
+ASOF join needs a timestamp; dropping them is correct.
+
+### What to take from it
+
+An incremental fetch needs a watermark that is a **floor over the slowest
+member**, not a maximum over the fastest — or no watermark at all. And the
+check that would have caught this on day one is cheap: **after a capture,
+count the rows against the source.** Both sessions had been eyeballed on screen
+and both looked right, because a timing screen shows each car at its own last
+lap and a car frozen ten laps ago looks identical to a car that retired.

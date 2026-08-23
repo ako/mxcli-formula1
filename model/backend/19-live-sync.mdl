@@ -542,11 +542,11 @@ END;
  * filesystem, so it runs the same on a Windows laptop and on a Mendix Cloud
  * node -- derives the lap table in SQL, and keeps what is new.
  *
- * Only the laps it does not already have are fetched. OpenF1 filters on
- * lap_number, so a sync during a race asks for the last two laps rather than
- * the whole race: steady state is twenty rows a minute, not fourteen hundred.
- * Two rather than one because a lap already stored can still be revised -- a
- * gap arrives after the lap does.
+ * Every fetch asks for the whole session and the result is merged over what is
+ * already stored, so a cycle that misses -- a 429, a restart, a session that
+ * started before the sync was pointed at it -- is repaired by the next one.
+ * Laps are re-read rather than appended to because a lap already stored can
+ * still be revised: the gap to the leader arrives after the lap does.
  */
 CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Live ()
   RETURNS String AS $Result
@@ -581,27 +581,34 @@ BEGIN
    * HTTP. Sequential activities cannot burst, and each one carries the token in
    * a header instead of a DuckDB secret.
    *
-   * Only the laps read is narrowed. The other four are small or need their full
-   * history: a position sample from before this lap is exactly what the ASOF
-   * join is looking for, so trimming them would break the derivation rather
-   * than speed it up.
-   */
-  DECLARE $From Long = 1;
-  RETRIEVE $Seen FROM Formula1Backend.LiveLap
-    WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
-  IF $Seen != empty AND $Seen/LapNumber > 2 THEN
-    SET $From = $Seen/LapNumber - 1;
-  END IF;
-
-  /*
-   * `>` is percent-encoded because Java's URI parser refuses it raw --
-   * "Illegal character in query at index 59" -- where curl and DuckDB's httpfs
-   * both accepted it. OpenF1's filter syntax puts a comparison operator in the
-   * query string, so this is the one place it bites.
+   * All five are asked for the whole session.
+   *
+   * The laps read used to be narrowed to `lap_number >= (highest lap stored) -
+   * 1`, on the reasoning that a race asks for the last two laps rather than the
+   * whole race. The flaw is that "highest lap stored" is a maximum across all
+   * cars, and cars are not all on the same lap. The moment one car's lap number
+   * runs ahead, the window closes over everyone behind it and those laps are
+   * never requested again -- the watermark only rises, so they are lost
+   * permanently rather than late.
+   *
+   * It is not theoretical. Saturday's qualifying is the extreme case: two cars
+   * reached lap 25 while the rest were on lap 9, and the stored session holds
+   * 255 of the 377 laps that ran -- every car that was still running when the
+   * watermark passed it is cut off mid-session. The sprint is the ordinary
+   * case and lost 21 rows the same way, twenty of them one lapped car's entire
+   * race after lap 1. Both were captured live and both looked complete.
+   *
+   * Fetching the whole lap table instead costs very little, because the
+   * narrowing never saved much: intervals is unfiltered at 29,593 rows for a
+   * full grand prix, against 1,423 laps. Laps were 13% of the bytes and 100%
+   * of the data loss.
+   *
+   * The other four need their full history anyway: a position sample from
+   * before this lap is exactly what the ASOF join is looking for, so trimming
+   * them would break the derivation rather than speed it up.
    */
   $LapsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
-    Path = 'laps?session_key=' + $Key + '&lap_number%3E=' + toString($From),
-    Token = $Token);
+    Path = 'laps?session_key=' + $Key, Token = $Token);
   $PosJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
     Path = 'position?session_key=' + $Key, Token = $Token);
   $ItvJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
