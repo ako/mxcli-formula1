@@ -679,27 +679,78 @@ CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Entry (
 BEGIN
   DECLARE $Result String = '';
 
-  RETRIEVE $Have FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key LIMIT 1;
-  IF $Have != empty THEN
-    SET $Result = 'entry list already captured';
+  /*
+   * Re-read every pass, not once.
+   *
+   * This used to return early the moment a single LiveDriver row existed for
+   * the session, on the reasoning that an entry list does not change. It does.
+   * Parking the sync on the Dutch Grand Prix the night before captured the
+   * provisional entry, which had car 6 in the second Racing Bulls; the race
+   * was driven by car 22. The guard then made that impossible to correct, so
+   * the whole race was stored with an entry list containing a driver who never
+   * started and missing one who finished eleventh -- and a classification
+   * cannot show a name it does not have.
+   *
+   * The cost of re-reading is one request per cycle, on the tier that already
+   * carries the session and weather reads. The cost of not re-reading was a
+   * race.
+   */
+  $Json = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'drivers?session_key=' + $Key, Token = $Token);
+  IF trim($Json) = '' OR trim($Json) = '[]' THEN
+    SET $Result = 'entry list: nothing returned, keeping what is stored';
     RETURN $Result;
   END IF;
 
-  $Json = CALL MICROFLOW Formula1Backend.Sync_Fetch(
-    Path = 'drivers?session_key=' + $Key, Token = $Token);
   $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Drivers
     (sessionKey = $Key, driversJson = $Json);
+  $Parsed = COUNT($Rows);
+  IF $Parsed = 0 THEN
+    SET $Result = 'entry list: nothing parsed, keeping what is stored';
+    RETURN $Result;
+  END IF;
+
+  /*
+   * Update in place rather than delete-and-recreate. RowId is an autonumber and
+   * it is this table's OData key, so recreating the rows every minute would
+   * hand a client a new identity for the same driver once a minute.
+   */
+  RETRIEVE $Stored FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
 
   DECLARE $Kept Long = 0;
+  DECLARE $Added Long = 0;
+  DECLARE $Seen String = '|';
   LOOP $R IN $Rows BEGIN
-    $New = CREATE Formula1Backend.LiveDriver (
-      SessionKey = $R/SessionKey, DriverNumber = $R/DriverNumber,
-      Code = $R/Code, DriverName = $R/DriverName,
-      Team = $R/Team, TeamColour = $R/TeamColour) COMMIT;
+    SET $Seen = $Seen + toString($R/DriverNumber) + '|';
+    $Existing = FIND($Stored, DriverNumber = $R/DriverNumber);
+    IF $Existing = empty THEN
+      $New = CREATE Formula1Backend.LiveDriver (
+        SessionKey = $R/SessionKey, DriverNumber = $R/DriverNumber,
+        Code = $R/Code, DriverName = $R/DriverName,
+        Team = $R/Team, TeamColour = $R/TeamColour) COMMIT;
+      SET $Added = $Added + 1;
+    ELSE
+      CHANGE $Existing (
+        Code = $R/Code, DriverName = $R/DriverName,
+        Team = $R/Team, TeamColour = $R/TeamColour) COMMIT;
+    END IF;
     SET $Kept = $Kept + 1;
   END LOOP;
 
+  /* And a car that is no longer entered comes off the list. */
+  DECLARE $Dropped Long = 0;
+  LOOP $S IN $Stored BEGIN
+    IF contains($Seen, '|' + toString($S/DriverNumber) + '|') = false THEN
+      DELETE $S;
+      SET $Dropped = $Dropped + 1;
+    END IF;
+  END LOOP;
+
   SET $Result = 'entry list: ' + toString($Kept) + ' drivers';
+  IF $Added > 0 OR $Dropped > 0 THEN
+    SET $Result = $Result + ' (' + toString($Added) + ' added, '
+      + toString($Dropped) + ' removed)';
+  END IF;
   LOG INFO NODE 'F1LiveSync' $Result;
   RETURN $Result;
 END;
