@@ -1,0 +1,235 @@
+/*
+ * Replay: the forecast at every lap of a race that has already run.
+ * ================================================================
+ *
+ * The live forecaster writes one row per car per lap as a race unfolds, so a
+ * race run since it existed already has its whole history in LiveForecast and
+ * needs nothing from this file. Yesterday's sprint does not: it ran before the
+ * forecaster did, and the only way to see what the model would have said at
+ * lap 12 is to ask it now.
+ *
+ * That is exactly what `cutLap` is for. It was added to GetOpenF1Forecast so
+ * the offline backtest could forecast a finished race as of lap N; the same
+ * parameter, called once per lap, reconstructs the history the forecaster
+ * would have written had it been running. The backtest harness and the replay
+ * are the same mechanism seen from two sides, which is the reason the
+ * parameter is worth its place in a production query.
+ *
+ * ------------------------------------------------------------- the payloads
+ *
+ * Rebuilding a race means running the forecast twenty-four or seventy times
+ * over the same three payloads. Fetching them twenty-four times would be
+ * absurd and, during a live window, refused -- so they are fetched once and
+ * kept.
+ *
+ * That is worth more than the replay. A stored payload is the raw thing OpenF1
+ * said, before any derivation, which means a change to the model can be
+ * re-run against a past race without asking OpenF1 for it again. The lap table
+ * is a conclusion; this is the evidence.
+ */
+
+/* ----------------------------------------------------------- the evidence -- */
+
+/*
+ * One endpoint's answer for one session, exactly as it arrived.
+ *
+ * Unlimited string rather than a sized one: a grand prix's lap table is about
+ * 700 KB of JSON and its intervals four times that. Sizing this attribute
+ * would be picking a number that a longer race quietly exceeds.
+ */
+create or modify persistent entity Formula1Backend.LivePayload (
+  RowId: autonumber default 1 unique error 'LivePayload row id must be unique',
+  SessionKey: string(20),
+  Endpoint: string(40),
+  Json: string,
+  Bytes: long,
+  FetchedAt: datetime
+) index (SessionKey);
+
+/*
+ * Fetch an endpoint for a session unless it is already held.
+ *
+ * A finished session's payload does not change, so a stored one is never
+ * refreshed. An empty or error response is not stored at all -- storing '[]'
+ * would cache the rate limiter's answer as though it were the race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Replay_Payload (
+  $SessionKey: String,
+  $Endpoint: String,
+  $Token: String
+)
+  RETURNS String AS $Json
+BEGIN
+  DECLARE $Json String = '';
+
+  RETRIEVE $Held FROM Formula1Backend.LivePayload
+    WHERE SessionKey = $SessionKey and Endpoint = $Endpoint LIMIT 1;
+  IF $Held != empty THEN
+    SET $Json = $Held/Json;
+    RETURN $Json;
+  END IF;
+
+  $Fetched = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = $Endpoint + '?session_key=' + $SessionKey, Token = $Token);
+  IF trim($Fetched) = '' OR trim($Fetched) = '[]' THEN
+    RETURN $Json;
+  END IF;
+
+  $Stored = CREATE Formula1Backend.LivePayload (
+    SessionKey = $SessionKey, Endpoint = $Endpoint, Json = $Fetched,
+    Bytes = length($Fetched), FetchedAt = [%CurrentDateTime%]) COMMIT;
+  SET $Json = $Fetched;
+  RETURN $Json;
+END;
+
+/* --------------------------------------------------------------- the build -- */
+
+/*
+ * Fill in a session's missing laps, a few at a time.
+ *
+ * Bounded per run because every lap is a database round trip and twenty-two
+ * writes, and a scheduled event that works for four minutes is a scheduled
+ * event that overlaps itself. A sprint is done in one run, a grand prix in
+ * three.
+ *
+ * Laps already forecast are skipped rather than recomputed, so this converges
+ * and then costs nothing: once a session is complete every run finds nothing
+ * to do and returns.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Replay_Build (
+  $SessionKey: String,
+  $Budget: Integer
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  RETRIEVE $Session FROM Formula1Backend.LiveSessionRow
+    WHERE SessionKey = $SessionKey LIMIT 1;
+  $Total = CALL MICROFLOW Formula1Backend.Fcst_RaceLength(Session = $Session);
+  IF $Total < 1 THEN
+    SET $Result = 'session ' + $SessionKey + ': not a race';
+    RETURN $Result;
+  END IF;
+
+  RETRIEVE $Last FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $SessionKey SORT BY LapNumber DESC LIMIT 1;
+  IF $Last = empty THEN
+    SET $Result = 'session ' + $SessionKey + ': no laps';
+    RETURN $Result;
+  END IF;
+
+  /*
+   * Which laps are worth forecasting.
+   *
+   * Not lap 1: every filter in the model drops the first lap, so a forecast
+   * from it has nothing fitted and says every car is equally likely -- which
+   * is true and useless. The replay starts where the model starts having an
+   * opinion.
+   *
+   * And not past the last lap actually run, which for a race that ended early
+   * is less than the scheduled distance.
+   */
+  DECLARE $Highest Long = $Last/LapNumber;
+  IF $Highest > $Total THEN
+    SET $Highest = $Total;
+  END IF;
+
+  $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+  $LapsJson = CALL MICROFLOW Formula1Backend.Replay_Payload(
+    SessionKey = $SessionKey, Endpoint = 'laps', Token = $Token);
+  IF trim($LapsJson) = '' THEN
+    SET $Result = 'session ' + $SessionKey + ': no lap payload';
+    LOG WARNING NODE 'F1Replay' $Result;
+    RETURN $Result;
+  END IF;
+  $StintsJson = CALL MICROFLOW Formula1Backend.Replay_Payload(
+    SessionKey = $SessionKey, Endpoint = 'stints', Token = $Token);
+  $PitJson = CALL MICROFLOW Formula1Backend.Replay_Payload(
+    SessionKey = $SessionKey, Endpoint = 'pit', Token = $Token);
+
+  DECLARE $Lap Long = 2;
+  DECLARE $Done Integer = 0;
+  WHILE $Lap <= $Highest AND $Done < $Budget BEGIN
+    RETRIEVE $Existing FROM Formula1Backend.LiveForecast
+      WHERE SessionKey = $SessionKey and AtLap = $Lap LIMIT 1;
+    IF $Existing = empty THEN
+      $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Forecast
+        (sessionKey = $SessionKey, lapsJson = $LapsJson,
+         stintsJson = $StintsJson, pitJson = $PitJson,
+         cutLap = $Lap, totalLaps = $Total);
+      LOOP $R IN $Rows BEGIN
+        $Saved = CREATE Formula1Backend.LiveForecast (
+          SessionKey = $SessionKey, AtLap = $Lap,
+          DriverNumber = $R/DriverNumber, LapsRemaining = $R/LapsRemaining,
+          StopsLeft = $R/StopsLeft, LapsUsed = $R/LapsUsed,
+          BasePace = $R/BasePace, DegPerLap = $R/DegPerLap,
+          PitLoss = $R/PitLoss, MeanPosition = $R/MeanPosition,
+          MedianPosition = $R/MedianPosition, PWin = $R/PWin,
+          PPodium = $R/PPodium, PPoints = $R/PPoints,
+          BestCase = $R/BestCase, WorstCase = $R/WorstCase,
+          ProjectedTime = $R/ProjectedTime,
+          ComputedAt = [%CurrentDateTime%]) COMMIT;
+      END LOOP;
+      SET $Done = $Done + 1;
+    END IF;
+    SET $Lap = $Lap + 1;
+  END WHILE;
+
+  SET $Result = 'session ' + $SessionKey + ': built ' + toString($Done)
+    + ' of laps 2-' + toString($Highest);
+  IF $Done > 0 THEN
+    LOG INFO NODE 'F1Replay' $Result;
+  END IF;
+  RETURN $Result;
+END;
+
+/*
+ * Build replays for every race we have, one session at a time.
+ *
+ * The session the sync is following is skipped. During a race the live
+ * forecaster is already writing a row per lap as it happens -- the history
+ * builds itself -- and two events writing LiveForecast for the same session
+ * would be contending for nothing.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Replay_Sweep ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = 'nothing to build';
+
+  $State = CALL MICROFLOW Formula1Backend.Sync_State();
+  DECLARE $Live String = '';
+  IF $State != empty THEN
+    SET $Live = trim($State/SessionKey);
+  END IF;
+
+  RETRIEVE $Sessions FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC;
+  LOOP $S IN $Sessions BEGIN
+    IF $Result = 'nothing to build' AND $S/SessionKey != $Live THEN
+      $Built = CALL MICROFLOW Formula1Backend.Replay_Build(
+        SessionKey = $S/SessionKey, Budget = 25);
+      IF contains($Built, ': built 0 ') = false
+         AND contains($Built, 'not a race') = false
+         AND contains($Built, 'no laps') = false THEN
+        SET $Result = $Built;
+      END IF;
+    END IF;
+  END LOOP;
+  RETURN $Result;
+END;
+
+/*
+ * Every five minutes, not every minute.
+ *
+ * There is nothing time-critical here: a replay is of a race that has already
+ * finished. Five minutes is often enough that a session captured today is
+ * steppable within the hour, and rare enough that the run which finds nothing
+ * to do -- which is almost all of them -- costs almost nothing.
+ */
+CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_ReplayBuild (
+  Microflow: Formula1Backend.Replay_Sweep,
+  Enabled: true,
+  Repeat: Minutely,
+  Multiplier: 5,
+  TimeZone: Server
+);

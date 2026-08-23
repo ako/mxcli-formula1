@@ -5778,3 +5778,100 @@ And `RETRIEVE ... WHERE a = x AND b = y` emits invalid XPath: the build fails
 CE0161 "Error(s) in XPath constraint". Lowercase `and` works. No two-condition
 retrieve existed anywhere in this model before today, which is why it had never
 been hit.
+
+## 73. Replay, and a NaN that only one of two DuckDBs objected to
+
+> "Ideally i could select yesterday's sprint race and then step through every
+> round, whilst seeing the results so far, and the forecast based on the status
+> in that round."
+
+Almost none of this needed building, which is the interesting part.
+
+The forecaster already took a `cutLap` parameter — added so the offline
+backtest could forecast a finished race as of lap *N*. Calling it once per lap
+reconstructs the history the live forecaster would have written had it been
+running. **The backtest harness and the replay are the same mechanism seen from
+two sides**, which retroactively justifies a parameter that production always
+passes 0.
+
+And the admin service already published `Laps`, `Drivers` and `Sessions`
+straight from source, so `$filter` pushes into Postgres. Adding `Forecast`
+beside them meant a step is two indexed reads rather than a recomputation —
+the difference between stepping and waiting.
+
+So the whole feature is: a payload cache, a builder on a five-minute schedule,
+one publish block, and a page.
+
+### Keep the evidence, not just the conclusion
+
+Rebuilding a race runs the model seventy times over the same three payloads.
+Fetching them seventy times would be absurd and, inside a live window,
+refused — so `LivePayload` stores each endpoint's answer once, exactly as it
+arrived.
+
+That turns out to be worth more than the replay. **A stored payload is what
+OpenF1 said before any derivation.** The lap table is a conclusion; this is the
+evidence, and a change to the model can now be re-run against a past race
+without asking OpenF1 for it again. Hungary is 669 KB of laps, 10 KB of stints,
+8 KB of pit.
+
+### The NaN
+
+The first sweep died:
+
+```
+ExternalDatabaseConnector: Character N is neither a decimal digit number,
+decimal point, nor "e" notation exponential mark.
+```
+
+`Character N` is the first letter of `NaN`. `regr_slope` over a single point
+returns NaN — not NULL — and forecasting from lap 2 leaves exactly one clean
+lap, so `lap_number` has no variance and the fuel slope came back NaN. It then
+propagated through everything, because **neither of the two things that look
+like guards actually is one**: `COALESCE` does not catch NaN, and
+`greatest(0.0, NaN)` is NaN. (`least(0.15, NaN)` returns 0.15, which is how the
+degradation term escaped by luck.)
+
+The part worth remembering is why the backtest never saw it. **Python's DuckDB
+handed the NaN back without complaint; the JDBC decimal conversion refused it.**
+Same engine, same SQL, same data — one caller tolerant, one strict. A harness
+that exercises the query through a different client than production does can
+only catch the errors both clients agree about.
+
+And it was never only a lap-2 problem. With every fitted quantity passed
+through `isfinite`, the backtest's earliest forecasts improved sharply:
+
+| forecasting from lap 2 | before | after |
+|---|---|---|
+| Hungary ρ | 0.30 | **0.89** |
+| Zandvoort sprint ρ | −0.10 | **0.96** |
+
+I had read that as the model honestly having nothing to fit yet, and written it
+into the previous section as a property of the model. It was arithmetic, again,
+and for the third time it wore the same disguise.
+
+### What it shows
+
+The sprint, stepped, is a readable story rather than a table:
+
+| lap | the model's call |
+|---|---|
+| 2 | RUS 50%, NOR 32%, ANT 14% |
+| 4 | **ANT 45%**, NOR 21%, PIA 17% |
+| 8 | RUS 45%, NOR 26%, ANT 25% |
+| 19 | RUS 59%, NOR 25%, ANT 13% |
+| 20 | RUS 53%, **LEC 21%**, NOR 16% |
+| 24 | RUS 68%, LEC 26% |
+
+Russell won and Leclerc finished second. Antonelli's lap-4 spike faded, and
+Leclerc does not appear at all until lap 20 — the model had no way to know
+about him and then found out, which is exactly what a forecast without
+hindsight looks like from the inside.
+
+### A separate screen, deliberately
+
+Narrate decides both "which session" and "which lap" through a chain of
+microflows. Teaching that chain to lie about the lap, on the morning of a race,
+to add a feature nobody needs during the race, is a trade with the wrong sign
+on it. The replay is its own page reading its own resources, and Narrate was
+not touched.

@@ -148,6 +148,7 @@ END;
 /* ---------------------------------------------------------------- pages -- */
 
 GRANT VIEW ON PAGE Formula1Frontend.Narrate TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Replay TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Season TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Weekend TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Constructor TO Formula1Frontend.Enthusiast;
@@ -257,6 +258,7 @@ create or replace navigation Responsive
   HOME PAGE Formula1Frontend.Narrate
   MENU (
     MENU ITEM 'Narrate' PAGE Formula1Frontend.Narrate ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Replay' PAGE Formula1Frontend.Replay ICON Atlas_Core.Atlas."time-clock";
     MENU ITEM 'Season' MICROFLOW Formula1Frontend.NAV_Season ICON Atlas_Core.Atlas.calendar;
     MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
@@ -313,6 +315,26 @@ grant F1Admin.Reader ON F1Admin.Weather (READ *);
 grant F1Admin.Reader ON F1Admin.Messages (READ *);
 grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
 grant F1Admin.Reader ON F1Admin.Radio (READ *);
+grant F1Admin.Reader ON F1Admin.Forecast (READ *);
+
+/* Replay: where the viewer is in a past race, and the two view rows the
+ * screen builds. Writable, unlike everything else here -- the buttons change
+ * it, and it is the only state this app owns. */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayState (READ *, WRITE *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayEntry (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayCall (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayState TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayEnsure TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplaySessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayPick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayNext TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayPrev TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayStart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayEnd TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayOrder TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayForecast TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ReplayWin TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ReplayPositions TO Formula1Frontend.Enthusiast;
 
 GRANT VIEW ON PAGE Formula1Frontend.Admin TO Formula1Frontend.Administrator;
 

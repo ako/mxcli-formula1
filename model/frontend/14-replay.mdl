@@ -1,0 +1,555 @@
+/*
+ * Screen 6 — Replay.
+ * ==================
+ *
+ * A finished race, one lap at a time: the classification as it stood, and the
+ * forecast as it would have been made, at whichever lap you stop on.
+ *
+ * The point of it is the forecast. A single forecast is a claim you cannot
+ * check; a forecast you can step is one you can argue with. Stop at lap 8 and
+ * see who the model was wrong about, step to 14 and see whether the pit stops
+ * changed its mind, run to the end and see the order it settled on against the
+ * order that happened.
+ *
+ * ------------------------------------------------------- where the data is
+ *
+ * Nothing here is computed on this screen and nothing here is new. The backend
+ * already stores every lap of every session it has captured, and the replay
+ * builder in 25-replay.mdl has already run the forecaster at every lap of
+ * every race it holds. Both are published from source on the admin service, so
+ * a step is two filtered reads that Postgres answers from an index -- not a
+ * recomputation.
+ *
+ * That is the reason this screen exists at all rather than the live one
+ * gaining a mode. Narrate reads "the current session at the current lap"
+ * through a chain of microflows that decide both; teaching that chain to lie
+ * about the lap, on the morning of a race, to get a feature nobody needs
+ * during the race, is a trade with the wrong sign on it.
+ */
+
+/* ------------------------------------------------------------- the state -- */
+
+/*
+ * Where the viewer is: which session, which lap.
+ *
+ * Persistent and single-row, because it has to survive the page reload that a
+ * button press causes and there is one viewer. Two browsers share it, which
+ * for a screen whose whole content is a past race is a curiosity rather than a
+ * defect.
+ */
+create or modify persistent entity Formula1Frontend.ReplayState (
+  SessionKey: string(20),
+  SessionLabel: string(160),
+  AtLap: long,
+  MaxLap: long
+);
+
+/*
+ * The state row, created on first use.
+ *
+ * Opens on the newest race that has a forecast built, because the thing you
+ * want to replay is almost always the last thing that happened.
+ */
+/*
+ * The sessions worth offering: the ones a forecast has been built for.
+ *
+ * A session with laps but no forecast is a practice or a qualifying, and
+ * stepping through a qualifying's predicted finishing order would be showing
+ * a number the model does not claim to produce.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplaySessions ()
+  RETURNS List of F1Admin.Sessions AS $Have
+BEGIN
+  $Have = CREATE LIST OF F1Admin.Sessions;
+  RETRIEVE $Sessions FROM F1Admin.Sessions SORT BY dateStart DESC;
+  LOOP $S IN $Sessions BEGIN
+    RETRIEVE $Fcst FROM F1Admin.Forecast
+      WHERE sessionKey = $S/sessionKey LIMIT 1;
+    IF $Fcst != empty THEN
+      ADD $S TO $Have;
+    END IF;
+  END LOOP;
+  RETURN $Have;
+END;
+
+/* ------------------------------------------------------------ the buttons -- */
+
+/*
+ * Choose a session: remember it, find how far the forecast goes, and rewind.
+ *
+ * MaxLap is the last lap a forecast exists for rather than the last lap of the
+ * race. They are the same once the builder has caught up and they are not
+ * while it is working, and a stepper that walks past the end of its own data
+ * shows an empty grid and looks broken.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayPick (
+  $Session: F1Admin.Sessions
+)
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $State = empty OR $Session = empty THEN
+    RETURN $Ok;
+  END IF;
+
+  DECLARE $Max Long = 2;
+  RETRIEVE $Last FROM F1Admin.Forecast
+    WHERE sessionKey = $Session/sessionKey SORT BY atLap DESC LIMIT 1;
+  IF $Last != empty THEN
+    SET $Max = $Last/atLap;
+  END IF;
+
+  CHANGE $State (
+    SessionKey = $Session/sessionKey,
+    SessionLabel = $Session/sessionName + ' · ' + $Session/location
+                   + ' · ' + toString($Session/year),
+    MaxLap = $Max,
+    AtLap = 2
+  ) COMMIT;
+  RETURN $Ok;
+END;
+
+/*
+ * Create the row if it is not there, and open it on something.
+ *
+ * Separate from the datasource because a microflow's variable names are unique
+ * flow-wide -- branches do not open a scope -- so a flow cannot both retrieve
+ * the row and create it and call the result the same thing. Splitting the
+ * ensure out leaves the datasource with exactly one retrieve, which is also
+ * the clearer shape.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayEnsure ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $Held FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $Held != empty THEN
+    RETURN $Ok;
+  END IF;
+
+  $Fresh = CREATE Formula1Frontend.ReplayState (AtLap = 2, MaxLap = 0) COMMIT;
+
+  /* Open on the newest race that has a forecast. DS_ReplaySessions is newest
+   * first, so the first one that exists is the one to open on. */
+  DECLARE $Opened Boolean = false;
+  $Sessions = CALL MICROFLOW Formula1Frontend.DS_ReplaySessions();
+  LOOP $S IN $Sessions BEGIN
+    IF $Opened = false THEN
+      $Picked = CALL MICROFLOW Formula1Frontend.ACT_ReplayPick(Session = $S);
+      SET $Opened = true;
+    END IF;
+  END LOOP;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayState ()
+  RETURNS Formula1Frontend.ReplayState AS $State
+BEGIN
+  $Ensured = CALL MICROFLOW Formula1Frontend.ACT_ReplayEnsure();
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETURN $State;
+END;
+
+/* One lap on. Clamped, so the last lap is a stop rather than a blank screen. */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayNext ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $State = empty THEN
+    RETURN $Ok;
+  END IF;
+  IF $State/AtLap < $State/MaxLap THEN
+    CHANGE $State (AtLap = $State/AtLap + 1) COMMIT;
+  END IF;
+  RETURN $Ok;
+END;
+
+/* One lap back. Lap 2 is the floor: lap 1 has nothing fitted behind it. */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayPrev ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $State = empty THEN
+    RETURN $Ok;
+  END IF;
+  IF $State/AtLap > 2 THEN
+    CHANGE $State (AtLap = $State/AtLap - 1) COMMIT;
+  END IF;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayStart ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $State = empty THEN
+    RETURN $Ok;
+  END IF;
+  CHANGE $State (AtLap = 2) COMMIT;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayEnd ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  IF $State = empty THEN
+    RETURN $Ok;
+  END IF;
+  CHANGE $State (AtLap = $State/MaxLap) COMMIT;
+  RETURN $Ok;
+END;
+
+/* ------------------------------------------------------------- the reads -- */
+
+/*
+ * The classification as it stood, and the call the model made.
+ *
+ * Two view rows rather than binding the grids straight to the external
+ * entities, because both want the driver's name against a number the timing
+ * feed reports and neither carries it: F1Admin.Laps and F1Admin.Forecast are
+ * keyed on driver_number, and the entry list is a third table.
+ */
+create or modify non-persistent entity Formula1Frontend.ReplayEntry (
+  Position: long, DriverNumber: long, Code: string(10), DriverName: string(120),
+  Team: string(120), LapNumber: long, GapToLeader: string(20),
+  LapSeconds: decimal, Compound: string(20), TyreAge: long, PitStops: long
+);
+
+create or modify non-persistent entity Formula1Frontend.ReplayCall (
+  MeanPosition: decimal, MedianPosition: long, DriverNumber: long,
+  Code: string(10), DriverName: string(120), PWin: decimal, PPodium: decimal,
+  PPoints: decimal, BestCase: long, WorstCase: long, StopsLeft: long,
+  LapsUsed: long, LapsRemaining: long
+);
+
+/*
+ * Everyone's last completed lap at or before the chosen one.
+ *
+ * Not "everyone on the chosen lap": a car a lap down has no row on it, and
+ * dropping it off the timing screen would be wrong -- the same rule the live
+ * classification follows. Laps come back newest first and a driver is taken
+ * the first time it is seen.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayOrder ()
+  RETURNS List of Formula1Frontend.ReplayEntry AS $Ordered
+BEGIN
+  $Rows = CREATE LIST OF Formula1Frontend.ReplayEntry;
+  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
+  IF $State = empty OR trim($State/SessionKey) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Laps FROM F1Admin.Laps
+    WHERE sessionKey = $State/SessionKey and lapNumber <= $State/AtLap
+    SORT BY lapNumber DESC;
+  RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+
+  LOOP $L IN $Laps BEGIN
+    $Seen = FIND($Rows, DriverNumber = $L/driverNumber);
+    IF $Seen = empty THEN
+      $D = FIND($Drivers, driverNumber = $L/driverNumber);
+      $Row = CREATE Formula1Frontend.ReplayEntry (
+        Position = $L/position, DriverNumber = $L/driverNumber,
+        LapNumber = $L/lapNumber, GapToLeader = $L/gapToLeader,
+        LapSeconds = $L/lapSeconds, Compound = $L/compound,
+        TyreAge = $L/tyreAge, PitStops = $L/pitStops);
+      IF $D != empty THEN
+        CHANGE $Row (Code = $D/code, DriverName = $D/driverName, Team = $D/team);
+      END IF;
+      ADD $Row TO $Rows;
+    END IF;
+  END LOOP;
+
+  $Ordered = SORT($Rows, Position);
+  RETURN $Ordered;
+END;
+
+/*
+ * The forecast made at the chosen lap, in predicted order.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayForecast ()
+  RETURNS List of Formula1Frontend.ReplayCall AS $Ordered
+BEGIN
+  $Rows = CREATE LIST OF Formula1Frontend.ReplayCall;
+  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
+  IF $State = empty OR trim($State/SessionKey) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Fcst FROM F1Admin.Forecast
+    WHERE sessionKey = $State/SessionKey and atLap = $State/AtLap;
+  RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+
+  LOOP $F IN $Fcst BEGIN
+    $D = FIND($Drivers, driverNumber = $F/driverNumber);
+    $Row = CREATE Formula1Frontend.ReplayCall (
+      MeanPosition = $F/meanPosition, MedianPosition = $F/medianPosition,
+      DriverNumber = $F/driverNumber, PWin = $F/pWin, PPodium = $F/pPodium,
+      PPoints = $F/pPoints, BestCase = $F/bestCase, WorstCase = $F/worstCase,
+      StopsLeft = $F/stopsLeft, LapsUsed = $F/lapsUsed,
+      LapsRemaining = $F/lapsRemaining);
+    IF $D != empty THEN
+      CHANGE $Row (Code = $D/code, DriverName = $D/driverName);
+    END IF;
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  $Ordered = SORT($Rows, MeanPosition);
+  RETURN $Ordered;
+END;
+
+/* ------------------------------------------------------------ the charts -- */
+
+/*
+ * Win probability up to the chosen lap, and no further.
+ *
+ * Truncating the line at the chosen lap rather than drawing the whole race
+ * greyed out is the entire point: what you are watching is the model without
+ * hindsight. A chart that showed where the lines were going would answer the
+ * question the stepping is there to ask.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayWin ()
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    RETRIEVE $Fcst FROM F1Admin.Forecast
+      WHERE sessionKey = $State/SessionKey and atLap <= $State/AtLap
+      SORT BY atLap ASC;
+    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+
+    /* Only cars the model has ever given a real chance. Twenty-two lines of
+     * which fifteen are flat on the axis hide the six that matter. */
+    DECLARE $Keep String = '|';
+    LOOP $F IN $Fcst BEGIN
+      IF $F/pWin != empty AND $F/pWin > 0.02
+         AND contains($Keep, '|' + toString($F/driverNumber) + '|') = false THEN
+        SET $Keep = $Keep + toString($F/driverNumber) + '|';
+      END IF;
+    END LOOP;
+
+    LOOP $P IN $Fcst BEGIN
+      IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
+        $D = FIND($Drivers, driverNumber = $P/driverNumber);
+        DECLARE $Code String = toString($P/driverNumber);
+        IF $D != empty AND trim($D/code) != '' THEN
+          SET $Code = $D/code;
+        END IF;
+        SET $Json = $Json + $Sep
+          + '{"code":"' + $Code + '","lap":' + toString($P/atLap)
+          + ',"p":' + formatDecimal($P/pWin * 100, '0.00') + '}';
+        SET $Sep = ',';
+      END IF;
+    END LOOP;
+  END IF;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Position by lap, up to the chosen lap. The race as far as it has been run.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayPositions ()
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    RETRIEVE $Laps FROM F1Admin.Laps
+      WHERE sessionKey = $State/SessionKey and lapNumber <= $State/AtLap
+      SORT BY lapNumber ASC;
+    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+    LOOP $L IN $Laps BEGIN
+      IF $L/position != empty THEN
+        $D = FIND($Drivers, driverNumber = $L/driverNumber);
+        IF $D != empty AND trim($D/code) != '' THEN
+          SET $Json = $Json + $Sep
+            + '{"code":"' + $D/code + '","lap":' + toString($L/lapNumber)
+            + ',"pos":' + toString($L/position) + '}';
+          SET $Sep = ',';
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * The page.
+ * =========
+ */
+create or replace page Formula1Frontend.Replay
+(
+  title: 'Replay',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'replay'
+)
+{
+  container pageBody (class: 'narrate-dense') {
+
+    dataview dvReplay (datasource: MICROFLOW Formula1Frontend.DS_ReplayState) {
+
+      container replayBar (class: 'live-bar') {
+        container rHead (class: 'pagehead') {
+          container rHeadMain (class: 'pagehead-main') {
+            dynamictext rEyebrow (content: 'Replay', class: 'pagehead-eyebrow')
+            dynamictext rTitle (content: '{1}', contentparams: [{1} = SessionLabel],
+                                rendermode: H2, class: 'pagehead-title')
+            dynamictext rSub (
+              content: 'the classification as it stood, and the forecast as it would have been made',
+              class: 'pagehead-sub')
+          }
+          container rHeadBadge (class: 'pagehead-badge') {
+            dynamictext rLap (content: 'LAP {1} / {2}',
+              contentparams: [{1} = AtLap, {2} = MaxLap])
+          }
+        }
+
+        /*
+         * The transport. Four buttons rather than a slider: a slider is a
+         * gesture for scrubbing and what this screen is for is one lap at a
+         * time, where the interesting thing is the step itself.
+         */
+        container rControls (class: 'replay-controls') {
+          actionbutton btnStart (Caption: '|<', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_ReplayStart)
+          actionbutton btnPrev (Caption: '< Lap', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_ReplayPrev)
+          actionbutton btnNext (Caption: 'Lap >', ButtonStyle: Primary,
+            Action: MICROFLOW Formula1Frontend.ACT_ReplayNext)
+          actionbutton btnEnd (Caption: '>|', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_ReplayEnd)
+        }
+      }
+
+      /* Which race. Every session a forecast has been built for, newest first. */
+      container rChips (class: 'chips-row') {
+        listview lvSessions (datasource: MICROFLOW Formula1Frontend.DS_ReplaySessions,
+                             PageSize: 12) {
+          container chipSession (
+            class: 'chip-pick',
+            dynamicclasses: 'if $currentObject/sessionKey = $dvReplay/SessionKey then ''is-picked'' else ''''',
+            OnClick: MICROFLOW Formula1Frontend.ACT_ReplayPick(Session: $currentObject)
+          ) {
+            dynamictext chipName (content: '{1} {2}',
+              contentparams: [{1} = location, {2} = sessionName])
+          }
+        }
+      }
+
+      container rMain (class: 'live-fold') {
+
+        container rOrderPanel (class: 'panel') {
+          container rOrderHead (class: 'panel-head') {
+            dynamictext rOrderTitle (content: 'Classification', class: 'panel-title')
+            dynamictext rOrderSub (
+              content: 'every car at its last completed lap at or before this one',
+              class: 'panel-sub')
+          }
+          container rOrderGrid (class: 'grid-dense') {
+            datagrid dgReplayOrder (
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayOrder,
+              PageSize: 24, PagingPosition: bottom
+            ) {
+              column rcPos (attribute: Position, caption: 'P', Alignment: right)
+              column rcCode (attribute: Code, caption: 'Code')
+              column rcDriver (attribute: DriverName, caption: 'Driver')
+              column rcTeam (attribute: Team, caption: 'Team')
+              column rcLap (attribute: LapNumber, caption: 'Lap', Alignment: right)
+              column rcGap (attribute: GapToLeader, caption: 'Gap', Alignment: right)
+              column rcLast (attribute: LapSeconds, caption: 'Last', Alignment: right)
+              column rcTyre (attribute: Compound, caption: 'Tyre')
+              column rcAge (attribute: TyreAge, caption: 'Age', Alignment: right)
+              column rcStops (attribute: PitStops, caption: 'St', Alignment: right)
+            }
+          }
+        }
+
+        container rFcstPanel (class: 'panel') {
+          container rFcstHead (class: 'panel-head') {
+            dynamictext rFcstTitle (content: 'Forecast from here', class: 'panel-title')
+            dynamictext rFcstSub (
+              content: 'two thousand simulations of the laps still to run · 10-90% range · nothing after this lap is known to it',
+              class: 'panel-sub')
+          }
+          container rFcstGrid (class: 'grid-dense') {
+            datagrid dgReplayForecast (
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayForecast,
+              PageSize: 24, PagingPosition: bottom
+            ) {
+              column rfPos (attribute: MedianPosition, caption: 'P', Alignment: right)
+              column rfCode (attribute: Code, caption: 'Code')
+              column rfDriver (attribute: DriverName, caption: 'Driver')
+              column rfBest (attribute: BestCase, caption: 'Best', Alignment: right)
+              column rfWorst (attribute: WorstCase, caption: 'Worst', Alignment: right)
+              column rfWin (attribute: PWin, caption: 'Win', Alignment: right)
+              column rfPod (attribute: PPodium, caption: 'Podium', Alignment: right)
+              column rfPts (attribute: PPoints, caption: 'Points', Alignment: right)
+              column rfLeft (attribute: LapsRemaining, caption: 'Left', Alignment: right)
+              column rfStops (attribute: StopsLeft, caption: 'Stops', Alignment: right)
+              column rfLaps (attribute: LapsUsed, caption: 'Fitted', Alignment: right)
+            }
+          }
+        }
+      }
+
+      container rTraces (class: 'live-traces live-traces-2') {
+
+        container rWinPanel (class: 'panel') {
+          container rWinHead (class: 'panel-head') {
+            dynamictext rWinTitle (content: 'Win probability', class: 'panel-title')
+            dynamictext rWinSub (
+              content: 'the model without hindsight: the line stops where you are',
+              class: 'panel-sub')
+          }
+          dataview dvRWin (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayWin) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (
+              chartData: json,
+              datasetName: 'table',
+              chartHeight: 0,
+              renderer: 'svg',
+              showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":210,"layer":[{"mark":{"type":"line","strokeWidth":10,"interpolate":"monotone","opacity":0.001},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"p","type":"quantitative","title":"Win probability (%)","scale":{"domain":[0,100],"nice":false}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA","#E3B341","#3FB950","#F85149"]},"legend":{"orient":"top","columns":8,"offset":4}}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]},"bind":"legend"},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.6,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"p","type":"quantitative","title":"Win probability (%)","scale":{"domain":[0,100],"nice":false}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA","#E3B341","#3FB950","#F85149"]},"legend":{"orient":"top","columns":8,"offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"p","title":"Win %","format":".1f"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.14},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":3},"value":1.4}}}]}')
+          }
+        }
+
+        container rPosPanel (class: 'panel') {
+          container rPosHead (class: 'panel-head') {
+            dynamictext rPosTitle (content: 'Position by lap', class: 'panel-title')
+            dynamictext rPosSub (content: 'the race as far as it has been run',
+                                 class: 'panel-sub')
+          }
+          dataview dvRPos (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayPositions) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayPos (
+              chartData: json,
+              datasetName: 'table',
+              chartHeight: 0,
+              renderer: 'svg',
+              showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":210,"layer":[{"mark":{"type":"line","strokeWidth":10,"interpolate":"monotone","opacity":0.001},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]},"bind":"legend"},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.2,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"pos","type":"quantitative","title":"Position","scale":{"reverse":true,"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"},"legend":{"orient":"right","columns":1,"offset":6}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.14},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":2.6},"value":1.1}}}]}')
+          }
+        }
+      }
+
+      container rNote (class: 'data-note') {
+        dynamictext rNoteLead (content: 'What you are looking at', class: 'data-note-lead')
+        dynamictext rNoteBody (
+          content: 'Timing is OpenF1 (openf1.org), stored when the session ran. The forecast is recomputed from the laps up to the lap shown and nothing after it, so it is the call the model would have made at the time rather than a fit to a result it already knows. Under about eight fitted laps -- the Fitted column -- it has almost nothing to go on and says so by spreading the probabilities out.')
+      }
+    }
+  }
+}

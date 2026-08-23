@@ -51,20 +51,44 @@ prior AS (
                         ('INTERMEDIATE',0.030,30),('WET',0.030,30))
     AS t(compound, per_lap, max_life)
 ),
+/* Every fitted quantity is passed through isfinite before it is used.
+ *
+ * regr_slope over a single point returns NaN, not NULL, and that is not an
+ * edge case here: forecasting from lap 2 leaves exactly one clean lap, so
+ * lap_number has no variance and the fuel slope comes back NaN. COALESCE does
+ * not catch it and neither does greatest(0.0, x) -- NaN propagates through
+ * both -- so it reached the arithmetic, made every projected time NaN, and the
+ * External Database Connector rejected the result with "Character N is neither
+ * a decimal digit number". Python's DuckDB had handed the same NaN back
+ * without complaint, so the backtest never saw it. */
 deg AS (
   SELECT r.compound,
-         least(0.15, greatest(0.0, (r.n * r.fitted + 120 * pr.per_lap) / (r.n + 120))) AS per_lap
+         CASE WHEN isfinite(r.fitted)
+              THEN least(0.15, greatest(0.0,
+                     (r.n * r.fitted + 120 * pr.per_lap) / (r.n + 120)))
+              ELSE pr.per_lap END AS per_lap
     FROM deg_raw r JOIN prior pr USING (compound)
 ),
-fuel AS (
-  SELECT COALESCE(regr_slope(c.resid - COALESCE(d.per_lap,0) * c.tyre_age, c.lap_number), 0.0) AS per_lap
+fuel_raw AS (
+  SELECT regr_slope(c.resid - COALESCE(d.per_lap,0) * c.tyre_age, c.lap_number) AS v
     FROM clean c LEFT JOIN deg d USING (compound)
+),
+fuel AS (
+  SELECT CASE WHEN isfinite((SELECT v FROM fuel_raw))
+              THEN greatest(-0.20, least(0.0, (SELECT v FROM fuel_raw)))
+              ELSE -0.03 END AS per_lap
 ),
 pace AS (
   SELECT c.driver_number,
-         median(c.lap_duration - COALESCE(d.per_lap,0) * c.tyre_age
-                - (SELECT per_lap FROM fuel) * c.lap_number) AS base,
-         COALESCE(stddev_samp(c.resid), 0.4) AS noise,
+         CASE WHEN isfinite(median(c.lap_duration
+                                   - COALESCE(d.per_lap,0) * c.tyre_age
+                                   - (SELECT per_lap FROM fuel) * c.lap_number))
+              THEN median(c.lap_duration - COALESCE(d.per_lap,0) * c.tyre_age
+                          - (SELECT per_lap FROM fuel) * c.lap_number)
+              ELSE median(c.lap_duration) END AS base,
+         CASE WHEN isfinite(stddev_samp(c.resid))
+              THEN greatest(0.05, least(2.0, stddev_samp(c.resid)))
+              ELSE 0.4 END AS noise,
          count(*) AS laps_used
     FROM clean c LEFT JOIN deg d USING (compound)
    GROUP BY 1
@@ -210,8 +234,9 @@ SELECT {sessionKey} AS sessionKey,
        pl.remaining AS lapsRemaining,
        pl.stops AS stopsLeft,
        pl.laps_used AS lapsUsed,
-       round(pl.base, 3) AS basePace,
-       round(pl.deg_per_lap, 4) AS degPerLap,
+       round(CASE WHEN isfinite(pl.base) THEN pl.base ELSE 0 END, 3) AS basePace,
+       round(CASE WHEN isfinite(pl.deg_per_lap) THEN pl.deg_per_lap ELSE 0 END, 4)
+         AS degPerLap,
        (SELECT round(secs,2) FROM loss) AS pitLoss,
        round(avg(r.pos), 2) AS meanPosition,
        CAST(median(r.pos) AS BIGINT) AS medianPosition,
@@ -220,7 +245,9 @@ SELECT {sessionKey} AS sessionKey,
        round(count(*) FILTER (WHERE r.pos <= 10) / 2000.0, 4) AS pPoints,
        CAST(quantile_cont(r.pos, 0.1) AS BIGINT) AS bestCase,
        CAST(quantile_cont(r.pos, 0.9) AS BIGINT) AS worstCase,
-       round(avg(r.finish_time) FILTER (WHERE NOT r.out), 1) AS projectedTime
+       round(CASE WHEN isfinite(avg(r.finish_time) FILTER (WHERE NOT r.out))
+                  THEN avg(r.finish_time) FILTER (WHERE NOT r.out)
+                  ELSE 0 END, 1) AS projectedTime
   FROM ranked r JOIN plan2 pl ON pl.driver_number = r.driver_number
  GROUP BY r.driver_number, pl.lap_number, pl.remaining, pl.stops, pl.laps_used,
           pl.base, pl.deg_per_lap
