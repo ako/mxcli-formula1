@@ -1449,6 +1449,22 @@
   }
   .live-forecast > .panel { margin-bottom: 0; min-width: 0; }
 
+  // Replay: the classification and the forecast are both tables, and the
+  // forecast has nine columns to the classification's nine. An even-ish split
+  // rather than Narrate's table-plus-drawing proportions.
+  .replay-fold {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+  .replay-fold > .panel { margin-bottom: 0; min-width: 0; }
+
+  @media (max-width: 1400px) {
+    .replay-fold { grid-template-columns: minmax(0, 1fr); }
+  }
+
   // Replay: two charts rather than three, so an even split.
   .live-traces-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 

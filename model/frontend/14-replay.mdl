@@ -11,6 +11,20 @@
  * changed its mind, run to the end and see the order it settled on against the
  * order that happened.
  *
+ * ---------------------------------------------------------- why it redraws
+ *
+ * Two things have to be true for a step to change the screen, and having only
+ * the first is worse than having neither: the header updates, every panel
+ * below it does not, and the page reads as though the data were wrong rather
+ * than stale.
+ *
+ * The state object is committed with REFRESH, so the client re-reads it -- that
+ * is what moves the lap counter. And every panel's datasource takes that object
+ * as a parameter rather than fetching the singleton itself, which is what gives
+ * Mendix the dependency it needs to re-run them. A parameterless datasource has
+ * nothing to invalidate it and will happily show the first answer it ever got
+ * for as long as the page is open.
+ *
  * ------------------------------------------------------- where the data is
  *
  * Nothing here is computed on this screen and nothing here is new. The backend
@@ -106,7 +120,7 @@ BEGIN
                    + ' · ' + toString($Session/year),
     MaxLap = $Max,
     AtLap = 2
-  ) COMMIT;
+  ) COMMIT REFRESH;
   RETURN $Ok;
 END;
 
@@ -161,7 +175,7 @@ BEGIN
     RETURN $Ok;
   END IF;
   IF $State/AtLap < $State/MaxLap THEN
-    CHANGE $State (AtLap = $State/AtLap + 1) COMMIT;
+    CHANGE $State (AtLap = $State/AtLap + 1) COMMIT REFRESH;
   END IF;
   RETURN $Ok;
 END;
@@ -176,7 +190,7 @@ BEGIN
     RETURN $Ok;
   END IF;
   IF $State/AtLap > 2 THEN
-    CHANGE $State (AtLap = $State/AtLap - 1) COMMIT;
+    CHANGE $State (AtLap = $State/AtLap - 1) COMMIT REFRESH;
   END IF;
   RETURN $Ok;
 END;
@@ -189,7 +203,7 @@ BEGIN
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
-  CHANGE $State (AtLap = 2) COMMIT;
+  CHANGE $State (AtLap = 2) COMMIT REFRESH;
   RETURN $Ok;
 END;
 
@@ -201,7 +215,7 @@ BEGIN
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
-  CHANGE $State (AtLap = $State/MaxLap) COMMIT;
+  CHANGE $State (AtLap = $State/MaxLap) COMMIT REFRESH;
   RETURN $Ok;
 END;
 
@@ -225,7 +239,12 @@ create or modify non-persistent entity Formula1Frontend.ReplayCall (
   MeanPosition: decimal, MedianPosition: long, DriverNumber: long,
   Code: string(10), DriverName: string(120), PWin: decimal, PPodium: decimal,
   PPoints: decimal, BestCase: long, WorstCase: long, StopsLeft: long,
-  LapsUsed: long, LapsRemaining: long
+  LapsUsed: long, LapsRemaining: long,
+  /* Formatted here rather than in the grid. A probability shown as 0.684 is a
+   * number the reader has to convert, and the 10th-to-90th band is two columns
+   * saying one thing -- in a panel this narrow that is the difference between
+   * a table and a smear. */
+  Range: string(12), WinPct: string(8), PodiumPct: string(8), PointsPct: string(8)
 );
 
 /*
@@ -236,11 +255,12 @@ create or modify non-persistent entity Formula1Frontend.ReplayCall (
  * classification follows. Laps come back newest first and a driver is taken
  * the first time it is seen.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayOrder ()
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayOrder (
+  $State: Formula1Frontend.ReplayState
+)
   RETURNS List of Formula1Frontend.ReplayEntry AS $Ordered
 BEGIN
   $Rows = CREATE LIST OF Formula1Frontend.ReplayEntry;
-  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
   IF $State = empty OR trim($State/SessionKey) = '' THEN
     RETURN $Rows;
   END IF;
@@ -273,11 +293,12 @@ END;
 /*
  * The forecast made at the chosen lap, in predicted order.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayForecast ()
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayForecast (
+  $State: Formula1Frontend.ReplayState
+)
   RETURNS List of Formula1Frontend.ReplayCall AS $Ordered
 BEGIN
   $Rows = CREATE LIST OF Formula1Frontend.ReplayCall;
-  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
   IF $State = empty OR trim($State/SessionKey) = '' THEN
     RETURN $Rows;
   END IF;
@@ -293,7 +314,11 @@ BEGIN
       DriverNumber = $F/driverNumber, PWin = $F/pWin, PPodium = $F/pPodium,
       PPoints = $F/pPoints, BestCase = $F/bestCase, WorstCase = $F/worstCase,
       StopsLeft = $F/stopsLeft, LapsUsed = $F/lapsUsed,
-      LapsRemaining = $F/lapsRemaining);
+      LapsRemaining = $F/lapsRemaining,
+      Range = toString($F/bestCase) + '-' + toString($F/worstCase),
+      WinPct = formatDecimal($F/pWin * 100, '0') + '%',
+      PodiumPct = formatDecimal($F/pPodium * 100, '0') + '%',
+      PointsPct = formatDecimal($F/pPoints * 100, '0') + '%');
     IF $D != empty THEN
       CHANGE $Row (Code = $D/code, DriverName = $D/driverName);
     END IF;
@@ -314,12 +339,13 @@ END;
  * hindsight. A chart that showed where the lines were going would answer the
  * question the stepping is there to ask.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayWin ()
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayWin (
+  $State: Formula1Frontend.ReplayState
+)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   DECLARE $Json String = '[';
   DECLARE $Sep String = '';
-  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
   IF $State != empty AND trim($State/SessionKey) != '' THEN
     RETRIEVE $Fcst FROM F1Admin.Forecast
       WHERE sessionKey = $State/SessionKey and atLap <= $State/AtLap
@@ -359,12 +385,13 @@ END;
 /*
  * Position by lap, up to the chosen lap. The race as far as it has been run.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayPositions ()
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayPositions (
+  $State: Formula1Frontend.ReplayState
+)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   DECLARE $Json String = '[';
   DECLARE $Sep String = '';
-  $State = CALL MICROFLOW Formula1Frontend.DS_ReplayState();
   IF $State != empty AND trim($State/SessionKey) != '' THEN
     RETRIEVE $Laps FROM F1Admin.Laps
       WHERE sessionKey = $State/SessionKey and lapNumber <= $State/AtLap
@@ -451,7 +478,7 @@ create or replace page Formula1Frontend.Replay
         }
       }
 
-      container rMain (class: 'live-fold') {
+      container rMain (class: 'replay-fold') {
 
         container rOrderPanel (class: 'panel') {
           container rOrderHead (class: 'panel-head') {
@@ -462,13 +489,12 @@ create or replace page Formula1Frontend.Replay
           }
           container rOrderGrid (class: 'grid-dense') {
             datagrid dgReplayOrder (
-              datasource: MICROFLOW Formula1Frontend.DS_ReplayOrder,
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayOrder(State: $currentObject),
               PageSize: 24, PagingPosition: bottom
             ) {
               column rcPos (attribute: Position, caption: 'P', Alignment: right)
               column rcCode (attribute: Code, caption: 'Code')
               column rcDriver (attribute: DriverName, caption: 'Driver')
-              column rcTeam (attribute: Team, caption: 'Team')
               column rcLap (attribute: LapNumber, caption: 'Lap', Alignment: right)
               column rcGap (attribute: GapToLeader, caption: 'Gap', Alignment: right)
               column rcLast (attribute: LapSeconds, caption: 'Last', Alignment: right)
@@ -488,18 +514,16 @@ create or replace page Formula1Frontend.Replay
           }
           container rFcstGrid (class: 'grid-dense') {
             datagrid dgReplayForecast (
-              datasource: MICROFLOW Formula1Frontend.DS_ReplayForecast,
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayForecast(State: $currentObject),
               PageSize: 24, PagingPosition: bottom
             ) {
               column rfPos (attribute: MedianPosition, caption: 'P', Alignment: right)
               column rfCode (attribute: Code, caption: 'Code')
               column rfDriver (attribute: DriverName, caption: 'Driver')
-              column rfBest (attribute: BestCase, caption: 'Best', Alignment: right)
-              column rfWorst (attribute: WorstCase, caption: 'Worst', Alignment: right)
-              column rfWin (attribute: PWin, caption: 'Win', Alignment: right)
-              column rfPod (attribute: PPodium, caption: 'Podium', Alignment: right)
-              column rfPts (attribute: PPoints, caption: 'Points', Alignment: right)
-              column rfLeft (attribute: LapsRemaining, caption: 'Left', Alignment: right)
+              column rfRange (attribute: Range, caption: '10-90', Alignment: right)
+              column rfWin (attribute: WinPct, caption: 'Win', Alignment: right)
+              column rfPod (attribute: PodiumPct, caption: 'Podium', Alignment: right)
+              column rfPts (attribute: PointsPct, caption: 'Points', Alignment: right)
               column rfStops (attribute: StopsLeft, caption: 'Stops', Alignment: right)
               column rfLaps (attribute: LapsUsed, caption: 'Fitted', Alignment: right)
             }
@@ -516,7 +540,7 @@ create or replace page Formula1Frontend.Replay
               content: 'the model without hindsight: the line stops where you are',
               class: 'panel-sub')
           }
-          dataview dvRWin (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayWin) {
+          dataview dvRWin (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayWin(State: $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (
               chartData: json,
               datasetName: 'table',
@@ -533,7 +557,7 @@ create or replace page Formula1Frontend.Replay
             dynamictext rPosSub (content: 'the race as far as it has been run',
                                  class: 'panel-sub')
           }
-          dataview dvRPos (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayPositions) {
+          dataview dvRPos (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayPositions(State: $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayPos (
               chartData: json,
               datasetName: 'table',
