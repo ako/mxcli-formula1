@@ -5875,3 +5875,75 @@ microflows. Teaching that chain to lie about the lap, on the morning of a race,
 to add a feature nobody needs during the race, is a trade with the wrong sign
 on it. The replay is its own page reading its own resources, and Narrate was
 not touched.
+
+## 75. The runtime was fine; nobody could reach it
+
+> "I cant open the frontend page, is the runtime running?"
+
+It was. Locally everything answered:
+
+```
+frontend local  200
+frontend bundle 200
+backend  odata  200
+```
+
+The failure was between the app and the world. `mxcli run --hub` publishes the
+local port through hub.mxcli.org over a websocket, and at 16:16:14 that socket
+closed abnormally:
+
+```
+client: Connection error: websocket: close 1006 (abnormal closure): unexpected EOF
+client: Connection error: server: Server cannot listen on R:9001=>8180 (Attempt: 1/unlimited)
+```
+
+The hub still had the remote port bound to the session that had just died, so
+every reconnection was refused. The client retried thirty-seven times, thirty
+seconds apart, for twenty minutes, and would have retried forever. Restarting
+the client released the slot and it reconnected on the first try.
+
+### The supervisor had nothing to act on
+
+`keep-app-running.sh` polls `http://localhost:8180/dist/index.js` — deliberately
+the bundle rather than `/`, because §60's lesson was that the SPA shell answers
+200 for a broken app. That check is right about everything it can see and blind
+to this: the runtime was healthy, the bundle was served, and the app was
+unreachable to anyone not on this machine.
+
+The obvious fix — poll the public URL — does not work. **The hub answers its own
+GitHub login redirect for every path, tunnel or no tunnel**, so a 302 means
+nothing:
+
+```
+hub root   302  (redirect: https://hub.mxcli.org/auth/github/login?return=...)
+hub bundle 302   # identical while the tunnel was dead
+```
+
+The only signal that exists is the tunnel client's own log line, so the
+supervisor now takes an optional `FAIL_PATTERN` and treats a match in the
+current run's output as a failed poll:
+
+```
+FAIL_PATTERN='cannot listen' scripts/keep-app-running.sh ...
+```
+
+**"Current run" is load-bearing.** The log is append-only across restarts, so an
+unscoped tail would find the error that caused the previous restart and restart
+again immediately, forever — a watchdog whose own remedy re-triggers it.
+`started pid` is the line the supervisor writes when it launches the child, so
+everything after the last one is this run and nothing else.
+
+### The shape of it
+
+Three health checks in this file now, each added after the previous one proved
+insufficient, and each insufficiency was the same mistake one level out:
+
+| checked | missed |
+|---|---|
+| process alive | runtime terminated by the trial licence (§60) |
+| `/` returns 200 | the SPA shell served with no bundle behind it |
+| `/dist/index.js` returns 200 | the tunnel that carries it to anyone else |
+
+**A health check verifies the layer it names and asserts nothing about the one
+above it.** Each of these was correct and each was answering a narrower question
+than the one that mattered, which is "can someone else load this page".
