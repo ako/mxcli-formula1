@@ -858,3 +858,28 @@ BEGIN
   RETRIEVE $Rows FROM F1Now.Story SORT BY at DESC;
   RETURN $Rows;
 END;
+
+/* ------------------------------------------------------------- forecast -- */
+
+/*
+ * Where the race ends, as the model has it now.
+ *
+ * Already in predicted order — Read_LiveForecast sorts on mean finishing
+ * position before it returns — so nothing here re-sorts it. A grid that sorts
+ * on medianPosition would look almost the same and read wrong: two cars can
+ * share a median of 4 while one of them is twice as likely to win.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_LiveForecast ()
+  RETURNS List of F1Now.Forecast AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.Forecast;
+  RETURN $Rows;
+END;
+
+/* Every forecast the race has produced, oldest lap first. */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ForecastTrace ()
+  RETURNS List of F1Now.ForecastTrace AS $Rows
+BEGIN
+  RETRIEVE $Rows FROM F1Now.ForecastTrace SORT BY atLap ASC;
+  RETURN $Rows;
+END;

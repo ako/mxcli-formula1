@@ -796,3 +796,47 @@ BEGIN
   $Chart = CREATE Formula1Frontend.Chart (json = $Json);
   RETURN $Chart;
 END;
+
+/*
+ * Win probability, lap by lap.
+ *
+ * The forecaster writes one row per car per lap and never overwrites an
+ * earlier lap, so the history is already there; this is the shape of it that a
+ * chart wants. It is the chart that makes the forecast worth having: a table
+ * of probabilities tells you what the model thinks, and this tells you when it
+ * changed its mind — a stop, a safety car, a tyre going away.
+ *
+ * Cars that never get above 2% are dropped. Twenty-two lines of which fifteen
+ * are flat against the axis is fifteen lines of ink saying nothing, and they
+ * make the six that matter unreadable.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ForecastWin ()
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_ForecastTrace ();
+
+  /* Who is worth drawing: anyone the model has ever given a real chance. */
+  DECLARE $Keep String = '|';
+  LOOP $R IN $Rows BEGIN
+    IF $R/pWin != empty AND $R/pWin > 0.02 AND $R/code != empty
+       AND contains($Keep, '|' + $R/code + '|') = false THEN
+      SET $Keep = $Keep + $R/code + '|';
+    END IF;
+  END LOOP;
+
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  LOOP $P IN $Rows BEGIN
+    IF $P/code != empty AND $P/pWin != empty
+       AND contains($Keep, '|' + $P/code + '|') THEN
+      SET $Json = $Json + $Sep
+        + '{"code":"' + $P/code + '","lap":' + toString($P/atLap)
+        + ',"p":' + formatDecimal($P/pWin * 100, '0.00') + '}';
+      SET $Sep = ',';
+    END IF;
+  END LOOP;
+  SET $Json = $Json + ']';
+
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;

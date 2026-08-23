@@ -1435,11 +1435,26 @@
   }
   .live-traces > .panel { margin-bottom: 0; min-width: 0; }
 
+  // The forecast: the chart wide, the table beside it.
+  //
+  // 3fr/2fr rather than an even split, because the chart is the point. The
+  // table is ten narrow numeric columns and reads fine at two fifths; a win
+  // probability that moved three times in fifty laps does not.
+  .live-forecast {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 8px;
+    align-items: start;
+    margin-top: 8px;
+  }
+  .live-forecast > .panel { margin-bottom: 0; min-width: 0; }
+
   @media (max-width: 1500px) {
     .live-traces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 1200px) {
-    .live-fold   { grid-template-columns: minmax(0, 1fr); }
-    .live-traces { grid-template-columns: minmax(0, 1fr); }
+    .live-fold     { grid-template-columns: minmax(0, 1fr); }
+    .live-traces   { grid-template-columns: minmax(0, 1fr); }
+    .live-forecast { grid-template-columns: minmax(0, 1fr); }
   }
 }

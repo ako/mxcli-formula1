@@ -1,7 +1,9 @@
 
 
 /*
- * The read microflows behind these resources live in 22-live-screen.mdl.
+ * The read microflows behind these resources live in 22-live-screen.mdl, and
+ * the two forecast ones in 24-forecast.mdl. This file therefore runs after
+ * both -- a service can only publish a microflow that already exists.
  *
  * They were defined here too, reading data/live/*.csv through DuckDB, and every
  * run of this file silently reverted 22's versions to the CSV ones. That is how
@@ -181,6 +183,56 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     LapStart as 'lapStart' (Filterable, Sortable),
     LapEnd as 'lapEnd' (Filterable, Sortable),
     TyreAgeAtStart as 'tyreAgeAtStart' (Filterable, Sortable)
+  );
+
+  /*
+   * Where the race ends, as it stands. Built in 24-forecast.mdl by its own
+   * scheduled event, so this resource is empty for a session that is not a
+   * race and stays empty until there are laps to fit.
+   */
+  publish entity Formula1Backend.Stg_LiveForecast as 'Forecast' (
+    ReadMode: microflow Formula1Backend.Read_LiveForecast,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    ForecastKey as 'forecastKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    AtLap as 'atLap' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    DriverName as 'driverName' (Filterable, Sortable),
+    Team as 'team' (Filterable, Sortable),
+    TeamColour as 'teamColour' (Filterable, Sortable),
+    LapsRemaining as 'lapsRemaining' (Filterable, Sortable),
+    StopsLeft as 'stopsLeft' (Filterable, Sortable),
+    LapsUsed as 'lapsUsed' (Filterable, Sortable),
+    MeanPosition as 'meanPosition' (Filterable, Sortable),
+    MedianPosition as 'medianPosition' (Filterable, Sortable),
+    PWin as 'pWin' (Filterable, Sortable),
+    PPodium as 'pPodium' (Filterable, Sortable),
+    PPoints as 'pPoints' (Filterable, Sortable),
+    BestCase as 'bestCase' (Filterable, Sortable),
+    WorstCase as 'worstCase' (Filterable, Sortable),
+    DegPerLap as 'degPerLap' (Filterable, Sortable),
+    PitLoss as 'pitLoss' (Filterable, Sortable)
+  );
+
+  /* Every forecast the race has produced, so a chart can show them moving. */
+  publish entity Formula1Backend.Stg_ForecastTrace as 'ForecastTrace' (
+    ReadMode: microflow Formula1Backend.Read_ForecastTrace,
+    InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported,
+    Countable: Yes
+  )
+  expose (
+    TraceKey as 'traceKey' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    AtLap as 'atLap' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    Code as 'code' (Filterable, Sortable),
+    PWin as 'pWin' (Filterable, Sortable),
+    PPodium as 'pPodium' (Filterable, Sortable),
+    MeanPosition as 'meanPosition' (Filterable, Sortable)
   );
 };
 

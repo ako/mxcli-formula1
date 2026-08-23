@@ -288,6 +288,75 @@ create or replace page Formula1Frontend.Narrate
             }
           }
         }
+
+        /*
+         * Where it ends.
+         *
+         * Every other panel on this page reports something that has happened.
+         * This one is the only thing on the screen that is not a fact, so it
+         * says how it was made and how much of the race it has had to learn
+         * from, and the two panels are placed together rather than mixed in
+         * among the timing.
+         *
+         * Left is the forecast moving: one line per car that has ever had a
+         * real chance, so a pit stop or a safety car is visible as the moment
+         * the lines crossed. Right is where it stands, in predicted order,
+         * with the 10th-to-90th percentile band beside each car because a
+         * single predicted position is a claim the model cannot support.
+         */
+        container liveForecast (class: 'live-forecast') {
+
+          container fcChartPanel (class: 'panel') {
+            container fcChartHead (class: 'panel-head') {
+              dynamictext fcChartTitle (content: 'Win probability', class: 'panel-title')
+              dynamictext fcChartSub (
+                content: 'how the forecast has moved · one line per car that has ever been above 2%',
+                class: 'panel-sub')
+            }
+            dataview dvFcWin (datasource: MICROFLOW Formula1Frontend.DSJ_ForecastWin) {
+              pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartForecastWin (
+                chartData: json,
+                datasetName: 'table',
+                chartHeight: 0,
+                renderer: 'svg',
+                showActions: false,
+                spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#21262D","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"symbolType":"stroke","symbolStrokeWidth":3}},"height":210,"layer":[{"mark":{"type":"line","strokeWidth":10,"interpolate":"monotone","opacity":0.001},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"p","type":"quantitative","title":"Win probability (%)","scale":{"domain":[0,100],"nice":false}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA","#E3B341","#3FB950","#F85149"]},"legend":{"orient":"top","columns":8,"offset":4}}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]},"bind":"legend"},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.6,"interpolate":"monotone"},"encoding":{"x":{"field":"lap","type":"quantitative","title":"Lap","axis":{"format":"d","tickMinStep":1},"scale":{"zero":false,"nice":false}},"y":{"field":"p","type":"quantitative","title":"Win probability (%)","scale":{"domain":[0,100],"nice":false}},"color":{"field":"code","type":"nominal","title":null,"scale":{"range":["#2DD4BF","#FF8000","#3671C6","#E8002D","#A78BFA","#E3B341","#3FB950","#F85149"]},"legend":{"orient":"top","columns":8,"offset":4}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"p","title":"Win %","format":".1f"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.14},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":3},"value":1.4}}}]}')
+            }
+          }
+
+          container fcGridPanel (class: 'panel') {
+            container fcGridHead (class: 'panel-head') {
+              dynamictext fcGridTitle (content: 'Predicted finish', class: 'panel-title')
+              dynamictext fcGridSub (
+                content: 'two thousand simulations of the laps that are left · pace, tyre life and the stops still owed · 10-90% range',
+                class: 'panel-sub')
+            }
+            container fcGrid (class: 'grid-dense') {
+              datagrid dgForecast (
+                datasource: MICROFLOW Formula1Frontend.DS_LiveForecast,
+                PageSize: 24,
+                PagingPosition: bottom
+              ) {
+                column fcPos (attribute: medianPosition, caption: 'P', Alignment: right)
+                column fcCode (attribute: code, caption: 'Code')
+                column fcDriver (attribute: driverName, caption: 'Driver')
+                column fcBest (attribute: bestCase, caption: 'Best', Alignment: right)
+                column fcWorst (attribute: worstCase, caption: 'Worst', Alignment: right)
+                column fcWin (attribute: pWin, caption: 'Win', Alignment: right)
+                column fcPod (attribute: pPodium, caption: 'Podium', Alignment: right)
+                column fcPts (attribute: pPoints, caption: 'Points', Alignment: right)
+                column fcStops (attribute: stopsLeft, caption: 'Stops', Alignment: right)
+                column fcLaps (attribute: lapsUsed, caption: 'Laps fitted', Alignment: right)
+              }
+            }
+            container fcNote (class: 'legend-key') {
+              dynamictext fcNoteText (
+                content: 'Ranked on pace, so it assumes a quicker car gets past. Under about eight fitted laps it is a guess.',
+                class: 'legend-item')
+            }
+          }
+        }
+
       }
 
       container liveRail (class: 'live-rail') {

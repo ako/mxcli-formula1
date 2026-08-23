@@ -17,16 +17,10 @@ import argparse, gzip, json, sys
 import duckdb
 
 ARCHIVE = 'data/openf1'
-EPS = ('laps', 'stints', 'pit', 'intervals', 'race_control', 'session_result')
+EPS = ('laps', 'stints', 'pit', 'session_result')
 
 
-# gap_to_leader is a number until a car is lapped, when it becomes "+1 LAP".
-# Sampled inference picks DOUBLE and then fails 21,898 records in. Reading the
-# column as text and casting per row is the only thing that survives both.
-COLUMNS = {
-    'intervals': "{date:'TIMESTAMP', session_key:'BIGINT', driver_number:'BIGINT',"
-                 " gap_to_leader:'VARCHAR', interval:'VARCHAR'}",
-}
+COLUMNS = {}
 
 
 def load(con, key):
@@ -73,34 +67,18 @@ notpit as (
 med as (
   select driver_number, median(lap_duration) as m from notpit group by driver_number
 ),
--- Traffic is the other thing that makes a lap time not a pace. A car two
--- tenths behind another is running the car ahead's race, not its own, and
--- averaging those laps in reports the whole train at the pace of its slowest
--- member. The intervals feed carries the gap to the car in front, so laps run
--- with less than 2.0s of clear air are dropped -- and if that leaves a driver
--- with almost nothing, their unfiltered laps are used rather than none.
-air as (
-  select n.driver_number, n.lap_number,
-         max(try_cast(i.interval as double)) as clear
-  from notpit n
-  left join intervals i
-    on i.driver_number = n.driver_number
-   and i.date between n.date_start and n.date_start + interval 90 second
-  group by 1, 2
-),
-inrange as (
-  select n.*, n.lap_duration - d.m as resid, coalesce(a.clear, 99) as clear
-  from notpit n join med d using (driver_number)
-  left join air a using (driver_number, lap_number)
-  where n.lap_duration between d.m * 0.93 and d.m * 1.07
-),
-enough as (
-  select driver_number, count(*) filter (where clear >= 2.0) as free
-  from inrange group by 1
-),
+-- Traffic is the other thing that makes a lap time not a pace, and the
+-- obvious filter for it -- drop laps run with less than two seconds of clear
+-- air, which the intervals feed can tell you -- was measured and dropped.
+-- Across both archived races it made the forecast very slightly *worse*
+-- (Hungary lap 50: rho 0.954 with it, 0.968 without), because the +-7% band
+-- already removes the laps traffic actually ruins and the filter's only other
+-- effect is to shrink an already thin sample. Dropping it also drops the
+-- intervals fetch, which is the largest payload of the five at 4.36 MB.
 clean as (
-  select i.* from inrange i join enough e using (driver_number)
-  where i.clear >= 2.0 or e.free < 4
+  select n.*, n.lap_duration - d.m as resid
+  from notpit n join med d using (driver_number)
+  where n.lap_duration between d.m * 0.93 and d.m * 1.07
 ),
 -- Degradation, pooled across the field per compound. Per driver there are far
 -- too few laps to fit a slope; pooled there are hundreds. Pace differences are
