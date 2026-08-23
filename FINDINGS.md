@@ -5666,3 +5666,115 @@ check that would have caught this on day one is cheap: **after a capture,
 count the rows against the source.** Both sessions had been eyeballed on screen
 and both looked right, because a timing screen shows each car at its own last
 lap and a car frozen ten laps ago looks identical to a car that retired.
+
+## 72. Forecasting a race, and four ways a model can be confidently wrong
+
+> "suppose we wanted to add a chart that forecasts the race results based on
+> the progress so far during the race, e.g., tire strategy, laptimes, how could
+> we build such a forecaster?"
+
+The plumbing turned out to be the easy half. Everything the model needs —
+`laps`, `stints`, `pit` — is already fetched every cycle, DuckDB is already the
+compute path, and the whole thing is **one statement, twenty milliseconds**.
+
+The model was the half worth being careful about, and every one of its four
+failures shared a shape: **the forecast looked like a model being appropriately
+unsure, and was a model being broken.**
+
+### Build the harness before the feature
+
+The archive carries `session_result.json.gz` — final position, laps, DNF — so a
+forecaster can be scored: run it as of lap *N* of a finished race, compare
+against what happened. That harness is what found everything below, and it only
+works if it drives the *shipped* SQL rather than a copy of it. So the model
+lives in `spikes/forecaster/forecast.sql` and is embedded into
+`GetOpenF1Forecast` by a fifteen-line script that strips comments and doubles
+quotes. **A backtest of a paraphrase measures the paraphrase.**
+
+The one artefact of this in production code is a `cutLap` parameter that is
+always passed 0. That is a fair price.
+
+### The four failures
+
+**A NULL that read as humility.** Before the first pit stop there is no in-lap
+to measure, so measured pit loss was NULL, and `stops * NULL` made every
+projected finish time NULL. Ranking then fell back to row order and returned
+all twenty-two cars at a mean finishing position of 11.0 with a 5% win chance
+each — a perfect picture of a model that knows it does not know. Giving pit
+loss a prior took the sprint's lap-3 forecast from ρ = −0.22 to **0.98**.
+
+**A slope fitted on nothing.** Early in a race the per-compound degradation fit
+has a few dozen laps. At Hungary lap 21 it returned −0.026 s/lap for the soft:
+tyres getting *faster* as they age. Extrapolated over 49 remaining laps that
+gave two midfielders a minute they had not earned and put them on the podium;
+both finished a lap down. Shrinking the fit toward a per-compound prior by
+sample size, and clamping at zero, took that lap from ρ = 0.55 to **0.97**.
+
+**Evidence allowed to collapse a prior.** Maximum tyre life was read straight
+from the longest stints that ended in a stop. In a sprint the only stints that
+"end in a stop" are cars coming into the pit lane after the flag, so the medium
+came back with a life of **2 laps** and every car in the race was told it owed
+a pit stop. `greatest(observed, prior)` fixes it: evidence can extend a tyre's
+life beyond expectation, it should not be able to collapse it.
+
+**A stop with no laps left to make it in.** The end-to-end smoke test — the
+first time real numbers came out of the database rather than the harness —
+showed the car that finished the sprint second forecast tenth, charged twenty
+seconds for a stop it could not possibly make with zero laps remaining. Both
+stop rules now require laps remaining.
+
+Notice where each was caught. Two by the backtest, one by the backtest once it
+was pointed at a sprint rather than a grand prix, and **one only by running it
+for real**. The harness is necessary and it is not sufficient.
+
+### Measuring beats assuming, twice
+
+The obvious way to stop traffic contaminating a pace estimate is to drop laps
+run with less than two seconds of clear air, which the intervals feed can tell
+you. Measured across both races it made the forecast very slightly **worse** —
+Hungary lap 50, ρ 0.954 with it against 0.968 without — because the ±7% band
+around each driver's own median already removes the laps traffic ruins, and the
+filter's only other effect is to thin an already thin sample. Dropping it also
+dropped the largest payload of the five, 4.36 MB a cycle.
+
+The second: the narrowing was worth removing because it was worth *pricing*.
+For one grand prix, intervals is 29,593 rows against 1,423 laps. Knowing that
+turned "should we fetch the whole lap table" from an argument into arithmetic.
+
+### Where it ended up
+
+| forecasting from | ρ | mean position error |
+|---|---|---|
+| lap 2 | 0.3 | 4.3 |
+| lap 4 | 0.92 | 2.1 |
+| lap 20 | 0.98 | 1.4 |
+| lap 45 | 0.98 | 1.2 |
+| lap 65 | 0.98 | 0.8 |
+
+Lap 2 is noise and the screen says so: `LapsUsed` travels with every row.
+
+### Its own schedule, on purpose
+
+A second scheduled event with its own three fetches, not another tier of
+`Sync_Cycle`. The cycle captures a race and a race happens once; a forecaster
+reading pace out of a regression can fail in ways nobody has enumerated, and it
+must not be able to take the timing screen down with it. Separate microflow,
+separate schedule, separate transaction, three requests a minute on top of
+twenty-six against an allowance of sixty.
+
+Every exit path logs, at DEBUG for the quiet ones. Most of this microflow's
+returns are silences — not a race, no laps yet, race over — and **a scheduled
+event that is correctly doing nothing looks exactly like one that has died.**
+
+### Two mechanical costs of the same change
+
+Regenerating the consumed entities after publishing two new resources means
+`DROP ODATA CLIENT` and recreate, and **that wipes every entity access grant on
+the module.** They are all in 11-navigation-security.mdl, so re-running it
+restores them — but only if you notice, and the symptom is a build failure in a
+file you did not touch.
+
+And `RETRIEVE ... WHERE a = x AND b = y` emits invalid XPath: the build fails
+CE0161 "Error(s) in XPath constraint". Lowercase `and` works. No two-condition
+retrieve existed anywhere in this model before today, which is why it had never
+been hit.

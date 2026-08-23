@@ -76,6 +76,12 @@ grant F1Now.Reader ON F1Now.Session (READ *);
 grant F1Now.Reader ON F1Now.Trace (READ *);
 grant F1Now.Reader ON F1Now.Stints (READ *);
 
+/* The forecast, and every forecast the race has produced. Read-only like the
+ * rest -- these are the backend's opinion, and the frontend does not get to
+ * revise it. */
+grant F1Now.Reader ON F1Now.Forecast (READ *);
+grant F1Now.Reader ON F1Now.ForecastTrace (READ *);
+
 /* -------------------------------------------------------------- default -- */
 
 /*
@@ -190,6 +196,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessages TO Formula1Frontend.
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStints TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveTrace TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveLeaderCodes TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveForecast TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ForecastTrace TO Formula1Frontend.Enthusiast;
 
 /*
  * Vega charts. Each of these wraps one of the DS_ microflows above and returns
@@ -211,6 +219,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendPace TO Formula1Frontend.
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveGaps TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LivePositions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveStints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ForecastWin TO Formula1Frontend.Enthusiast;
 
 /* The view-model rows the season screen binds to. */
 GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonHeadline (READ *);
