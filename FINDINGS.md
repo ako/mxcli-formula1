@@ -5876,6 +5876,60 @@ to add a feature nobody needs during the race, is a trade with the wrong sign
 on it. The replay is its own page reading its own resources, and Narrate was
 not touched.
 
+## 74. The lap counter moved and nothing under it did
+
+Stepping through the replay changed the header — **LAP 24 / 24** — and left
+every panel below it showing lap 2. That is a worse failure than nothing
+happening: a screen where one number moves and the rest does not reads as data
+being *wrong* rather than stale, and it sends you looking in the query.
+
+Two causes, and fixing either alone would have left it broken.
+
+### The commit did not tell the client
+
+`CHANGE $Obj (...) COMMIT` persists and says nothing to the browser. The flag is
+a separate word:
+
+```
+CHANGE $State (AtLap = $State/AtLap + 1) COMMIT REFRESH;
+```
+
+That alone explains the header updating — the data view re-rendered its own
+attributes — and explains nothing about the panels.
+
+### The panels had nothing to depend on
+
+Every grid and chart datasource was parameterless, fetching the state singleton
+itself. **Mendix ties a data widget's redraw to its datasource parameters.**
+With none, there is nothing to invalidate, and the widget will serve the first
+answer it ever received for as long as the page stays open.
+
+This is the trap in writing a datasource microflow that is *convenient* to
+call. `DS_ReplayOrder()` reading the singleton needs no context and can be
+dropped anywhere on the page; `DS_ReplayOrder(State)` has to be given the
+object, and that obligation is exactly what makes it refresh. The awkward
+signature is the working one.
+
+### And a name that is valid in one place and not the other
+
+Binding them, the obvious variable was the data view's own name — which the
+same page already uses, in the expression that highlights the selected session
+chip:
+
+```
+dynamicclasses: 'if $currentObject/sessionKey = $dvReplay/SessionKey then …'
+```
+
+As a **datasource argument** that same `$dvReplay` is refused; it wants
+`$currentObject`. The build reported it as four `Error(s) in expression`
+against the data widgets — pointing at the widgets, not at the word that was
+wrong, and not saying that a name legal twelve lines earlier had become
+illegal.
+
+**A page-level identifier is not one vocabulary.** Styling expressions,
+datasource arguments and page-navigation arguments each accept a different
+subset, and the error message names the widget rather than the rule.
+
 ## 75. The runtime was fine; nobody could reach it
 
 > "I cant open the frontend page, is the runtime running?"
@@ -5947,3 +6001,105 @@ insufficient, and each insufficiency was the same mistake one level out:
 **A health check verifies the layer it names and asserts nothing about the one
 above it.** Each of these was correct and each was answering a narrower question
 than the one that mattered, which is "can someone else load this page".
+
+## 76. Building the narrative found two bugs in data that was already on screen
+
+The Race Narrative screen from the prototype is three views of the same lap read
+across a row. Building it required nothing new to be fetched — every event comes
+from tables the sync filled during the race — and that is exactly why it was
+worth building: **assembling old data into a new shape is a test of the old
+data**, and this one failed twice.
+
+### The stop that never happened
+
+A pit window is three or more cars stopping on one lap, so the builder counted
+stops per lap. Lap 2 of the Dutch Grand Prix came back with **twenty-one**.
+
+They are real records in the feed, and they are not stops:
+
+| | lap 2 | every other lap |
+|---|---:|---:|
+| records | 21 | 44 |
+| median `lane_duration` | **1,571 s** | 18 s |
+
+Twenty-six minutes in the pit lane is the drive to parc fermé *after the
+chequered flag*, which OpenF1 dates to lap 2. Taken at face value it is a
+phantom stop for almost the whole field, and it had been counted since the
+first race we captured:
+
+- every car's stop count in the classification was **one too high**
+- the forecaster's in-lap and out-lap filters were excluding the wrong laps
+- worse, `compounds_used` believed cars had already served a stop they still
+  owed, which is a direct input to how many stops it projects
+
+The fix is the same shape as the pit-loss clamp two sections ago: **a record
+outside the range the thing it claims to be can occupy is rejected, not
+believed.**
+
+### The lap number that was never there
+
+The story panel has been rendering `SAI passed ALB for P16 on lap` — with
+nothing after "lap" — since it was built. The cause is one line:
+
+```
+j.lap_number AS lapNumber
+```
+
+Every other OpenF1 endpoint reports a lap number. **The overtakes endpoint does
+not** — it carries only a timestamp. So the field was read, came back null for
+all 292 passes of a grand prix, and was stored as null, faithfully.
+
+Nothing failed. A missing field in a JSON payload is indistinguishable from a
+field that is present and empty, and the only symptom was a sentence that
+trailed off on a screen nobody was reading closely.
+
+The lap table has a start time for every lap of every car, so the pass belongs
+to whichever of the overtaking car's laps was running when it happened — an
+ASOF join, three lines, and 291 of 292 placed. The remaining one is before the
+first lap start.
+
+### `div` is not integer division
+
+Written for this screen, and caught only by reading the output:
+
+```
+DECLARE $One Long = round($N - (($N div 10) * 10));   -- always 0
+```
+
+`div` returns a Decimal, so `($N div 10) * 10` is `$N` again and the remainder
+is always zero. Every ordinal came out `th`: "running 22th", "takes 1th from".
+`floor($N div 10) * 10` is what makes it a modulo.
+
+The checker had warned that `div` yields a Decimal and I read that as a *typing*
+problem, fixed it with `round()`, and moved on — round() silenced the error and
+preserved the bug. **A cast that satisfies the compiler is not a fix for
+arithmetic that was wrong before the cast.**
+
+### What the shape of the screen forced
+
+The design's claim is that a row means one lap in all three panels. A Mendix
+list view's rows flow and cannot be pinned to a lap, so the event column is a
+chart too — text marks on the same lap scale, at the same height, as the
+position lines and the probability bands.
+
+That costs the prototype's wrapped two-line event text, because a Vega text
+mark does not wrap. It is the right trade only because the alignment *is* the
+design: three panels that happen to be about the same race is a layout, and
+three panels where the line you are reading is level with the crossing that
+caused it is the idea.
+
+### The events agree with each other
+
+Worth stating because it is the closest thing to a correctness proof available
+here. Lead changes are derived from the car in P1 differing between laps.
+Battles are derived from a separate feed, the overtakes endpoint, which knows
+nothing about the lap table. They agree without being made to:
+
+```
+l5   battle   Kimi ANTONELLI takes the lead from Lando NORRIS.
+l5   lead     Kimi ANTONELLI leads, from Lando NORRIS.
+```
+
+Two independent derivations landing on the same lap with the same two drivers is
+evidence that both are right — and the one place they disagreed was where the
+overtake had no lap to be placed on, which is how the second bug was found.
