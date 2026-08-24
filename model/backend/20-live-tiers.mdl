@@ -335,8 +335,13 @@ BEGIN
 
   $OvJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
     Path = 'overtakes?session_key=' + $Key, Token = $Token);
+  /* The overtakes feed carries a timestamp and no lap number, so the lap table
+   * comes along to supply one -- see GetOpenF1Overtakes. One extra request a
+   * minute, against a budget that was already under half used. */
+  $OvLaps = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'laps?session_key=' + $Key, Token = $Token);
   $OvRows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Overtakes
-    (sessionKey = $Key, json = $OvJson);
+    (sessionKey = $Key, json = $OvJson, lapsJson = $OvLaps);
   $WipeOv = CALL JAVA ACTION Formula1Backend.OQL_ExecuteWith(
     Statement = 'delete from Formula1Backend.LiveOvertake where SessionKey = $k',
     Name1 = 'k', Value1 = $Key, Type1 = 'String');

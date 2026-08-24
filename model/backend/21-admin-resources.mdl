@@ -335,6 +335,25 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     ProjectedTime as 'projectedTime' (Filterable, Sortable),
     ComputedAt as 'computedAt' (Filterable, Sortable)
   );
+  /*
+   * The race narrative: one row per event, built in 26-narrative.mdl. From
+   * source, so the screen filters to one session as an indexed query.
+   */
+  publish entity Formula1Backend.LiveNarrative as 'Narrative' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    Kind as 'kind' (Filterable, Sortable),
+    Headline as 'headline' (Filterable, Sortable),
+    Swing as 'swing' (Filterable, Sortable),
+    SwingCode as 'swingCode' (Filterable, Sortable),
+    Major as 'major' (Filterable, Sortable),
+    BuiltAt as 'builtAt' (Filterable, Sortable)
+  );
   publish entity Formula1Backend.LiveSyncRun as 'SyncRuns' (
     InsertMode: not_supported, UpdateMode: not_supported,
     DeleteMode: not_supported, Countable: Yes

@@ -340,13 +340,12 @@ create or replace page Formula1Frontend.Narrate
                 column fcPos (attribute: medianPosition, caption: 'P', Alignment: right)
                 column fcCode (attribute: code, caption: 'Code')
                 column fcDriver (attribute: driverName, caption: 'Driver')
-                column fcBest (attribute: bestCase, caption: 'Best', Alignment: right)
-                column fcWorst (attribute: worstCase, caption: 'Worst', Alignment: right)
-                column fcWin (attribute: pWin, caption: 'Win', Alignment: right)
-                column fcPod (attribute: pPodium, caption: 'Podium', Alignment: right)
-                column fcPts (attribute: pPoints, caption: 'Points', Alignment: right)
+                column fcRange (attribute: range, caption: '10-90', Alignment: right)
+                column fcWin (attribute: winPct, caption: 'Win', Alignment: right)
+                column fcPod (attribute: podiumPct, caption: 'Podium', Alignment: right)
+                column fcPts (attribute: pointsPct, caption: 'Points', Alignment: right)
                 column fcStops (attribute: stopsLeft, caption: 'Stops', Alignment: right)
-                column fcLaps (attribute: lapsUsed, caption: 'Laps fitted', Alignment: right)
+                column fcLaps (attribute: lapsUsed, caption: 'Fitted', Alignment: right)
               }
             }
             container fcNote (class: 'legend-key') {

@@ -215,7 +215,11 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     BestCase as 'bestCase' (Filterable, Sortable),
     WorstCase as 'worstCase' (Filterable, Sortable),
     DegPerLap as 'degPerLap' (Filterable, Sortable),
-    PitLoss as 'pitLoss' (Filterable, Sortable)
+    PitLoss as 'pitLoss' (Filterable, Sortable),
+    Range as 'range' (Filterable, Sortable),
+    WinPct as 'winPct' (Filterable, Sortable),
+    PodiumPct as 'podiumPct' (Filterable, Sortable),
+    PointsPct as 'pointsPct' (Filterable, Sortable)
   );
 
   /* Every forecast the race has produced, so a chart can show them moving. */

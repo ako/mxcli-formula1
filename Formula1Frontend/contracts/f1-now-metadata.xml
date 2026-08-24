@@ -148,6 +148,10 @@
         <Property Name="worstCase" Type="Edm.Int64"/>
         <Property Name="degPerLap" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="pitLoss" Scale="variable" Type="Edm.Decimal"/>
+        <Property MaxLength="12" Name="range" Type="Edm.String"/>
+        <Property MaxLength="8" Name="winPct" Type="Edm.String"/>
+        <Property MaxLength="8" Name="podiumPct" Type="Edm.String"/>
+        <Property MaxLength="8" Name="pointsPct" Type="Edm.String"/>
       </EntityType>
       <EntityType Name="Stg_ForecastTrace">
         <Key>

@@ -1657,7 +1657,8 @@ begin
          ), pits AS (
            SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
              FROM (SELECT unnest(from_json({pitJson}::JSON,
-                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS j)
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]'')) AS j)
+            WHERE COALESCE(j.lane_duration, 0) BETWEEN 1 AND 180
          )
          SELECT {sessionKey} AS sessionKey, l.driver_number AS driverNumber,
                 l.lap_number AS lapNumber, p.position AS position,
@@ -1947,15 +1948,44 @@ begin
           x as X, y as Y, z as Z );
 
   /* Overtakes and radio: small, and pass straight through. */
+  /*
+   * Overtakes, with the lap they happened on worked out here.
+   *
+   * The feed does not carry one. Every other endpoint reports a lap number and
+   * this one reports only a timestamp, so `lap_number` was read straight from
+   * the payload, came back null for all 292 passes of a grand prix, and was
+   * stored as null -- which is why the story panel has been saying "passed ALB
+   * for P16 on lap" with nothing after it.
+   *
+   * The lap table has a start time and a duration for every lap of every car,
+   * so the pass belongs to whichever of the overtaking car's laps was running
+   * when it happened. That is an ASOF join: the latest lap of that driver that
+   * had started by then.
+   */
   query GetOpenF1Overtakes
-    sql 'SELECT {sessionKey} AS sessionKey,
-                j.date AS atTime, j.lap_number AS lapNumber,
-                j.overtaking_driver_number AS overtaking,
-                j.overtaken_driver_number AS overtaken, j.position AS position
-           FROM (SELECT unnest(from_json({json}::JSON,
-                 ''[{"date":"VARCHAR","lap_number":"BIGINT","overtaking_driver_number":"BIGINT","overtaken_driver_number":"BIGINT","position":"BIGINT"}]'')) AS j)'
+    sql 'WITH laps AS (
+           SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
+                  CAST(j.date_start AS TIMESTAMP) AS t0
+             FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"VARCHAR"}]'')) AS j)
+            WHERE j.date_start IS NOT NULL
+         ), ov AS (
+           SELECT j.date AS atTime, CAST(j.date AS TIMESTAMP) AS t,
+                  j.overtaking_driver_number AS overtaking,
+                  j.overtaken_driver_number AS overtaken, j.position AS position
+             FROM (SELECT unnest(from_json({json}::JSON,
+                   ''[{"date":"VARCHAR","overtaking_driver_number":"BIGINT","overtaken_driver_number":"BIGINT","position":"BIGINT"}]'')) AS j)
+            WHERE j.date IS NOT NULL
+         )
+         SELECT {sessionKey} AS sessionKey, o.atTime AS atTime,
+                l.lap_number AS lapNumber, o.overtaking AS overtaking,
+                o.overtaken AS overtaken, o.position AS position
+           FROM ov o
+           ASOF LEFT JOIN laps l
+             ON l.driver_number = o.overtaking AND l.t0 <= o.t'
     parameter sessionKey: string
     parameter json: string
+    parameter lapsJson: string
     returns Formula1Backend.Stg_SyncOvertake
     map ( sessionKey as SessionKey, atTime as At, lapNumber as LapNumber,
           overtaking as OvertakingDriver, overtaken as OvertakenDriver,
@@ -2084,7 +2114,8 @@ begin
 ), pits AS (
   SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
     FROM (SELECT unnest(from_json({pitJson}::JSON,
-          ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS j)
+          ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]'')) AS j)
+   WHERE COALESCE(j.lane_duration, 0) BETWEEN 1 AND 180
 ),
 aged AS (
   SELECT l.driver_number, l.lap_number, l.lap_duration, l.is_pit_out_lap,

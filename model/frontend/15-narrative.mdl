@@ -1,0 +1,492 @@
+/*
+ * Screen 7 — Race narrative.
+ * ==========================
+ *
+ * A finished race told as three views of the same lap, read across: where
+ * everyone was, what happened, and what the forecast made of it.
+ *
+ * The design is prototypes/"Race Narrative.dc.html". Its central idea is not
+ * the three panels, it is that a row means one lap in all three of them --
+ * "read across a row: one lap, three views" -- so the event you are reading
+ * sits level with the crossing that caused it and the band that moved because
+ * of it.
+ *
+ * That constraint is what decides how this is built. A list view cannot be
+ * pinned to a lap: its rows flow. So the event column is a chart too, drawn on
+ * the same lap axis as the other two and at the same height, which is the only
+ * way the three line up. It costs the wrapped two-line event text the
+ * prototype has -- a Vega text mark does not wrap -- and buys the alignment
+ * the whole design is about.
+ *
+ * ----------------------------------------------------------- what it reads
+ *
+ * Nothing new. LiveNarrative for the events, built once per race in
+ * 26-narrative.mdl; LiveLap for the positions; LiveForecast for the bands.
+ * All three published from source on the admin service, so choosing a race is
+ * an indexed query rather than a scan.
+ */
+
+/* -------------------------------------------------------------- the state -- */
+
+create or modify persistent entity Formula1Frontend.NarrativeState (
+  SessionKey: string(20),
+  SessionLabel: string(160),
+  MaxLap: long,
+  /* everything · turning · stops · track */
+  Filter: string(20)
+);
+
+/* The header figures, which are counted rather than stored. */
+create or modify non-persistent entity Formula1Frontend.NarrativeHead (
+  Winner: string(10), WinnerName: string(120), Laps: long,
+  LeadChanges: long, Retirements: long, Events: long
+);
+
+/* One event, shaped for the chart that draws it. */
+create or modify non-persistent entity Formula1Frontend.NarrativeEvent (
+  Lap: long, Kind: string(20), Headline: string(300), Swing: long,
+  SwingCode: string(10), Major: boolean
+);
+
+/*
+ * The races that have a narrative built.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeSessions ()
+  RETURNS List of F1Admin.Sessions AS $Have
+BEGIN
+  $Have = CREATE LIST OF F1Admin.Sessions;
+  RETRIEVE $Sessions FROM F1Admin.Sessions SORT BY dateStart DESC;
+  LOOP $S IN $Sessions BEGIN
+    RETRIEVE $N FROM F1Admin.Narrative WHERE sessionKey = $S/sessionKey LIMIT 1;
+    IF $N != empty THEN
+      ADD $S TO $Have;
+    END IF;
+  END LOOP;
+  RETURN $Have;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativePick (
+  $Session: F1Admin.Sessions
+)
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  IF $State = empty OR $Session = empty THEN
+    RETURN $Ok;
+  END IF;
+  DECLARE $Max Long = 0;
+  RETRIEVE $Far FROM F1Admin.Laps
+    WHERE sessionKey = $Session/sessionKey SORT BY lapNumber DESC LIMIT 1;
+  IF $Far != empty THEN
+    SET $Max = $Far/lapNumber;
+  END IF;
+  CHANGE $State (
+    SessionKey = $Session/sessionKey,
+    SessionLabel = $Session/location + ' · ' + $Session/sessionName
+                   + ' · ' + toString($Session/year),
+    MaxLap = $Max
+  ) COMMIT REFRESH;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeEnsure ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $Held FROM Formula1Frontend.NarrativeState LIMIT 1;
+  IF $Held != empty THEN
+    RETURN $Ok;
+  END IF;
+  $Fresh = CREATE Formula1Frontend.NarrativeState (
+    Filter = 'everything', MaxLap = 0) COMMIT;
+  DECLARE $Opened Boolean = false;
+  $Sessions = CALL MICROFLOW Formula1Frontend.DS_NarrativeSessions();
+  LOOP $S IN $Sessions BEGIN
+    IF $Opened = false THEN
+      $Picked = CALL MICROFLOW Formula1Frontend.ACT_NarrativePick(Session = $S);
+      SET $Opened = true;
+    END IF;
+  END LOOP;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeState ()
+  RETURNS Formula1Frontend.NarrativeState AS $State
+BEGIN
+  $Ensured = CALL MICROFLOW Formula1Frontend.ACT_NarrativeEnsure();
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  RETURN $State;
+END;
+
+/*
+ * The four filters from the design.
+ *
+ *   everything  all 101 of them
+ *   turning     the ones flagged major -- what changed the race
+ *   stops       pit windows
+ *   track       positions changing hands: passes and lead changes
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeFilter (
+  $Which: String
+)
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  IF $State != empty THEN
+    CHANGE $State (Filter = $Which) COMMIT REFRESH;
+  END IF;
+  RETURN $Ok;
+END;
+
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeAll ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'everything');
+  RETURN $Ok;
+END;
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeTurning ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'turning');
+  RETURN $Ok;
+END;
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeStops ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'stops');
+  RETURN $Ok;
+END;
+CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeTrack ()
+  RETURNS Boolean AS $Ok
+BEGIN
+  $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'track');
+  RETURN $Ok;
+END;
+
+/* -------------------------------------------------------------- the reads -- */
+
+/*
+ * The header: who won, how long, how often the lead changed, how many stopped.
+ *
+ * Counted from the rows rather than stored, because every one of them is a
+ * count over data already on the screen and a stored copy is a second thing
+ * that can be wrong.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeHead (
+  $State: Formula1Frontend.NarrativeState
+)
+  RETURNS Formula1Frontend.NarrativeHead AS $Head
+BEGIN
+  $Head = CREATE Formula1Frontend.NarrativeHead (
+    Laps = 0, LeadChanges = 0, Retirements = 0, Events = 0);
+  IF $State = empty OR trim($State/SessionKey) = '' THEN
+    RETURN $Head;
+  END IF;
+
+  RETRIEVE $Events FROM F1Admin.Narrative WHERE sessionKey = $State/SessionKey;
+  DECLARE $Leads Long = 0;
+  DECLARE $Outs Long = 0;
+  DECLARE $All Long = 0;
+  LOOP $E IN $Events BEGIN
+    SET $All = $All + 1;
+    IF $E/kind = 'lead' THEN SET $Leads = $Leads + 1; END IF;
+    IF $E/kind = 'retirement' THEN SET $Outs = $Outs + 1; END IF;
+  END LOOP;
+
+  RETRIEVE $Win FROM F1Admin.Laps
+    WHERE sessionKey = $State/SessionKey and position = 1
+    SORT BY lapNumber DESC LIMIT 1;
+  IF $Win != empty THEN
+    RETRIEVE $D FROM F1Admin.Drivers
+      WHERE sessionKey = $State/SessionKey and driverNumber = $Win/driverNumber
+      LIMIT 1;
+    IF $D != empty THEN
+      CHANGE $Head (Winner = $D/code, WinnerName = $D/driverName);
+    END IF;
+  END IF;
+
+  CHANGE $Head (Laps = $State/MaxLap, LeadChanges = $Leads,
+                Retirements = $Outs, Events = $All);
+  RETURN $Head;
+END;
+
+/*
+ * The events, as rows for the chart.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativeEvents (
+  $State: Formula1Frontend.NarrativeState
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    RETRIEVE $Events FROM F1Admin.Narrative
+      WHERE sessionKey = $State/SessionKey SORT BY lap ASC;
+    LOOP $E IN $Events BEGIN
+      DECLARE $Show Boolean = ($State/Filter = 'everything');
+      IF $State/Filter = 'turning' AND $E/major THEN SET $Show = true; END IF;
+      IF $State/Filter = 'stops' AND $E/kind = 'pit' THEN SET $Show = true; END IF;
+      IF $State/Filter = 'track' AND ($E/kind = 'battle' OR $E/kind = 'lead') THEN
+        SET $Show = true;
+      END IF;
+      IF $Show THEN
+        DECLARE $Text String = $E/headline;
+        IF $E/swing != empty AND $E/swing != 0 THEN
+          DECLARE $Sign String = '';
+          IF $E/swing > 0 THEN SET $Sign = '+'; END IF;
+          SET $Text = $Text + '  (' + $Sign + toString($E/swing) + ' pts)';
+        END IF;
+        DECLARE $Major Long = 0;
+        IF $E/major THEN SET $Major = 1; END IF;
+        /* Quotes and backslashes would break the payload; neither appears in a
+         * generated headline, and a race control message can carry neither. */
+        SET $Json = $Json + $Sep
+          + '{"lap":' + toString($E/lap)
+          + ',"kind":"' + $E/kind + '"'
+          + ',"major":' + toString($Major)
+          + ',"text":"' + replaceAll($Text, '"', '') + '"}';
+        SET $Sep = ',';
+      END IF;
+    END LOOP;
+  END IF;
+  SET $Json = $Json + ']';
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * Position by lap, rotated: the lap is the vertical axis, P1 is at the left.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativePos (
+  $State: Formula1Frontend.NarrativeState
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    RETRIEVE $Laps FROM F1Admin.Laps
+      WHERE sessionKey = $State/SessionKey SORT BY lapNumber ASC;
+    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+    LOOP $L IN $Laps BEGIN
+      IF $L/position != empty THEN
+        $D = FIND($Drivers, driverNumber = $L/driverNumber);
+        IF $D != empty AND trim($D/code) != '' THEN
+          SET $Json = $Json + $Sep
+            + '{"code":"' + $D/code + '","lap":' + toString($L/lapNumber)
+            + ',"pos":' + toString($L/position) + '}';
+          SET $Sep = ',';
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+  SET $Json = $Json + ']';
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/*
+ * The bands: every lap 100% wide, split by car.
+ *
+ * Only cars the model ever gave a real chance are drawn. Twenty-two segments a
+ * row, eighteen of them a pixel wide, is a grey smear -- the rest are folded
+ * into one "everyone else" band so the row still totals 100% and still says
+ * so honestly.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativeProb (
+  $State: Formula1Frontend.NarrativeState
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  DECLARE $Json String = '[';
+  DECLARE $Sep String = '';
+  IF $State != empty AND trim($State/SessionKey) != '' THEN
+    RETRIEVE $Fcst FROM F1Admin.Forecast
+      WHERE sessionKey = $State/SessionKey SORT BY atLap ASC;
+    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
+
+    DECLARE $Keep String = '|';
+    LOOP $F IN $Fcst BEGIN
+      IF $F/pWin != empty AND $F/pWin > 0.03
+         AND contains($Keep, '|' + toString($F/driverNumber) + '|') = false THEN
+        SET $Keep = $Keep + toString($F/driverNumber) + '|';
+      END IF;
+    END LOOP;
+
+    DECLARE $Lap Long = -1;
+    DECLARE $Rest Decimal = 0;
+    LOOP $P IN $Fcst BEGIN
+      IF $P/atLap != $Lap THEN
+        IF $Lap > 0 AND $Rest > 0 THEN
+          SET $Json = $Json + $Sep + '{"code":"rest","lap":' + toString($Lap)
+            + ',"p":' + formatDecimal($Rest, '0.0000') + ',"rank":99}';
+          SET $Sep = ',';
+        END IF;
+        SET $Lap = $P/atLap;
+        SET $Rest = 0;
+      END IF;
+      IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
+        $D = FIND($Drivers, driverNumber = $P/driverNumber);
+        DECLARE $Code String = toString($P/driverNumber);
+        IF $D != empty AND trim($D/code) != '' THEN SET $Code = $D/code; END IF;
+        SET $Json = $Json + $Sep
+          + '{"code":"' + $Code + '","lap":' + toString($P/atLap)
+          + ',"p":' + formatDecimal($P/pWin, '0.0000')
+          + ',"rank":' + toString($P/driverNumber) + '}';
+        SET $Sep = ',';
+      ELSE
+        SET $Rest = $Rest + $P/pWin;
+      END IF;
+    END LOOP;
+    IF $Lap > 0 AND $Rest > 0 THEN
+      SET $Json = $Json + $Sep + '{"code":"rest","lap":' + toString($Lap)
+        + ',"p":' + formatDecimal($Rest, '0.0000') + ',"rank":99}';
+    END IF;
+  END IF;
+  SET $Json = $Json + ']';
+  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
+/* --------------------------------------------------------------- the page -- */
+
+create or replace page Formula1Frontend.Narrative
+(
+  title: 'Race narrative',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'narrative'
+)
+{
+  container pageBody (class: 'narrate-dense') {
+
+    dataview dvNar (datasource: MICROFLOW Formula1Frontend.DS_NarrativeState) {
+
+      container narBar (class: 'live-bar') {
+        container nHead (class: 'pagehead') {
+          container nHeadMain (class: 'pagehead-main') {
+            dynamictext nEyebrow (content: 'Narrative', class: 'pagehead-eyebrow')
+            dynamictext nTitle (content: '{1}', contentparams: [{1} = SessionLabel],
+                                rendermode: H2, class: 'pagehead-title')
+            dynamictext nSub (
+              content: 'read across a row: one lap, three views',
+              class: 'pagehead-sub')
+          }
+        }
+
+        dataview dvNarHead (datasource: MICROFLOW Formula1Frontend.DS_NarrativeHead(State: $currentObject)) {
+          container nStats (class: 'kpis') {
+            container kWin (class: 'kpi') {
+              dynamictext kWinL (content: 'Winner', class: 'kpi-label')
+              dynamictext kWinV (content: '{1}', contentparams: [{1} = Winner], class: 'kpi-value')
+            }
+            container kLaps (class: 'kpi') {
+              dynamictext kLapsL (content: 'Laps', class: 'kpi-label')
+              dynamictext kLapsV (content: '{1}', contentparams: [{1} = Laps], class: 'kpi-value')
+            }
+            container kLead (class: 'kpi') {
+              dynamictext kLeadL (content: 'Lead chg', class: 'kpi-label')
+              dynamictext kLeadV (content: '{1}', contentparams: [{1} = LeadChanges], class: 'kpi-value')
+            }
+            container kOut (class: 'kpi') {
+              dynamictext kOutL (content: 'Retirements', class: 'kpi-label')
+              dynamictext kOutV (content: '{1}', contentparams: [{1} = Retirements], class: 'kpi-value')
+            }
+            container kEv (class: 'kpi') {
+              dynamictext kEvL (content: 'Events', class: 'kpi-label')
+              dynamictext kEvV (content: '{1}', contentparams: [{1} = Events], class: 'kpi-value')
+            }
+          }
+        }
+
+        container nFilters (class: 'replay-controls') {
+          actionbutton bAll (Caption: 'everything', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_NarrativeAll)
+          actionbutton bTurn (Caption: 'turning points', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_NarrativeTurning)
+          actionbutton bStop (Caption: 'stops', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_NarrativeStops)
+          actionbutton bTrack (Caption: 'on track', ButtonStyle: Default,
+            Action: MICROFLOW Formula1Frontend.ACT_NarrativeTrack)
+        }
+      }
+
+      container nChips (class: 'chips-row') {
+        listview lvNarSessions (datasource: MICROFLOW Formula1Frontend.DS_NarrativeSessions,
+                                PageSize: 12) {
+          container chipNar (
+            class: 'chip-pick',
+            dynamicclasses: 'if $currentObject/sessionKey = $dvNar/SessionKey then ''is-picked'' else ''''',
+            OnClick: MICROFLOW Formula1Frontend.ACT_NarrativePick(Session: $currentObject)
+          ) {
+            dynamictext chipNarName (content: '{1} {2}',
+              contentparams: [{1} = location, {2} = sessionName])
+          }
+        }
+      }
+
+      /*
+       * The three columns, on one lap axis.
+       *
+       * All three charts are 1400px tall and scaled on the same field, so the
+       * row you are reading in the middle is the row either side of it. That
+       * is the design's whole claim and the reason none of these is a grid.
+       */
+      container nMain (class: 'narrative-cols') {
+
+        container nPosPanel (class: 'panel') {
+          container nPosHead (class: 'panel-head') {
+            dynamictext nPosTitle (content: 'Position by lap', class: 'panel-title')
+            dynamictext nPosSub (
+              content: 'P1 at the left · a crossing is an overtake',
+              class: 'panel-sub')
+          }
+          dataview dvNPos (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativePos(State: $currentObject)) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarPos (
+              chartData: json, datasetName: 'table', chartHeight: 0,
+              renderer: 'svg', showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"line","strokeWidth":10,"opacity":0.001,"interpolate":"step-after"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"color":{"field":"code","type":"nominal","scale":{"scheme":"turbo"}}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]}},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.4,"interpolate":"step-after"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"color":{"field":"code","type":"nominal","scale":{"scheme":"turbo"}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.16},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":2.8},"value":1.2}}}],"height":1400}')
+          }
+        }
+
+        container nEvPanel (class: 'panel') {
+          container nEvHead (class: 'panel-head') {
+            dynamictext nEvTitle (content: 'What happened', class: 'panel-title')
+            dynamictext nEvSub (
+              content: 'every event pinned to its lap · derived from the timing, the flags and the forecast',
+              class: 'panel-sub')
+          }
+          dataview dvNEv (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeEvents(State: $currentObject)) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarEv (
+              chartData: json, datasetName: 'table', chartHeight: 0,
+              renderer: 'svg', showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","height":1400,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"rule","strokeWidth":1,"color":"#1D242E"},"transform":[{"filter":"datum.major == 1"}],"encoding":{"y":{"field":"lap","type":"quantitative"}}},{"mark":{"type":"text","align":"left","font":"JetBrains Mono","fontSize":9,"fontWeight":500,"dy":-1},"encoding":{"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":0},"text":{"field":"kind","type":"nominal"},"color":{"field":"kind","type":"nominal","scale":{"domain":["retirement","lead","flag","steward","pit","battle","model"],"range":["#F85149","#2DD4BF","#E3B341","#A78BFA","#E3B341","#64C4FF","#FF8000"]}}}},{"mark":{"type":"text","align":"left","fontSize":11,"color":"#C9D1D9","limit":620,"dy":-1},"encoding":{"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":76},"text":{"field":"text","type":"nominal"},"tooltip":[{"field":"lap","title":"Lap"},{"field":"text","title":"Event"}]}}]}')
+          }
+        }
+
+        container nProbPanel (class: 'panel') {
+          container nProbHead (class: 'panel-head') {
+            dynamictext nProbTitle (content: 'Chance of winning', class: 'panel-title')
+            dynamictext nProbSub (
+              content: 'each lap is 100% wide, split by car',
+              class: 'panel-sub')
+          }
+          dataview dvNProb (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeProb(State: $currentObject)) {
+            pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarProb (
+              chartData: json, datasetName: 'table', chartHeight: 0,
+              renderer: 'svg', showActions: false,
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"orient":"top","columns":8,"offset":4,"symbolType":"square"}},"mark":{"type":"bar","stroke":null},"encoding":{"y":{"field":"lo","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"field":"p","type":"quantitative","stack":"normalize","title":null,"axis":{"format":"%"}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"}},"order":{"field":"rank","type":"quantitative"},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"p","title":"Chance","format":".0%"}],"y2":{"field":"hi"}},"height":1400,"transform":[{"calculate":"datum.lap - 0.5","as":"lo"},{"calculate":"datum.lap + 0.5","as":"hi"}]}')
+          }
+        }
+      }
+
+      container nNote (class: 'data-note') {
+        dynamictext nNoteLead (content: 'How this was assembled', class: 'data-note-lead')
+        dynamictext nNoteBody (
+          content: 'Every event is derived, not written: retirements are cars three or more laps behind at the end, lead changes are the car in P1 differing from the lap before, flags and penalties come from race control with the sector chatter removed, a pit window is three or more stops on one lap, and a battle is a pass into the top six. The forecast events are the laps where the win probability moved more than fifteen points on at least ten fitted laps and did not reverse within two laps -- without those three conditions the first eight laps of a race fill with swings that are the model warming up rather than anything happening.')
+      }
+    }
+  }
+}

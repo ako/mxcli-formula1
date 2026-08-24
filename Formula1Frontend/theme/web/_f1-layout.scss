@@ -1465,6 +1465,23 @@
     .replay-fold { grid-template-columns: minmax(0, 1fr); }
   }
 
+  // The narrative: three views of one lap, so three columns of one height.
+  //
+  // The position chart needs least width -- it is 22 lanes of hairline -- and
+  // the events need most, because they are sentences. The bands sit between.
+  .narrative-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1.1fr);
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+  .narrative-cols > .panel { margin-bottom: 0; min-width: 0; }
+
+  @media (max-width: 1300px) {
+    .narrative-cols { grid-template-columns: minmax(0, 1fr); }
+  }
+
   // Replay: two charts rather than three, so an even split.
   .live-traces-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 

@@ -96,7 +96,12 @@ create or modify non-persistent entity Formula1Backend.Stg_LiveForecast (
   BestCase: long,
   WorstCase: long,
   DegPerLap: decimal,
-  PitLoss: decimal
+  PitLoss: decimal,
+  /* Formatted here, for the same reason the replay screen formats them: a
+   * probability shown as 0.684 is a number the reader has to convert, and the
+   * 10-90 band is two columns saying one thing. Eleven columns in half a
+   * screen rendered as "3 0... 0... 0...". */
+  Range: string(12), WinPct: string(8), PodiumPct: string(8), PointsPct: string(8)
 );
 
 /* The same thing over time, one row per car per lap, for the chart. */
@@ -336,7 +341,11 @@ BEGIN
       MedianPosition = $F/MedianPosition, PWin = $F/PWin,
       PPodium = $F/PPodium, PPoints = $F/PPoints,
       BestCase = $F/BestCase, WorstCase = $F/WorstCase,
-      DegPerLap = $F/DegPerLap, PitLoss = $F/PitLoss);
+      DegPerLap = $F/DegPerLap, PitLoss = $F/PitLoss,
+      Range = toString($F/BestCase) + '-' + toString($F/WorstCase),
+      WinPct = formatDecimal($F/PWin * 100, '0') + '%',
+      PodiumPct = formatDecimal($F/PPodium * 100, '0') + '%',
+      PointsPct = formatDecimal($F/PPoints * 100, '0') + '%');
     IF $D != empty THEN
       CHANGE $Row (Code = $D/Code, DriverName = $D/DriverName,
                    Team = $D/Team, TeamColour = $D/TeamColour);

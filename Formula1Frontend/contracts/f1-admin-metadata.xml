@@ -232,6 +232,20 @@
         <Property Name="projectedTime" Scale="variable" Type="Edm.Decimal"/>
         <Property Name="computedAt" Type="Edm.DateTimeOffset"/>
       </EntityType>
+      <EntityType Name="LiveNarrative">
+        <Key>
+          <PropertyRef Name="rowId"/>
+        </Key>
+        <Property Name="rowId" Nullable="false" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="sessionKey" Type="Edm.String"/>
+        <Property Name="lap" Type="Edm.Int64"/>
+        <Property MaxLength="20" Name="kind" Type="Edm.String"/>
+        <Property MaxLength="300" Name="headline" Type="Edm.String"/>
+        <Property Name="swing" Type="Edm.Int64"/>
+        <Property MaxLength="10" Name="swingCode" Type="Edm.String"/>
+        <Property Name="major" Type="Edm.Boolean"/>
+        <Property Name="builtAt" Type="Edm.DateTimeOffset"/>
+      </EntityType>
       <EntityType Name="LiveSyncRun">
         <Key>
           <PropertyRef Name="runId"/>
@@ -834,6 +848,45 @@
           </Annotation>
         </EntitySet>
         <EntitySet EntityType="Formula1Backend.Admin.LiveForecast" Name="Forecast">
+          <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Insertable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Updatable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Deletable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Filterable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Sortable"/>
+            </Record>
+          </Annotation>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.TopSupported"/>
+          <Annotation Bool="true" Term="Org.OData.Capabilities.V1.SkipSupported"/>
+          <Annotation Term="Org.OData.Capabilities.V1.CountRestrictions">
+            <Record>
+              <PropertyValue Bool="true" Property="Countable"/>
+            </Record>
+          </Annotation>
+          <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+            <Record>
+              <PropertyValue Bool="false" Property="Searchable"/>
+            </Record>
+          </Annotation>
+        </EntitySet>
+        <EntitySet EntityType="Formula1Backend.Admin.LiveNarrative" Name="Narrative">
           <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
             <Record>
               <PropertyValue Bool="false" Property="Insertable"/>

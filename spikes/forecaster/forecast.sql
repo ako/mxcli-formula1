@@ -16,9 +16,19 @@ WITH laps AS (
     FROM (SELECT unnest(from_json({stintsJson}::JSON,
           '[{"driver_number":"BIGINT","lap_start":"BIGINT","lap_end":"BIGINT","compound":"VARCHAR","tyre_age_at_start":"BIGINT"}]')) AS j)
 ), pits AS (
+  /* A pit record is only a pit stop if it lasted as long as one.
+   *
+   * OpenF1 files the drive to parc fermé after the flag as a pit entry, and
+   * dates it to lap 2 -- twenty-one of them in the Dutch Grand Prix, each with
+   * a lane duration of about 1,570 seconds against a real stop's 12 to 18. Taken
+   * at face value that is a phantom stop for almost the whole field, which
+   * inflates every car's stop count, moves every in-lap and out-lap filter onto
+   * the wrong laps, and tells the model that everyone has already served the
+   * stop they still owe. */
   SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
     FROM (SELECT unnest(from_json({pitJson}::JSON,
-          '[{"driver_number":"BIGINT","lap_number":"BIGINT"}]')) AS j)
+          '[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]')) AS j)
+   WHERE COALESCE(j.lane_duration, 0) BETWEEN 1 AND 180
 ),
 aged AS (
   SELECT l.driver_number, l.lap_number, l.lap_duration, l.is_pit_out_lap,

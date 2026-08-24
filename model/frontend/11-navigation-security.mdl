@@ -149,6 +149,7 @@ END;
 
 GRANT VIEW ON PAGE Formula1Frontend.Narrate TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Replay TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Narrative TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Season TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Weekend TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Constructor TO Formula1Frontend.Enthusiast;
@@ -259,6 +260,7 @@ create or replace navigation Responsive
   MENU (
     MENU ITEM 'Narrate' PAGE Formula1Frontend.Narrate ICON Atlas_Core.Atlas."time-clock";
     MENU ITEM 'Replay' PAGE Formula1Frontend.Replay ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Narrative' PAGE Formula1Frontend.Narrative ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Season' MICROFLOW Formula1Frontend.NAV_Season ICON Atlas_Core.Atlas.calendar;
     MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
@@ -316,6 +318,25 @@ grant F1Admin.Reader ON F1Admin.Messages (READ *);
 grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
 grant F1Admin.Reader ON F1Admin.Radio (READ *);
 grant F1Admin.Reader ON F1Admin.Forecast (READ *);
+grant F1Admin.Reader ON F1Admin.Narrative (READ *);
+
+/* The narrative screen: where the reader is, and the three view rows it builds. */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeState (READ *, WRITE *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeHead (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeEvent (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeState TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeEnsure TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeSessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativePick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeFilter TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeAll TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeTurning TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeStops TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeTrack TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeHead TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeEvents TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativePos TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeProb TO Formula1Frontend.Enthusiast;
 
 /* Replay: where the viewer is in a past race, and the two view rows the
  * screen builds. Writable, unlike everything else here -- the buttons change
