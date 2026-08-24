@@ -6103,3 +6103,72 @@ l5   lead     Kimi ANTONELLI leads, from Lando NORRIS.
 Two independent derivations landing on the same lap with the same two drivers is
 evidence that both are right — and the one place they disagreed was where the
 overtake had no lap to be placed on, which is how the second bug was found.
+
+## 77. Three charts, three ways a specification can be quietly wrong
+
+The narrative screen shipped and looked broken in three different ways at once,
+none of which the headless checker flags, because all three specifications are
+*valid*. They compile, they render, they produce marks. They just do not draw
+what the numbers mean.
+
+### A line connects in x order, whichever axis the story runs along
+
+Position by lap is rotated: position is x, lap is y, so a car's race is read
+downward. Drawn as a line, it came out as nested rectangles — the reader called
+it a bar chart, which is exactly what it looked like.
+
+**Vega-Lite connects a line's points in the order of its x channel.** With x as
+position, it joined lap 12 to lap 47 because both were in P3, and the result is
+a staircase enclosing a shape. The fix is one channel:
+
+```json
+"order": {"field": "lap", "type": "quantitative"}
+```
+
+The rule: **on any chart whose progression is not the x axis, `order` is not
+decoration, it is the thing that makes the line a line.**
+
+### `stack: normalize` is a no-op when it has nothing to group by
+
+The win-probability panel should be one 100%-wide band per lap. It rendered as
+a field of small disconnected stripes.
+
+Stacking needs a discrete group to stack *within*. This chart's y is continuous
+— it has to be, to share a lap scale with the two panels beside it — so
+Vega-Lite had no grouping and every segment was drawn from zero at its own
+width. No warning: `stack` on a continuous-y bar is silently dropped.
+
+Proved with a five-lap, four-car probe before changing anything, because the
+alternative was guessing at a 71-row chart.
+
+The fix is to stop asking the chart to do it. The microflow already walks the
+rows in lap order, so it emits `x0` and `x1` as a running total and the bar
+becomes a plain range with no transform at all. **Computing the layout where
+the data is assembled is more robust than asking a declarative grammar for it,
+whenever the grammar's preconditions are subtle.**
+
+### Text marks do not know about each other
+
+Eleven of the race's events share a lap with another, and lap 1 has eight. Drawn
+at their true lap they printed on top of one another.
+
+Nothing in a chart grammar solves this: a text mark is placed where its data
+says, and collision is not its problem. So the de-collision is in the microflow
+— walk the events in lap order, push each one down until it clears the last —
+and each event carries two numbers, the lap it happened on and the slot it is
+drawn at, with a hairline rule between them when they differ.
+
+That is what the prototype does, and it says so on the page: *"a hairline means
+it was moved to fit"*. The design had already solved a problem I had not yet
+had.
+
+### What the three have in common
+
+Each was a specification that was locally correct and globally meaningless, and
+none produced a warning. The checker measures that marks exist and how many;
+it cannot know that a line joining lap 12 to lap 47 is nonsense.
+
+**A headless check proves a chart compiles. Only the numbers prove it is
+about anything.** All three of these needed the data in front of them — one
+needed a deliberate probe, and one needed a screenshot from someone looking at
+it.

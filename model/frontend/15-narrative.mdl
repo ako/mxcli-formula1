@@ -99,7 +99,7 @@ BEGIN
     RETURN $Ok;
   END IF;
   $Fresh = CREATE Formula1Frontend.NarrativeState (
-    Filter = 'everything', MaxLap = 0) COMMIT;
+    Filter = 'turning', MaxLap = 0) COMMIT;
   DECLARE $Opened Boolean = false;
   $Sessions = CALL MICROFLOW Formula1Frontend.DS_NarrativeSessions();
   LOOP $S IN $Sessions BEGIN
@@ -225,6 +225,21 @@ BEGIN
   IF $State != empty AND trim($State/SessionKey) != '' THEN
     RETRIEVE $Events FROM F1Admin.Narrative
       WHERE sessionKey = $State/SessionKey SORT BY lap ASC;
+
+    /*
+     * Where the line is drawn, which is not always the lap it belongs to.
+     *
+     * Eleven of the Dutch Grand Prix's events are on a lap that already has
+     * one, and three share lap 48. Drawn at their true lap they printed on top
+     * of each other -- the screen showed "battle" and "steward" as one
+     * unreadable smear. Each event is pushed down until it clears the one
+     * above, and carries both numbers: `slot` is where the text sits, `lap` is
+     * where it happened, and the chart draws a hairline between them whenever
+     * they differ. The prototype does the same and says so: "a hairline means
+     * it was moved to fit".
+     */
+    DECLARE $Gap Decimal = 0.85;
+    DECLARE $Slot Decimal = -99;
     LOOP $E IN $Events BEGIN
       DECLARE $Show Boolean = ($State/Filter = 'everything');
       IF $State/Filter = 'turning' AND $E/major THEN SET $Show = true; END IF;
@@ -233,6 +248,14 @@ BEGIN
         SET $Show = true;
       END IF;
       IF $Show THEN
+        DECLARE $Y Decimal = $E/lap;
+        IF $Y < $Slot + $Gap THEN
+          SET $Y = $Slot + $Gap;
+        END IF;
+        SET $Slot = $Y;
+        DECLARE $Moved Long = 0;
+        IF $Y - $E/lap > 0.05 THEN SET $Moved = 1; END IF;
+
         DECLARE $Text String = $E/headline;
         IF $E/swing != empty AND $E/swing != 0 THEN
           DECLARE $Sign String = '';
@@ -241,10 +264,10 @@ BEGIN
         END IF;
         DECLARE $Major Long = 0;
         IF $E/major THEN SET $Major = 1; END IF;
-        /* Quotes and backslashes would break the payload; neither appears in a
-         * generated headline, and a race control message can carry neither. */
         SET $Json = $Json + $Sep
           + '{"lap":' + toString($E/lap)
+          + ',"slot":' + formatDecimal($Y, '0.00')
+          + ',"moved":' + toString($Moved)
           + ',"kind":"' + $E/kind + '"'
           + ',"major":' + toString($Major)
           + ',"text":"' + replaceAll($Text, '"', '') + '"}';
@@ -275,9 +298,17 @@ BEGIN
       IF $L/position != empty THEN
         $D = FIND($Drivers, driverNumber = $L/driverNumber);
         IF $D != empty AND trim($D/code) != '' THEN
+          /* The team's own colour, sent per row and used raw -- a static spec
+           * cannot hold a scale whose domain changes with the session, and
+           * turbo's rainbow puts two Ferraris at opposite ends of the legend. */
+          DECLARE $Col String = '#8B949E';
+          IF trim($D/teamColour) != '' THEN
+            SET $Col = '#' + $D/teamColour;
+          END IF;
           SET $Json = $Json + $Sep
             + '{"code":"' + $D/code + '","lap":' + toString($L/lapNumber)
-            + ',"pos":' + toString($L/position) + '}';
+            + ',"pos":' + toString($L/position)
+            + ',"colour":"' + $Col + '"}';
           SET $Sep = ',';
         END IF;
       END IF;
@@ -305,9 +336,11 @@ BEGIN
   DECLARE $Sep String = '';
   IF $State != empty AND trim($State/SessionKey) != '' THEN
     RETRIEVE $Fcst FROM F1Admin.Forecast
-      WHERE sessionKey = $State/SessionKey SORT BY atLap ASC;
+      WHERE sessionKey = $State/SessionKey SORT BY atLap ASC, driverNumber ASC;
     RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
 
+    /* Only cars the model ever gave a real chance get a band of their own;
+     * eighteen one-pixel segments a row is a grey smear. */
     DECLARE $Keep String = '|';
     LOOP $F IN $Fcst BEGIN
       IF $F/pWin != empty AND $F/pWin > 0.03
@@ -316,34 +349,62 @@ BEGIN
       END IF;
     END LOOP;
 
+    /*
+     * The running total is computed here, not by the chart.
+     *
+     * The obvious spec is a bar with `stack: normalize`, and it silently does
+     * nothing: Vega-Lite can only stack within a discrete group, and this
+     * chart's y is continuous because it has to share a lap scale with the two
+     * panels beside it. Every segment was drawn from zero at its own width, so
+     * seventy-one full-width bands rendered as a field of little coloured
+     * stripes. Emitting x0 and x1 per segment makes the bar a plain range and
+     * the stacking exact.
+     */
     DECLARE $Lap Long = -1;
+    DECLARE $Acc Decimal = 0;
     DECLARE $Rest Decimal = 0;
     LOOP $P IN $Fcst BEGIN
       IF $P/atLap != $Lap THEN
-        IF $Lap > 0 AND $Rest > 0 THEN
-          SET $Json = $Json + $Sep + '{"code":"rest","lap":' + toString($Lap)
-            + ',"p":' + formatDecimal($Rest, '0.0000') + ',"rank":99}';
+        IF $Lap > 0 AND $Rest > 0.0005 THEN
+          SET $Json = $Json + $Sep
+            + '{"lap":' + toString($Lap) + ',"code":"the rest"'
+            + ',"colour":"#2A323D"'
+            + ',"x0":' + formatDecimal($Acc, '0.0000')
+            + ',"x1":' + formatDecimal($Acc + $Rest, '0.0000')
+            + ',"pct":"' + formatDecimal($Rest * 100, '0') + '%"}';
           SET $Sep = ',';
         END IF;
         SET $Lap = $P/atLap;
+        SET $Acc = 0;
         SET $Rest = 0;
       END IF;
       IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
         $D = FIND($Drivers, driverNumber = $P/driverNumber);
         DECLARE $Code String = toString($P/driverNumber);
-        IF $D != empty AND trim($D/code) != '' THEN SET $Code = $D/code; END IF;
+        DECLARE $Col String = '#8B949E';
+        IF $D != empty THEN
+          IF trim($D/code) != '' THEN SET $Code = $D/code; END IF;
+          IF trim($D/teamColour) != '' THEN SET $Col = '#' + $D/teamColour; END IF;
+        END IF;
         SET $Json = $Json + $Sep
-          + '{"code":"' + $Code + '","lap":' + toString($P/atLap)
-          + ',"p":' + formatDecimal($P/pWin, '0.0000')
-          + ',"rank":' + toString($P/driverNumber) + '}';
+          + '{"lap":' + toString($P/atLap) + ',"code":"' + $Code + '"'
+          + ',"colour":"' + $Col + '"'
+          + ',"x0":' + formatDecimal($Acc, '0.0000')
+          + ',"x1":' + formatDecimal($Acc + $P/pWin, '0.0000')
+          + ',"pct":"' + formatDecimal($P/pWin * 100, '0') + '%"}';
         SET $Sep = ',';
+        SET $Acc = $Acc + $P/pWin;
       ELSE
         SET $Rest = $Rest + $P/pWin;
       END IF;
     END LOOP;
-    IF $Lap > 0 AND $Rest > 0 THEN
-      SET $Json = $Json + $Sep + '{"code":"rest","lap":' + toString($Lap)
-        + ',"p":' + formatDecimal($Rest, '0.0000') + ',"rank":99}';
+    IF $Lap > 0 AND $Rest > 0.0005 THEN
+      SET $Json = $Json + $Sep
+        + '{"lap":' + toString($Lap) + ',"code":"the rest"'
+        + ',"colour":"#2A323D"'
+        + ',"x0":' + formatDecimal($Acc, '0.0000')
+        + ',"x1":' + formatDecimal($Acc + $Rest, '0.0000')
+        + ',"pct":"' + formatDecimal($Rest * 100, '0') + '%"}';
     END IF;
   END IF;
   SET $Json = $Json + ']';
@@ -447,7 +508,7 @@ create or replace page Formula1Frontend.Narrative
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarPos (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
-              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"line","strokeWidth":10,"opacity":0.001,"interpolate":"step-after"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"color":{"field":"code","type":"nominal","scale":{"scheme":"turbo"}}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]}},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.4,"interpolate":"step-after"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"color":{"field":"code","type":"nominal","scale":{"scheme":"turbo"}},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.16},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":2.8},"value":1.2}}}],"height":1400}')
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","height":1400,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"line","strokeWidth":11,"opacity":0.001,"interpolate":"monotone"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"order":{"field":"lap","type":"quantitative"}},"params":[{"name":"pick","select":{"type":"point","fields":["code"]}},{"name":"hover","select":{"type":"point","fields":["code"],"on":"pointerover","clear":"pointerout"}}]},{"mark":{"type":"line","strokeWidth":1.6,"interpolate":"monotone","strokeJoin":"round"},"encoding":{"x":{"field":"pos","type":"quantitative","title":null,"scale":{"zero":false,"nice":false},"axis":{"format":"d","tickMinStep":1}},"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"detail":{"field":"code","type":"nominal"},"order":{"field":"lap","type":"quantitative"},"color":{"field":"colour","type":"nominal","scale":null,"legend":null},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pos","title":"Position"}],"opacity":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":1},"value":0.2},"strokeWidth":{"condition":{"test":{"or":[{"param":"pick"},{"param":"hover"}]},"value":3},"value":1.4}}}]}')
           }
         }
 
@@ -462,7 +523,7 @@ create or replace page Formula1Frontend.Narrative
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarEv (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
-              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","height":1400,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"rule","strokeWidth":1,"color":"#1D242E"},"transform":[{"filter":"datum.major == 1"}],"encoding":{"y":{"field":"lap","type":"quantitative"}}},{"mark":{"type":"text","align":"left","font":"JetBrains Mono","fontSize":9,"fontWeight":500,"dy":-1},"encoding":{"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":0},"text":{"field":"kind","type":"nominal"},"color":{"field":"kind","type":"nominal","scale":{"domain":["retirement","lead","flag","steward","pit","battle","model"],"range":["#F85149","#2DD4BF","#E3B341","#A78BFA","#E3B341","#64C4FF","#FF8000"]}}}},{"mark":{"type":"text","align":"left","fontSize":11,"color":"#C9D1D9","limit":620,"dy":-1},"encoding":{"y":{"field":"lap","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":76},"text":{"field":"text","type":"nominal"},"tooltip":[{"field":"lap","title":"Lap"},{"field":"text","title":"Event"}]}}]}')
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","height":1400,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"layer":[{"mark":{"type":"rule","strokeWidth":1,"color":"#1F2733","opacity":0.9},"transform":[{"filter":"datum.moved == 1"}],"encoding":{"y":{"field":"slot","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"y2":{"field":"lap"},"x":{"value":30},"x2":{"value":40}}},{"mark":{"type":"rule","strokeWidth":1,"color":"#1D242E"},"transform":[{"filter":"datum.major == 1"}],"encoding":{"y":{"field":"lap","type":"quantitative"},"x":{"value":0},"x2":{"value":760}}},{"mark":{"type":"text","align":"left","font":"JetBrains Mono","fontSize":9,"fontWeight":500,"baseline":"middle"},"encoding":{"y":{"field":"slot","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":44},"text":{"field":"kind","type":"nominal"},"color":{"field":"kind","type":"nominal","scale":{"domain":["retirement","lead","flag","steward","pit","battle","model"],"range":["#F85149","#2DD4BF","#E3B341","#A78BFA","#E3B341","#64C4FF","#FF8000"]},"legend":null}}},{"mark":{"type":"text","align":"left","fontSize":11,"color":"#C9D1D9","limit":700,"baseline":"middle"},"encoding":{"y":{"field":"slot","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"value":112},"text":{"field":"text","type":"nominal"},"tooltip":[{"field":"lap","title":"Lap"},{"field":"text","title":"Event"}]}}]}')
           }
         }
 
@@ -477,7 +538,7 @@ create or replace page Formula1Frontend.Narrative
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarProb (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
-              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"labelColor":"#C9D1D9","titleColor":"#8B949E","labelFontSize":10,"orient":"top","columns":8,"offset":4,"symbolType":"square"}},"mark":{"type":"bar","stroke":null},"encoding":{"y":{"field":"lo","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"x":{"field":"p","type":"quantitative","stack":"normalize","title":null,"axis":{"format":"%"}},"color":{"field":"code","type":"nominal","title":null,"scale":{"scheme":"turbo"}},"order":{"field":"rank","type":"quantitative"},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"p","title":"Chance","format":".0%"}],"y2":{"field":"hi"}},"height":1400,"transform":[{"calculate":"datum.lap - 0.5","as":"lo"},{"calculate":"datum.lap + 0.5","as":"hi"}]}')
+              spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":"container","height":1400,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","axis":{"labelColor":"#8B949E","titleColor":"#8B949E","gridColor":"#181D25","domainColor":"#30363D","tickColor":"#30363D","labelFontSize":9,"titleFontSize":10,"labelFont":"JetBrains Mono"},"legend":{"disable":true}},"transform":[{"calculate":"datum.lap - 0.5","as":"lo"},{"calculate":"datum.lap + 0.5","as":"hi"}],"mark":{"type":"bar","stroke":null},"encoding":{"y":{"field":"lo","type":"quantitative","title":"Lap","scale":{"zero":false,"nice":false},"axis":{"format":"d"}},"y2":{"field":"hi"},"x":{"field":"x0","type":"quantitative","title":null,"scale":{"domain":[0,1],"nice":false},"axis":{"format":"%"}},"x2":{"field":"x1"},"color":{"field":"colour","type":"nominal","scale":null,"legend":null},"tooltip":[{"field":"code","title":"Driver"},{"field":"lap","title":"Lap"},{"field":"pct","title":"Chance"}]}}')
           }
         }
       }

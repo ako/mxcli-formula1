@@ -206,11 +206,31 @@ BEGIN
     END IF;
 
     /* A penalty or a deleted lap changes a result; an incident "noted" or
-     * "reviewed, no further investigation" does not. */
+     * "reviewed, no further investigation" does not.
+     *
+     * Race control writes for a timing screen, not for a line of prose: "FIA
+     * STEWARDS: 10 SECOND TIME PENALTY FOR CAR 55 (SAI) - CAUSING A COLLISION
+     * (17:04:55)" is 88 characters of which the first fourteen and the last
+     * eleven carry nothing. The prefix and the trailing clock go. */
     IF contains($Up, 'PENALTY') OR contains($Up, 'DELETED') THEN
+      DECLARE $Txt String = trim($M/Message);
+      IF startsWith(toUpperCase($Txt), 'FIA STEWARDS:') THEN
+        SET $Txt = trim(substring($Txt, 13));
+      END IF;
+      /* A trailing wall-clock: "... AT TURN 3 LAP 57 16:50:48". Matched by
+       * shape rather than searched, because Mendix has no lastIndexOf. */
+      IF length($Txt) > 12 AND substring($Txt, length($Txt) - 9, 1) = ' '
+         AND substring($Txt, length($Txt) - 6, 1) = ':' THEN
+        SET $Txt = trim(substring($Txt, 0, length($Txt) - 9));
+      END IF;
+      /* And the same clock in brackets: "... INFRINGEMENT (15:04:49)". */
+      IF length($Txt) > 14 AND endsWith($Txt, ')')
+         AND substring($Txt, length($Txt) - 11, 2) = ' (' THEN
+        SET $Txt = trim(substring($Txt, 0, length($Txt) - 11));
+      END IF;
       $P = CREATE Formula1Backend.LiveNarrative (
         SessionKey = $SessionKey, Lap = $M/Lap, Kind = 'steward',
-        Headline = $M/Message, Swing = 0, Major = false,
+        Headline = $Txt, Swing = 0, Major = false,
         BuiltAt = [%CurrentDateTime%]) COMMIT;
       SET $Made = $Made + 1;
     END IF;
