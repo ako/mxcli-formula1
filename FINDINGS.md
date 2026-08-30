@@ -6270,3 +6270,71 @@ Only two lines in the docs changed: the version in the README and in this
 file's header table. The version numbers inside the older findings stay as they
 are — each records what was true when it was written, and editing them to match
 today would turn a lab notebook into a brochure.
+
+## 79. The upgrade wants a skill, and the bar it has to clear
+
+*Not written yet. This records the case for it and the shape it should take,
+so the next session does not have to re-derive either.*
+
+§78 cost most of a session and produced about six things worth knowing. The
+question is whether that belongs in a skill or stays as prose here, and this
+project has already answered it twice.
+
+### The bar, set by the two skills that exist
+
+`mendix-vega-charts` and `mendix-odata-pushdown` are both about tasks that are
+not especially hard. They exist because the failure is **silent**. The pushdown
+skill's own description names the symptom: *"a published resource returns 200
+with the wrong rows and nothing appears in the log."* §77 is the chart version
+of the same thing — three specifications that compiled, rendered, and meant
+nothing.
+
+A headless version upgrade clears that bar twice over, and more dangerously,
+because both false successes are *green*:
+
+| what you do | what you see | what is true |
+|---|---|---|
+| `mxbuild --loose-version-check` | `BUILD SUCCEEDED` | still 11.13.0 |
+| `UPDATE _MetaData SET _ProductVersion` | project reports 11.14, mxcli agrees | 517 units read against the wrong schema |
+
+The first one is not hypothetical: it is what happened here, and it took going
+back to look at the version column to notice that a successful build had
+upgraded nothing.
+
+### What generalises, and what does not
+
+Most of §78 is about one version pair and will be wrong next time. The
+web-client bundling change is 11.13→11.14 and will not recur. A skill that
+encodes the *procedure* is a skill that misleads on the next upgrade.
+
+What generalises is a decision procedure and three traps:
+
+1. **`_SchemaHash` decides.** Create a blank project at the target version and
+   compare that column against the project's. Same → the version is a label and
+   can be set. Different → a converter must run. One command, and it is the only
+   thing that actually answers the question.
+2. **`mx convert` is the converter**, it sits beside `mxbuild`, mxcli does not
+   wrap it, and unlike `update-widgets` and `rename-design-properties` it
+   preserves MPR v2 — verify by counting units and `.mxunit` sidecars either
+   side, because that is exactly what a sibling tool gets wrong.
+3. **A runtime version and its tooling move together.** Here it surfaced as a
+   missing `rollup.config.mjs`, mentioning no version anywhere.
+
+Plus the discipline that made it safe rather than lucky: convert a **copy**
+first, confirm the copy's hash matches the reference, and only then touch the
+real project.
+
+### The caveat that should go in the skill itself
+
+This has been done **once**, on **one** version pair, by one person. A skill
+written from a single instance risks encoding coincidence as rule. So the
+decision procedure is the load-bearing part, and the 11.13→11.14 specifics
+belong in it as *what happened once* rather than *what happens* — clearly
+marked as such, so the next upgrade checks them rather than trusting them.
+
+### Shape
+
+`.claude/skills/packs/` rather than the project's own skill directory, because
+none of it is specific to this solution — any mxcli project upgrading without
+Studio Pro hits the same three traps. Around 140 lines, matching the other two,
+with no `references/` directory: there is not yet enough evidence to fill one.
