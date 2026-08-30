@@ -7,9 +7,9 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de` |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
-| Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
+| Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
 | F1 dataset | [f1db/f1db](https://github.com/f1db/f1db) `f1db-csv.zip`, latest release |
 
