@@ -772,6 +772,19 @@ create or modify non-persistent entity Formula1Backend.Stg_SyncTrackPoint (
   SessionKey: string(20), Seq: long, X: decimal, Y: decimal
 );
 
+/* One forecast row per car. Produced by GetOpenF1Forecast below, on its way
+ * into LiveForecast in 24-forecast.mdl. BasePace, DegPerLap and PitLoss are
+ * the model's own fitted parameters carried out with the answer, so a reader
+ * can see what it believed rather than only what it concluded. */
+create or modify non-persistent entity Formula1Backend.Stg_SyncForecast (
+  SessionKey: string(20), DriverNumber: long, LapNow: long,
+  LapsRemaining: long, StopsLeft: long, LapsUsed: long,
+  BasePace: decimal, DegPerLap: decimal, PitLoss: decimal,
+  MeanPosition: decimal, MedianPosition: long,
+  PWin: decimal, PPodium: decimal, PPoints: decimal,
+  BestCase: long, WorstCase: long, ProjectedTime: decimal
+);
+
 create or modify database connection Formula1Backend.F1Warehouse
 type 'BYOD'
 connection string @Formula1Backend.DuckDbUrl
@@ -1644,7 +1657,8 @@ begin
          ), pits AS (
            SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
              FROM (SELECT unnest(from_json({pitJson}::JSON,
-                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS j)
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]'')) AS j)
+            WHERE COALESCE(j.lane_duration, 0) BETWEEN 1 AND 180
          )
          SELECT {sessionKey} AS sessionKey, l.driver_number AS driverNumber,
                 l.lap_number AS lapNumber, p.position AS position,
@@ -1934,15 +1948,44 @@ begin
           x as X, y as Y, z as Z );
 
   /* Overtakes and radio: small, and pass straight through. */
+  /*
+   * Overtakes, with the lap they happened on worked out here.
+   *
+   * The feed does not carry one. Every other endpoint reports a lap number and
+   * this one reports only a timestamp, so `lap_number` was read straight from
+   * the payload, came back null for all 292 passes of a grand prix, and was
+   * stored as null -- which is why the story panel has been saying "passed ALB
+   * for P16 on lap" with nothing after it.
+   *
+   * The lap table has a start time and a duration for every lap of every car,
+   * so the pass belongs to whichever of the overtaking car's laps was running
+   * when it happened. That is an ASOF join: the latest lap of that driver that
+   * had started by then.
+   */
   query GetOpenF1Overtakes
-    sql 'SELECT {sessionKey} AS sessionKey,
-                j.date AS atTime, j.lap_number AS lapNumber,
-                j.overtaking_driver_number AS overtaking,
-                j.overtaken_driver_number AS overtaken, j.position AS position
-           FROM (SELECT unnest(from_json({json}::JSON,
-                 ''[{"date":"VARCHAR","lap_number":"BIGINT","overtaking_driver_number":"BIGINT","overtaken_driver_number":"BIGINT","position":"BIGINT"}]'')) AS j)'
+    sql 'WITH laps AS (
+           SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
+                  CAST(j.date_start AS TIMESTAMP) AS t0
+             FROM (SELECT unnest(from_json({lapsJson}::JSON,
+                   ''[{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"VARCHAR"}]'')) AS j)
+            WHERE j.date_start IS NOT NULL
+         ), ov AS (
+           SELECT j.date AS atTime, CAST(j.date AS TIMESTAMP) AS t,
+                  j.overtaking_driver_number AS overtaking,
+                  j.overtaken_driver_number AS overtaken, j.position AS position
+             FROM (SELECT unnest(from_json({json}::JSON,
+                   ''[{"date":"VARCHAR","overtaking_driver_number":"BIGINT","overtaken_driver_number":"BIGINT","position":"BIGINT"}]'')) AS j)
+            WHERE j.date IS NOT NULL
+         )
+         SELECT {sessionKey} AS sessionKey, o.atTime AS atTime,
+                l.lap_number AS lapNumber, o.overtaking AS overtaking,
+                o.overtaken AS overtaken, o.position AS position
+           FROM ov o
+           ASOF LEFT JOIN laps l
+             ON l.driver_number = o.overtaking AND l.t0 <= o.t'
     parameter sessionKey: string
     parameter json: string
+    parameter lapsJson: string
     returns Formula1Backend.Stg_SyncOvertake
     map ( sessionKey as SessionKey, atTime as At, lapNumber as LapNumber,
           overtaking as OvertakingDriver, overtaken as OvertakenDriver,
@@ -2023,5 +2066,257 @@ begin
     parameter locJson: string
     returns Formula1Backend.Stg_SyncTrackPoint
     map ( sessionKey as SessionKey, seq as Seq, x as X, y as Y );
+
+  /*
+   * The race-result forecaster.
+   *
+   * Fits pace, tyre degradation and the cost of a pit stop from the race so
+   * far, then runs two thousand simulations of what is left and counts how
+   * often each car finishes where. One statement, about twenty milliseconds,
+   * over three payloads -- laps, stints, pit -- that the caller has already
+   * fetched.
+   *
+   * The SQL is not maintained here. It lives in spikes/forecaster/forecast.sql
+   * and is embedded by spikes/forecaster/embed.py, which strips the comments
+   * and doubles the quotes. That is so the backtest in the same directory can
+   * score the exact text the model runs: a backtest of a paraphrase measures
+   * the paraphrase. `cutLap` exists only for that harness -- it forecasts a
+   * finished race as of lap N so the answer can be checked against the result.
+   * Live it is passed 0, which means "everything we have".
+   *
+   * Scored against the two archived races, from about lap 4 onward, it holds a
+   * Spearman correlation of 0.92-0.99 against the final classification with a
+   * mean position error of one to two places. Before that it has almost no
+   * clean laps to fit and should not be believed; LapsUsed is carried out so
+   * the screen can say so.
+   *
+   * What it does not model is written down in spikes/forecaster/README.md --
+   * overtaking, the reason a car retires, and weather changing.
+   */
+  query GetOpenF1Forecast
+    sql 'WITH laps AS (
+  SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
+         j.lap_duration AS lap_duration, j.is_pit_out_lap AS is_pit_out_lap,
+         CAST(j.date_start AS TIMESTAMP) AS t
+    FROM (SELECT unnest(from_json({lapsJson}::JSON,
+          ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","is_pit_out_lap":"BOOLEAN","date_start":"VARCHAR"}]'')) AS j)
+   WHERE j.date_start IS NOT NULL
+), cut AS (
+  SELECT CASE WHEN {cutLap} <= 0 THEN TIMESTAMP ''2999-01-01''
+              ELSE COALESCE((SELECT min(t) FROM laps WHERE lap_number = {cutLap} + 1),
+                            TIMESTAMP ''2999-01-01'') END AS t
+), st AS (
+  SELECT j.driver_number AS driver_number, j.lap_start AS lap_start,
+         j.lap_end AS lap_end, j.compound AS compound,
+         j.tyre_age_at_start AS tyre_age_at_start
+    FROM (SELECT unnest(from_json({stintsJson}::JSON,
+          ''[{"driver_number":"BIGINT","lap_start":"BIGINT","lap_end":"BIGINT","compound":"VARCHAR","tyre_age_at_start":"BIGINT"}]'')) AS j)
+), pits AS (
+  SELECT j.driver_number AS driver_number, j.lap_number AS lap_number
+    FROM (SELECT unnest(from_json({pitJson}::JSON,
+          ''[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]'')) AS j)
+   WHERE COALESCE(j.lane_duration, 0) BETWEEN 1 AND 180
+),
+aged AS (
+  SELECT l.driver_number, l.lap_number, l.lap_duration, l.is_pit_out_lap,
+         s.compound,
+         COALESCE(s.tyre_age_at_start,0) + (l.lap_number - s.lap_start) AS tyre_age
+    FROM laps l
+    LEFT JOIN st s ON s.driver_number = l.driver_number
+         AND l.lap_number BETWEEN s.lap_start AND COALESCE(s.lap_end, 9999)
+   WHERE l.t < (SELECT t FROM cut)
+),
+notpit AS (
+  SELECT a.* FROM aged a
+    LEFT JOIN pits p ON p.driver_number = a.driver_number AND p.lap_number = a.lap_number
+   WHERE a.lap_duration IS NOT NULL AND a.is_pit_out_lap IS NOT TRUE
+     AND a.lap_number > 1 AND p.lap_number IS NULL
+),
+med AS (SELECT driver_number, median(lap_duration) AS m FROM notpit GROUP BY 1),
+fieldmed AS (SELECT COALESCE(median(m), 90.0) AS m FROM med),
+clean AS (
+  SELECT n.*, n.lap_duration - d.m AS resid
+    FROM notpit n JOIN med d USING (driver_number)
+   WHERE n.lap_duration BETWEEN d.m * 0.93 AND d.m * 1.07
+),
+deg_raw AS (
+  SELECT compound, regr_slope(resid, tyre_age) AS fitted, count(*) AS n
+    FROM clean WHERE compound IS NOT NULL AND tyre_age IS NOT NULL GROUP BY 1
+),
+prior AS (
+  SELECT * FROM (VALUES (''SOFT'',0.060,20),(''MEDIUM'',0.040,30),(''HARD'',0.025,40),
+                        (''INTERMEDIATE'',0.030,30),(''WET'',0.030,30))
+    AS t(compound, per_lap, max_life)
+),
+deg AS (
+  SELECT r.compound,
+         CASE WHEN isfinite(r.fitted)
+              THEN least(0.15, greatest(0.0,
+                     (r.n * r.fitted + 120 * pr.per_lap) / (r.n + 120)))
+              ELSE pr.per_lap END AS per_lap
+    FROM deg_raw r JOIN prior pr USING (compound)
+),
+fuel_raw AS (
+  SELECT regr_slope(c.resid - COALESCE(d.per_lap,0) * c.tyre_age, c.lap_number) AS v
+    FROM clean c LEFT JOIN deg d USING (compound)
+),
+fuel AS (
+  SELECT CASE WHEN isfinite((SELECT v FROM fuel_raw))
+              THEN greatest(-0.20, least(0.0, (SELECT v FROM fuel_raw)))
+              ELSE -0.03 END AS per_lap
+),
+pace AS (
+  SELECT c.driver_number,
+         CASE WHEN isfinite(median(c.lap_duration
+                                   - COALESCE(d.per_lap,0) * c.tyre_age
+                                   - (SELECT per_lap FROM fuel) * c.lap_number))
+              THEN median(c.lap_duration - COALESCE(d.per_lap,0) * c.tyre_age
+                          - (SELECT per_lap FROM fuel) * c.lap_number)
+              ELSE median(c.lap_duration) END AS base,
+         CASE WHEN isfinite(stddev_samp(c.resid))
+              THEN greatest(0.05, least(2.0, stddev_samp(c.resid)))
+              ELSE 0.4 END AS noise,
+         count(*) AS laps_used
+    FROM clean c LEFT JOIN deg d USING (compound)
+   GROUP BY 1
+),
+pitloss AS (
+  SELECT median(a.lap_duration + o.lap_duration - 2 * m.m) AS secs
+    FROM pits p
+    JOIN aged a ON a.driver_number = p.driver_number AND a.lap_number = p.lap_number
+    JOIN aged o ON o.driver_number = p.driver_number AND o.lap_number = p.lap_number + 1
+    JOIN med  m ON m.driver_number = p.driver_number
+   WHERE a.lap_duration IS NOT NULL AND o.lap_duration IS NOT NULL
+),
+loss AS (
+  SELECT CASE WHEN (SELECT secs FROM pitloss) BETWEEN 12 AND 45
+              THEN (SELECT secs FROM pitloss) ELSE 20.0 END AS secs
+),
+life AS (
+  SELECT pr.compound,
+         greatest(COALESCE(o.max_life, 0), pr.max_life) AS max_life
+    FROM prior pr
+    LEFT JOIN (
+      SELECT s.compound,
+             max(s.lap_end - s.lap_start + 1 + COALESCE(s.tyre_age_at_start,0)) AS max_life
+        FROM st s
+       WHERE EXISTS (SELECT 1 FROM pits p WHERE p.driver_number = s.driver_number
+                       AND p.lap_number = s.lap_end)
+       GROUP BY 1) o USING (compound)
+),
+last_lap AS (
+  SELECT DISTINCT ON (driver_number) driver_number, lap_number, compound, tyre_age
+    FROM aged WHERE lap_duration IS NOT NULL OR is_pit_out_lap
+   ORDER BY driver_number, lap_number DESC
+),
+elapsed AS (
+  SELECT a.driver_number,
+         sum(COALESCE(a.lap_duration, COALESCE(m.m, (SELECT m FROM fieldmed)))) AS secs,
+         count(*) AS laps_done
+    FROM aged a LEFT JOIN med m USING (driver_number)
+   GROUP BY 1
+),
+leadlap AS (SELECT max(laps_done) AS n FROM elapsed),
+leader AS (
+  SELECT driver_number FROM elapsed
+   WHERE laps_done = (SELECT n FROM leadlap) ORDER BY secs LIMIT 1
+),
+leader_cum AS (
+  SELECT a.lap_number,
+         sum(COALESCE(a.lap_duration, (SELECT m FROM fieldmed)))
+           OVER (ORDER BY a.lap_number) AS secs
+    FROM aged a WHERE a.driver_number = (SELECT driver_number FROM leader)
+),
+state AS (
+  SELECT ll.driver_number, ll.lap_number, ll.compound, COALESCE(ll.tyre_age, 10) AS tyre_age,
+         e.laps_done,
+         (SELECT n FROM leadlap) - e.laps_done AS laps_down,
+         e.secs - COALESCE((SELECT c.secs FROM leader_cum c WHERE c.lap_number = e.laps_done), 0)
+           AS gap_s,
+         COALESCE((SELECT c.secs FROM leader_cum c WHERE c.lap_number = e.laps_done), 0) AS at_secs,
+         greatest(0, {totalLaps} - e.laps_done) AS remaining
+    FROM last_lap ll JOIN elapsed e USING (driver_number)
+),
+plan AS (
+  SELECT s.*,
+         COALESCE(p.base, (SELECT m FROM fieldmed) + 0.5) AS base,
+         COALESCE(p.noise, 0.4) AS noise,
+         COALESCE(p.laps_used, 0) AS laps_used,
+         COALESCE(d.per_lap, 0.04) AS deg_per_lap,
+         s.laps_down >= 3 AS retired,
+         greatest(
+           CASE WHEN COALESCE(u.compounds_used,1) < 2 AND {totalLaps} > 40
+                     AND s.remaining > 0 THEN 1 ELSE 0 END,
+           CASE WHEN COALESCE(s.tyre_age,0) + s.remaining > COALESCE(l.max_life, 30)
+                     AND s.remaining > 4 THEN 1 ELSE 0 END) AS stops
+    FROM state s
+    LEFT JOIN pace p USING (driver_number)
+    LEFT JOIN deg d ON d.compound = s.compound
+    LEFT JOIN life l ON l.compound = s.compound
+    LEFT JOIN (SELECT s2.driver_number, count(DISTINCT s2.compound) AS compounds_used
+                 FROM st s2 WHERE s2.compound IS NOT NULL
+                  AND s2.lap_start <= (SELECT lap_number FROM last_lap l2
+                                        WHERE l2.driver_number = s2.driver_number)
+                GROUP BY 1) u USING (driver_number)
+),
+plan2 AS (
+  SELECT p.*, p.tyre_age / (p.stops + 1.0) + p.remaining / (2.0 * (p.stops + 1.0)) AS mean_age
+    FROM plan p
+),
+sims AS (SELECT unnest(generate_series(1, 2000)) AS sim),
+sc AS (SELECT sim, CASE WHEN random() < 0.35 THEN 0.30 ELSE 1.0 END AS compress FROM sims),
+draw AS (
+  SELECT p.driver_number, s.sim,
+         p.retired OR random() < 1 - pow(1 - 0.0009, p.remaining) AS out,
+         p.at_secs + p.gap_s * sc.compress
+           + p.remaining * (p.base + p.deg_per_lap * p.mean_age
+                            + p.noise * (random() * 2 - 1) * 1.7)
+           + p.stops * ((SELECT secs FROM loss) + random() * 3)
+           + (random() * 2 - 1) * 2.0 AS finish_time
+    FROM plan2 p CROSS JOIN sims s JOIN sc ON sc.sim = s.sim
+),
+ranked AS (
+  SELECT *, row_number() OVER (PARTITION BY sim ORDER BY out ASC, finish_time ASC) AS pos
+    FROM draw
+)
+SELECT {sessionKey} AS sessionKey,
+       r.driver_number AS driverNumber,
+       pl.lap_number AS lapNow,
+       pl.remaining AS lapsRemaining,
+       pl.stops AS stopsLeft,
+       pl.laps_used AS lapsUsed,
+       round(CASE WHEN isfinite(pl.base) THEN pl.base ELSE 0 END, 3) AS basePace,
+       round(CASE WHEN isfinite(pl.deg_per_lap) THEN pl.deg_per_lap ELSE 0 END, 4)
+         AS degPerLap,
+       (SELECT round(secs,2) FROM loss) AS pitLoss,
+       round(avg(r.pos), 2) AS meanPosition,
+       CAST(median(r.pos) AS BIGINT) AS medianPosition,
+       round(count(*) FILTER (WHERE r.pos = 1) / 2000.0, 4) AS pWin,
+       round(count(*) FILTER (WHERE r.pos <= 3) / 2000.0, 4) AS pPodium,
+       round(count(*) FILTER (WHERE r.pos <= 10) / 2000.0, 4) AS pPoints,
+       CAST(quantile_cont(r.pos, 0.1) AS BIGINT) AS bestCase,
+       CAST(quantile_cont(r.pos, 0.9) AS BIGINT) AS worstCase,
+       round(CASE WHEN isfinite(avg(r.finish_time) FILTER (WHERE NOT r.out))
+                  THEN avg(r.finish_time) FILTER (WHERE NOT r.out)
+                  ELSE 0 END, 1) AS projectedTime
+  FROM ranked r JOIN plan2 pl ON pl.driver_number = r.driver_number
+ GROUP BY r.driver_number, pl.lap_number, pl.remaining, pl.stops, pl.laps_used,
+          pl.base, pl.deg_per_lap
+ ORDER BY meanPosition'
+    parameter sessionKey: string
+    parameter lapsJson: string
+    parameter stintsJson: string
+    parameter pitJson: string
+    parameter cutLap: integer
+    parameter totalLaps: integer
+    returns Formula1Backend.Stg_SyncForecast
+    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
+          lapNow as LapNow, lapsRemaining as LapsRemaining,
+          stopsLeft as StopsLeft, lapsUsed as LapsUsed, basePace as BasePace,
+          degPerLap as DegPerLap, pitLoss as PitLoss,
+          meanPosition as MeanPosition, medianPosition as MedianPosition,
+          pWin as PWin, pPodium as PPodium, pPoints as PPoints,
+          bestCase as BestCase, worstCase as WorstCase,
+          projectedTime as ProjectedTime );
 
 end;

@@ -7,9 +7,9 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de` |
-| Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
-| Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30 |
+| Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
+| Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
 | F1 dataset | [f1db/f1db](https://github.com/f1db/f1db) `f1db-csv.zip`, latest release |
 
@@ -4965,10 +4965,13 @@ shared key.
 
 ### Notes
 
-- Grouped over five pages rather than one, because sixteen grids on one page is
-  sixteen OData reads on open.
-- MDL has no tab container, so the grouping is pages rather than tabs.
-- The menu item is `PAGE Formula1Frontend.Admin_Sync`, and Mendix does not render
+- Sixteen grids on one visible surface is sixteen OData reads on open, so they
+  are grouped -- five tab pages, whose contents are not fetched until shown.
+- ~~MDL has no tab container, so the grouping is pages rather than tabs.~~
+  **Wrong, and corrected in 69.** MDL has `TABCONTAINER` and `TABPAGE`. This was
+  built as five separate pages with a hand-rolled chip row between them purely
+  because of that mistaken belief; it is now one tabbed page.
+- The menu item is `PAGE Formula1Frontend.Admin`, and Mendix does not render
   a menu item whose target the signed-in user cannot view — so the fan role never
   sees it, with no extra visibility rule.
 - Atlas icon names are not discoverable through `describe icon collection` as the
@@ -5401,7 +5404,937 @@ evidence that it was pre-existing was inside the diff I had already read.
 error as blaming the code you happen to be reading.** `git log -S` on the
 offending string costs one command and settles it.
 
-`TestEmbeddedSkillsCarryAgentSkillsFrontmatter` cannot see it:
+**Fixed upstream.** Reported, and ako/mxcli#224 closed both halves: one
+frontmatter block per skill (the two competing descriptions merged rather than
+one discarded), a guard test for a stray second block, and the sync message now
+names `make sync-skills` instead of blaming the embed directive.
+
+`TestEmbeddedSkillsCarryAgentSkillsFrontmatter` could not see it:
 `frontmatter.FindSubmatch` matches the **first** block and checks its `name`
 against the directory, which is correct. A rename-and-prepend is invisible to a
 first-block check, and it is exactly the shape of change that produces one.
+
+---
+
+## 69. `mxcli syntax page widgets` is not the grammar
+
+The Admin screen was built as five separate pages with a hand-rolled chip row
+linking them, plus a bespoke `.admin-nav` SCSS block, because I had concluded
+MDL has no tab container.
+
+It has had one all along.
+
+```sql
+tabcontainer tabs {
+  tabpage tpA (caption: 'Cycle runs') { ... }
+  tabpage tpB (caption: 'Laps')       { ... }
+}
+```
+
+Built, read back with `describe` intact, `mx check` 0 errors. `TABCONTAINER` and
+`TABPAGE` are lexer keywords in `MDLLexer.g4:380-381`; `buildTabContainerV3`
+emits a proper `Forms$TabControl` with `Forms$TabPage` children and captions.
+
+### How the wrong conclusion was reached
+
+I searched the **documentation** — `mxcli syntax page widgets --json` — for
+`TABCONTAINER|TABPAGE|GROUPBOX|ACCORDION`, got nothing, and wrote "MDL has no
+tab container" into a design decision and twice into this document.
+
+The grammar was one `grep` away and was never consulted.
+
+**Absence from the documentation is not absence from the grammar.** For a
+question of the form "does this tool support X", the authority is the parser,
+and it is checkable in one command:
+
+```sh
+grep -iE 'TABCONTAINER|TABPAGE' .mxcli-src/mdl/grammar/MDLLexer.g4
+# or, better, just try it:
+mxcli check /tmp/probe.mdl -p app.mpr
+```
+
+Trying it costs twenty seconds and answers exactly the question asked. That is
+what settled it in the end, two days late.
+
+Worse: the evidence had already gone past. Verifying PRs 222/223 an hour earlier
+printed
+
+```
+--- PASS: TestParseRawWidget_TabControlPreservesTabPages
+--- PASS: TestOutputWidgetMDLV3_TabControlEmitsTabPageStructure
+```
+
+in output I read and summarised. A test named for the feature I had declared
+missing.
+
+### The documentation gap is real, and worth filing
+
+`mxcli syntax page widgets` describes itself as covering "Widget types:
+containers, data widgets, inputs, actions, display" and lists neither the tab
+container nor several other widgets the grammar accepts. Confirmed by probing
+each against `mxcli check`:
+
+| keyword | in `MDLLexer.g4` | in `syntax page widgets` | `mxcli check` |
+|---|---|---|---|
+| `TABCONTAINER` | yes | **no** | passes |
+| `TABPAGE` | yes | **no** | passes |
+| `GROUPBOX` | yes | **no** | passes |
+| `STATICIMAGE` | yes | **no** | passes |
+
+Four widgets that parse and build, undocumented in the command whose entire job
+is to say what can be written. The syntax reference is hand-maintained beside a
+generated parser, so it drifts silently — and it drifts in the direction that
+makes an agent reading it build the wrong thing, confidently.
+
+A generated cross-check would close it: every widget keyword in the lexer should
+appear in `syntax page widgets`, as a test.
+
+**Still open** as of ako/mxcli `85c9708` (222, 223 and 224 all merged): all
+four keywords remain absent from the command while parsing and building fine.
+Unlike the duplicate frontmatter, this one has not been reported.
+
+### What it cost
+
+Five pages, a chip sub-navigation, a `.admin-nav` grid, and a paragraph in 61
+explaining why tabs were impossible. All of it deleted. The replacement is one
+page with five `tabpage` blocks, and tab pages have the property the five-page
+split was reaching for anyway: **a tab's contents are not fetched until it is
+shown**, so sixteen grids still cost one tab's worth of OData reads on open.
+
+---
+
+## 70. The same duplicate-definition bug, three times, and the third one reverted a day of work
+
+The screen went back to showing the Hungarian Grand Prix of 26 July, and the
+track map back to drawing five circuits at once. Both had been fixed hours
+earlier and nothing had touched either fix.
+
+What touched them was publishing an unrelated resource. `Story` is published on
+`F1LiveNowApi`, which is defined in `15-live.mdl` — and `15-live.mdl` also
+carried its own copies of the seven read microflows behind that service, the
+CSV-and-DuckDB versions that `22-live-screen.mdl` was written to replace. One
+`mxcli exec` of 15 silently reverted all seven.
+
+The tell was a timestamp. `fetchedAt` read `2026-08-21 15:50:57Z` — space
+separated, the CSV's format — where `Sync_Context` writes ISO-8601 with a `T`.
+The screen was not showing stale data; it was running stale *code*.
+
+### Three times, same shape
+
+| | duplicated in | symptom |
+|---|---|---|
+| 59 | `SE_LiveSync` in 19 and 20 | script order decided which tiers a race captured |
+| 61 | `RowId` in 21 vs 19/20 | `CE1613`, the publish blocks lost their key |
+| 70 | seven `Read_Live*` in 15 and 22 | the screen reverted to CSVs a day after being repointed |
+
+**A definition that lives in two files belongs to whichever ran last.** Three
+times is no longer bad luck; it is what `create or replace` invites when a file
+is organised by *topic* rather than by *ownership*. 15 owns the service, so it
+felt natural to keep the service's read microflows beside it — and 22 was
+written to replace exactly those.
+
+The rule that would have prevented all three: **before adding a definition,
+grep the model for its name.** One command, and it is the same command that
+diagnosed each of them afterwards.
+
+15 now carries only the service and its publish blocks, plus a comment saying
+where the reads live and why they are not here.
+
+### It also hid behind a real fix
+
+Between the revert and noticing it, the circuit was "wrong" again — and I had
+already written 66 about misdiagnosing that same star twice. The fourth
+explanation was neither of the first three: the session filter was still in the
+source, just not in the model.
+
+**When a fixed thing breaks again, check that the fix is still deployed before
+re-deriving it.** `describe` on the microflow would have shown the CSV version
+immediately.
+
+## 71. A watermark that only rises, and the cars it left behind
+
+> "In the position by lap i would expect all (or most) lines to end at lap 24,
+> but only 2 lines end there. Seems to suggest only 2 drivers finished the
+> complete race?"
+
+Two answers, and the first one hid the second for a day.
+
+**The screen was showing qualifying, not a race.** The sync was parked on
+Sunday's race, which had not run, so `Live_CurrentKey` fell back to the newest
+session that had laps — Saturday's qualifying. In qualifying cars run wildly
+different lap counts by design: knocked out in Q1 you do ten laps and go home,
+survive to Q3 and you do twenty-five. Lines ending at different laps is what
+qualifying *looks like*.
+
+That explanation is true and it is not sufficient. Ground truth for the session
+is 377 laps. The database held 255.
+
+### The watermark
+
+```
+DECLARE $From Long = 1;
+RETRIEVE $Seen FROM Formula1Backend.LiveLap
+  WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
+IF $Seen != empty AND $Seen/LapNumber > 2 THEN
+  SET $From = $Seen/LapNumber - 1;
+END IF;
+```
+
+Fetch only the laps you do not already have. Sound, and the comment beside it
+was proud of the arithmetic: *steady state is twenty rows a minute, not
+fourteen hundred.*
+
+The flaw is in the first line of the retrieve. `SORT BY LapNumber DESC LIMIT 1`
+is a maximum **across all cars**, and cars are not all on the same lap. The
+moment one car's lap number runs ahead, the window closes over everyone behind
+it — and because the watermark only ever rises, those laps are never asked for
+again. Not fetched late. Fetched never.
+
+Diffing the stored session against the API says it exactly:
+
+| car | stored last lap | actual last lap |
+|---|---|---|
+| 44 | 25 | 25 |
+| 30 | 25 | 25 |
+| 16 | **8** | 23 |
+| 41 | **9** | 22 |
+| 1 | **9** | 21 |
+| 27 | 19 | 19 |
+| 11 | 10 | 10 |
+
+The pattern is the mechanism. The two cars that ran the most laps are complete,
+because they are the ones that set the watermark. The Q1 casualties are
+complete, because they finished before the watermark passed them. Everyone in
+the middle is cut off at whatever lap the leader had reached while they were
+still running.
+
+### It was not only qualifying
+
+Qualifying is the extreme case, so it is where it became visible. The sprint —
+a real race, everyone within a lap of each other — was quietly missing 21 of
+506 rows, twenty of them a single lapped car's entire race after lap 1. It had
+been captured live, checked, written up as complete, and committed as the mock
+fixture.
+
+**In a race the bug is rarer and worse.** Rarer because lap numbers stay
+roughly synchronised; worse because the car it silently deletes is always a
+lapped one, and a lapped car is exactly the car whose story the chart is there
+to tell.
+
+### The narrowing was not buying anything
+
+The fix is to delete it. What made that easy was measuring what it saved, for
+one full grand prix:
+
+| endpoint | rows | raw |
+|---|---:|---:|
+| intervals | 29,593 | 4.36 MB |
+| laps | 1,423 | 0.71 MB |
+| position | 536 | 0.06 MB |
+| stints | 67 | 0.01 MB |
+| pit | 44 | 0.01 MB |
+
+Four of the five were already unfiltered — the ASOF join wants position samples
+from *before* the current lap, so trimming them would break the derivation
+rather than speed it up. **Laps were 13% of the bytes and 100% of the data
+loss.**
+
+A load test settled the rest: pointed at Hungary — 70 laps, 1,423 laps, 29,593
+intervals — a cycle completes all three passes in **49 seconds**, inside both
+the 45-second internal deadline and the 60-second schedule.
+
+### Repair
+
+Because every fetch now asks for the whole session and merges over what is
+stored, repairing a damaged capture is just pointing the sync at it for a
+cycle:
+
+| session | before | after | truth |
+|---|---:|---:|---:|
+| qualifying 11349 | 255 | 375 | 377 |
+| sprint 11348 | 485 | 506 | 506 |
+
+The two qualifying rows still missing are car 27 lap 1 and car 87 lap 1, both
+of which OpenF1 returns with `date_start: null` and `lap_duration: null`. The
+ASOF join needs a timestamp; dropping them is correct.
+
+### What to take from it
+
+An incremental fetch needs a watermark that is a **floor over the slowest
+member**, not a maximum over the fastest — or no watermark at all. And the
+check that would have caught this on day one is cheap: **after a capture,
+count the rows against the source.** Both sessions had been eyeballed on screen
+and both looked right, because a timing screen shows each car at its own last
+lap and a car frozen ten laps ago looks identical to a car that retired.
+
+## 72. Forecasting a race, and four ways a model can be confidently wrong
+
+> "suppose we wanted to add a chart that forecasts the race results based on
+> the progress so far during the race, e.g., tire strategy, laptimes, how could
+> we build such a forecaster?"
+
+The plumbing turned out to be the easy half. Everything the model needs —
+`laps`, `stints`, `pit` — is already fetched every cycle, DuckDB is already the
+compute path, and the whole thing is **one statement, twenty milliseconds**.
+
+The model was the half worth being careful about, and every one of its four
+failures shared a shape: **the forecast looked like a model being appropriately
+unsure, and was a model being broken.**
+
+### Build the harness before the feature
+
+The archive carries `session_result.json.gz` — final position, laps, DNF — so a
+forecaster can be scored: run it as of lap *N* of a finished race, compare
+against what happened. That harness is what found everything below, and it only
+works if it drives the *shipped* SQL rather than a copy of it. So the model
+lives in `spikes/forecaster/forecast.sql` and is embedded into
+`GetOpenF1Forecast` by a fifteen-line script that strips comments and doubles
+quotes. **A backtest of a paraphrase measures the paraphrase.**
+
+The one artefact of this in production code is a `cutLap` parameter that is
+always passed 0. That is a fair price.
+
+### The four failures
+
+**A NULL that read as humility.** Before the first pit stop there is no in-lap
+to measure, so measured pit loss was NULL, and `stops * NULL` made every
+projected finish time NULL. Ranking then fell back to row order and returned
+all twenty-two cars at a mean finishing position of 11.0 with a 5% win chance
+each — a perfect picture of a model that knows it does not know. Giving pit
+loss a prior took the sprint's lap-3 forecast from ρ = −0.22 to **0.98**.
+
+**A slope fitted on nothing.** Early in a race the per-compound degradation fit
+has a few dozen laps. At Hungary lap 21 it returned −0.026 s/lap for the soft:
+tyres getting *faster* as they age. Extrapolated over 49 remaining laps that
+gave two midfielders a minute they had not earned and put them on the podium;
+both finished a lap down. Shrinking the fit toward a per-compound prior by
+sample size, and clamping at zero, took that lap from ρ = 0.55 to **0.97**.
+
+**Evidence allowed to collapse a prior.** Maximum tyre life was read straight
+from the longest stints that ended in a stop. In a sprint the only stints that
+"end in a stop" are cars coming into the pit lane after the flag, so the medium
+came back with a life of **2 laps** and every car in the race was told it owed
+a pit stop. `greatest(observed, prior)` fixes it: evidence can extend a tyre's
+life beyond expectation, it should not be able to collapse it.
+
+**A stop with no laps left to make it in.** The end-to-end smoke test — the
+first time real numbers came out of the database rather than the harness —
+showed the car that finished the sprint second forecast tenth, charged twenty
+seconds for a stop it could not possibly make with zero laps remaining. Both
+stop rules now require laps remaining.
+
+Notice where each was caught. Two by the backtest, one by the backtest once it
+was pointed at a sprint rather than a grand prix, and **one only by running it
+for real**. The harness is necessary and it is not sufficient.
+
+### Measuring beats assuming, twice
+
+The obvious way to stop traffic contaminating a pace estimate is to drop laps
+run with less than two seconds of clear air, which the intervals feed can tell
+you. Measured across both races it made the forecast very slightly **worse** —
+Hungary lap 50, ρ 0.954 with it against 0.968 without — because the ±7% band
+around each driver's own median already removes the laps traffic ruins, and the
+filter's only other effect is to thin an already thin sample. Dropping it also
+dropped the largest payload of the five, 4.36 MB a cycle.
+
+The second: the narrowing was worth removing because it was worth *pricing*.
+For one grand prix, intervals is 29,593 rows against 1,423 laps. Knowing that
+turned "should we fetch the whole lap table" from an argument into arithmetic.
+
+### Where it ended up
+
+| forecasting from | ρ | mean position error |
+|---|---|---|
+| lap 2 | 0.3 | 4.3 |
+| lap 4 | 0.92 | 2.1 |
+| lap 20 | 0.98 | 1.4 |
+| lap 45 | 0.98 | 1.2 |
+| lap 65 | 0.98 | 0.8 |
+
+Lap 2 is noise and the screen says so: `LapsUsed` travels with every row.
+
+### Its own schedule, on purpose
+
+A second scheduled event with its own three fetches, not another tier of
+`Sync_Cycle`. The cycle captures a race and a race happens once; a forecaster
+reading pace out of a regression can fail in ways nobody has enumerated, and it
+must not be able to take the timing screen down with it. Separate microflow,
+separate schedule, separate transaction, three requests a minute on top of
+twenty-six against an allowance of sixty.
+
+Every exit path logs, at DEBUG for the quiet ones. Most of this microflow's
+returns are silences — not a race, no laps yet, race over — and **a scheduled
+event that is correctly doing nothing looks exactly like one that has died.**
+
+### Two mechanical costs of the same change
+
+Regenerating the consumed entities after publishing two new resources means
+`DROP ODATA CLIENT` and recreate, and **that wipes every entity access grant on
+the module.** They are all in 11-navigation-security.mdl, so re-running it
+restores them — but only if you notice, and the symptom is a build failure in a
+file you did not touch.
+
+And `RETRIEVE ... WHERE a = x AND b = y` emits invalid XPath: the build fails
+CE0161 "Error(s) in XPath constraint". Lowercase `and` works. No two-condition
+retrieve existed anywhere in this model before today, which is why it had never
+been hit.
+
+## 73. Replay, and a NaN that only one of two DuckDBs objected to
+
+> "Ideally i could select yesterday's sprint race and then step through every
+> round, whilst seeing the results so far, and the forecast based on the status
+> in that round."
+
+Almost none of this needed building, which is the interesting part.
+
+The forecaster already took a `cutLap` parameter — added so the offline
+backtest could forecast a finished race as of lap *N*. Calling it once per lap
+reconstructs the history the live forecaster would have written had it been
+running. **The backtest harness and the replay are the same mechanism seen from
+two sides**, which retroactively justifies a parameter that production always
+passes 0.
+
+And the admin service already published `Laps`, `Drivers` and `Sessions`
+straight from source, so `$filter` pushes into Postgres. Adding `Forecast`
+beside them meant a step is two indexed reads rather than a recomputation —
+the difference between stepping and waiting.
+
+So the whole feature is: a payload cache, a builder on a five-minute schedule,
+one publish block, and a page.
+
+### Keep the evidence, not just the conclusion
+
+Rebuilding a race runs the model seventy times over the same three payloads.
+Fetching them seventy times would be absurd and, inside a live window,
+refused — so `LivePayload` stores each endpoint's answer once, exactly as it
+arrived.
+
+That turns out to be worth more than the replay. **A stored payload is what
+OpenF1 said before any derivation.** The lap table is a conclusion; this is the
+evidence, and a change to the model can now be re-run against a past race
+without asking OpenF1 for it again. Hungary is 669 KB of laps, 10 KB of stints,
+8 KB of pit.
+
+### The NaN
+
+The first sweep died:
+
+```
+ExternalDatabaseConnector: Character N is neither a decimal digit number,
+decimal point, nor "e" notation exponential mark.
+```
+
+`Character N` is the first letter of `NaN`. `regr_slope` over a single point
+returns NaN — not NULL — and forecasting from lap 2 leaves exactly one clean
+lap, so `lap_number` has no variance and the fuel slope came back NaN. It then
+propagated through everything, because **neither of the two things that look
+like guards actually is one**: `COALESCE` does not catch NaN, and
+`greatest(0.0, NaN)` is NaN. (`least(0.15, NaN)` returns 0.15, which is how the
+degradation term escaped by luck.)
+
+The part worth remembering is why the backtest never saw it. **Python's DuckDB
+handed the NaN back without complaint; the JDBC decimal conversion refused it.**
+Same engine, same SQL, same data — one caller tolerant, one strict. A harness
+that exercises the query through a different client than production does can
+only catch the errors both clients agree about.
+
+And it was never only a lap-2 problem. With every fitted quantity passed
+through `isfinite`, the backtest's earliest forecasts improved sharply:
+
+| forecasting from lap 2 | before | after |
+|---|---|---|
+| Hungary ρ | 0.30 | **0.89** |
+| Zandvoort sprint ρ | −0.10 | **0.96** |
+
+I had read that as the model honestly having nothing to fit yet, and written it
+into the previous section as a property of the model. It was arithmetic, again,
+and for the third time it wore the same disguise.
+
+### What it shows
+
+The sprint, stepped, is a readable story rather than a table:
+
+| lap | the model's call |
+|---|---|
+| 2 | RUS 50%, NOR 32%, ANT 14% |
+| 4 | **ANT 45%**, NOR 21%, PIA 17% |
+| 8 | RUS 45%, NOR 26%, ANT 25% |
+| 19 | RUS 59%, NOR 25%, ANT 13% |
+| 20 | RUS 53%, **LEC 21%**, NOR 16% |
+| 24 | RUS 68%, LEC 26% |
+
+Russell won and Leclerc finished second. Antonelli's lap-4 spike faded, and
+Leclerc does not appear at all until lap 20 — the model had no way to know
+about him and then found out, which is exactly what a forecast without
+hindsight looks like from the inside.
+
+### A separate screen, deliberately
+
+Narrate decides both "which session" and "which lap" through a chain of
+microflows. Teaching that chain to lie about the lap, on the morning of a race,
+to add a feature nobody needs during the race, is a trade with the wrong sign
+on it. The replay is its own page reading its own resources, and Narrate was
+not touched.
+
+## 74. The lap counter moved and nothing under it did
+
+Stepping through the replay changed the header — **LAP 24 / 24** — and left
+every panel below it showing lap 2. That is a worse failure than nothing
+happening: a screen where one number moves and the rest does not reads as data
+being *wrong* rather than stale, and it sends you looking in the query.
+
+Two causes, and fixing either alone would have left it broken.
+
+### The commit did not tell the client
+
+`CHANGE $Obj (...) COMMIT` persists and says nothing to the browser. The flag is
+a separate word:
+
+```
+CHANGE $State (AtLap = $State/AtLap + 1) COMMIT REFRESH;
+```
+
+That alone explains the header updating — the data view re-rendered its own
+attributes — and explains nothing about the panels.
+
+### The panels had nothing to depend on
+
+Every grid and chart datasource was parameterless, fetching the state singleton
+itself. **Mendix ties a data widget's redraw to its datasource parameters.**
+With none, there is nothing to invalidate, and the widget will serve the first
+answer it ever received for as long as the page stays open.
+
+This is the trap in writing a datasource microflow that is *convenient* to
+call. `DS_ReplayOrder()` reading the singleton needs no context and can be
+dropped anywhere on the page; `DS_ReplayOrder(State)` has to be given the
+object, and that obligation is exactly what makes it refresh. The awkward
+signature is the working one.
+
+### And a name that is valid in one place and not the other
+
+Binding them, the obvious variable was the data view's own name — which the
+same page already uses, in the expression that highlights the selected session
+chip:
+
+```
+dynamicclasses: 'if $currentObject/sessionKey = $dvReplay/SessionKey then …'
+```
+
+As a **datasource argument** that same `$dvReplay` is refused; it wants
+`$currentObject`. The build reported it as four `Error(s) in expression`
+against the data widgets — pointing at the widgets, not at the word that was
+wrong, and not saying that a name legal twelve lines earlier had become
+illegal.
+
+**A page-level identifier is not one vocabulary.** Styling expressions,
+datasource arguments and page-navigation arguments each accept a different
+subset, and the error message names the widget rather than the rule.
+
+## 75. The runtime was fine; nobody could reach it
+
+> "I cant open the frontend page, is the runtime running?"
+
+It was. Locally everything answered:
+
+```
+frontend local  200
+frontend bundle 200
+backend  odata  200
+```
+
+The failure was between the app and the world. `mxcli run --hub` publishes the
+local port through hub.mxcli.org over a websocket, and at 16:16:14 that socket
+closed abnormally:
+
+```
+client: Connection error: websocket: close 1006 (abnormal closure): unexpected EOF
+client: Connection error: server: Server cannot listen on R:9001=>8180 (Attempt: 1/unlimited)
+```
+
+The hub still had the remote port bound to the session that had just died, so
+every reconnection was refused. The client retried thirty-seven times, thirty
+seconds apart, for twenty minutes, and would have retried forever. Restarting
+the client released the slot and it reconnected on the first try.
+
+### The supervisor had nothing to act on
+
+`keep-app-running.sh` polls `http://localhost:8180/dist/index.js` — deliberately
+the bundle rather than `/`, because §60's lesson was that the SPA shell answers
+200 for a broken app. That check is right about everything it can see and blind
+to this: the runtime was healthy, the bundle was served, and the app was
+unreachable to anyone not on this machine.
+
+The obvious fix — poll the public URL — does not work. **The hub answers its own
+GitHub login redirect for every path, tunnel or no tunnel**, so a 302 means
+nothing:
+
+```
+hub root   302  (redirect: https://hub.mxcli.org/auth/github/login?return=...)
+hub bundle 302   # identical while the tunnel was dead
+```
+
+The only signal that exists is the tunnel client's own log line, so the
+supervisor now takes an optional `FAIL_PATTERN` and treats a match in the
+current run's output as a failed poll:
+
+```
+FAIL_PATTERN='cannot listen' scripts/keep-app-running.sh ...
+```
+
+**"Current run" is load-bearing.** The log is append-only across restarts, so an
+unscoped tail would find the error that caused the previous restart and restart
+again immediately, forever — a watchdog whose own remedy re-triggers it.
+`started pid` is the line the supervisor writes when it launches the child, so
+everything after the last one is this run and nothing else.
+
+### The shape of it
+
+Three health checks in this file now, each added after the previous one proved
+insufficient, and each insufficiency was the same mistake one level out:
+
+| checked | missed |
+|---|---|
+| process alive | runtime terminated by the trial licence (§60) |
+| `/` returns 200 | the SPA shell served with no bundle behind it |
+| `/dist/index.js` returns 200 | the tunnel that carries it to anyone else |
+
+**A health check verifies the layer it names and asserts nothing about the one
+above it.** Each of these was correct and each was answering a narrower question
+than the one that mattered, which is "can someone else load this page".
+
+## 76. Building the narrative found two bugs in data that was already on screen
+
+The Race Narrative screen from the prototype is three views of the same lap read
+across a row. Building it required nothing new to be fetched — every event comes
+from tables the sync filled during the race — and that is exactly why it was
+worth building: **assembling old data into a new shape is a test of the old
+data**, and this one failed twice.
+
+### The stop that never happened
+
+A pit window is three or more cars stopping on one lap, so the builder counted
+stops per lap. Lap 2 of the Dutch Grand Prix came back with **twenty-one**.
+
+They are real records in the feed, and they are not stops:
+
+| | lap 2 | every other lap |
+|---|---:|---:|
+| records | 21 | 44 |
+| median `lane_duration` | **1,571 s** | 18 s |
+
+Twenty-six minutes in the pit lane is the drive to parc fermé *after the
+chequered flag*, which OpenF1 dates to lap 2. Taken at face value it is a
+phantom stop for almost the whole field, and it had been counted since the
+first race we captured:
+
+- every car's stop count in the classification was **one too high**
+- the forecaster's in-lap and out-lap filters were excluding the wrong laps
+- worse, `compounds_used` believed cars had already served a stop they still
+  owed, which is a direct input to how many stops it projects
+
+The fix is the same shape as the pit-loss clamp two sections ago: **a record
+outside the range the thing it claims to be can occupy is rejected, not
+believed.**
+
+### The lap number that was never there
+
+The story panel has been rendering `SAI passed ALB for P16 on lap` — with
+nothing after "lap" — since it was built. The cause is one line:
+
+```
+j.lap_number AS lapNumber
+```
+
+Every other OpenF1 endpoint reports a lap number. **The overtakes endpoint does
+not** — it carries only a timestamp. So the field was read, came back null for
+all 292 passes of a grand prix, and was stored as null, faithfully.
+
+Nothing failed. A missing field in a JSON payload is indistinguishable from a
+field that is present and empty, and the only symptom was a sentence that
+trailed off on a screen nobody was reading closely.
+
+The lap table has a start time for every lap of every car, so the pass belongs
+to whichever of the overtaking car's laps was running when it happened — an
+ASOF join, three lines, and 291 of 292 placed. The remaining one is before the
+first lap start.
+
+### `div` is not integer division
+
+Written for this screen, and caught only by reading the output:
+
+```
+DECLARE $One Long = round($N - (($N div 10) * 10));   -- always 0
+```
+
+`div` returns a Decimal, so `($N div 10) * 10` is `$N` again and the remainder
+is always zero. Every ordinal came out `th`: "running 22th", "takes 1th from".
+`floor($N div 10) * 10` is what makes it a modulo.
+
+The checker had warned that `div` yields a Decimal and I read that as a *typing*
+problem, fixed it with `round()`, and moved on — round() silenced the error and
+preserved the bug. **A cast that satisfies the compiler is not a fix for
+arithmetic that was wrong before the cast.**
+
+### What the shape of the screen forced
+
+The design's claim is that a row means one lap in all three panels. A Mendix
+list view's rows flow and cannot be pinned to a lap, so the event column is a
+chart too — text marks on the same lap scale, at the same height, as the
+position lines and the probability bands.
+
+That costs the prototype's wrapped two-line event text, because a Vega text
+mark does not wrap. It is the right trade only because the alignment *is* the
+design: three panels that happen to be about the same race is a layout, and
+three panels where the line you are reading is level with the crossing that
+caused it is the idea.
+
+### The events agree with each other
+
+Worth stating because it is the closest thing to a correctness proof available
+here. Lead changes are derived from the car in P1 differing between laps.
+Battles are derived from a separate feed, the overtakes endpoint, which knows
+nothing about the lap table. They agree without being made to:
+
+```
+l5   battle   Kimi ANTONELLI takes the lead from Lando NORRIS.
+l5   lead     Kimi ANTONELLI leads, from Lando NORRIS.
+```
+
+Two independent derivations landing on the same lap with the same two drivers is
+evidence that both are right — and the one place they disagreed was where the
+overtake had no lap to be placed on, which is how the second bug was found.
+
+## 77. Three charts, three ways a specification can be quietly wrong
+
+The narrative screen shipped and looked broken in three different ways at once,
+none of which the headless checker flags, because all three specifications are
+*valid*. They compile, they render, they produce marks. They just do not draw
+what the numbers mean.
+
+### A line connects in x order, whichever axis the story runs along
+
+Position by lap is rotated: position is x, lap is y, so a car's race is read
+downward. Drawn as a line, it came out as nested rectangles — the reader called
+it a bar chart, which is exactly what it looked like.
+
+**Vega-Lite connects a line's points in the order of its x channel.** With x as
+position, it joined lap 12 to lap 47 because both were in P3, and the result is
+a staircase enclosing a shape. The fix is one channel:
+
+```json
+"order": {"field": "lap", "type": "quantitative"}
+```
+
+The rule: **on any chart whose progression is not the x axis, `order` is not
+decoration, it is the thing that makes the line a line.**
+
+### `stack: normalize` is a no-op when it has nothing to group by
+
+The win-probability panel should be one 100%-wide band per lap. It rendered as
+a field of small disconnected stripes.
+
+Stacking needs a discrete group to stack *within*. This chart's y is continuous
+— it has to be, to share a lap scale with the two panels beside it — so
+Vega-Lite had no grouping and every segment was drawn from zero at its own
+width. No warning: `stack` on a continuous-y bar is silently dropped.
+
+Proved with a five-lap, four-car probe before changing anything, because the
+alternative was guessing at a 71-row chart.
+
+The fix is to stop asking the chart to do it. The microflow already walks the
+rows in lap order, so it emits `x0` and `x1` as a running total and the bar
+becomes a plain range with no transform at all. **Computing the layout where
+the data is assembled is more robust than asking a declarative grammar for it,
+whenever the grammar's preconditions are subtle.**
+
+### Text marks do not know about each other
+
+Eleven of the race's events share a lap with another, and lap 1 has eight. Drawn
+at their true lap they printed on top of one another.
+
+Nothing in a chart grammar solves this: a text mark is placed where its data
+says, and collision is not its problem. So the de-collision is in the microflow
+— walk the events in lap order, push each one down until it clears the last —
+and each event carries two numbers, the lap it happened on and the slot it is
+drawn at, with a hairline rule between them when they differ.
+
+That is what the prototype does, and it says so on the page: *"a hairline means
+it was moved to fit"*. The design had already solved a problem I had not yet
+had.
+
+### What the three have in common
+
+Each was a specification that was locally correct and globally meaningless, and
+none produced a warning. The checker measures that marks exist and how many;
+it cannot know that a line joining lap 12 to lap 47 is nonsense.
+
+**A headless check proves a chart compiles. Only the numbers prove it is
+about anything.** All three of these needed the data in front of them — one
+needed a deliberate probe, and one needed a screenshot from someone looking at
+it.
+
+## 78. Upgrading Mendix headlessly, and the schema hash that decides whether you can
+
+Moving 11.13.0 → 11.14.0 with no Studio Pro anywhere. The whole question is
+whether the model needs converting or only relabelling, and there is a single
+artefact that answers it.
+
+### The version is one column, and that is a trap
+
+`.mpr` is SQLite. The version lives in `_MetaData`:
+
+```
+_FormatVersion  _ProductVersion  _BuildVersion  _SchemaHash
+2               11.13.0          11.13.0        {SHA256}5Fk35jOy…
+```
+
+One `UPDATE` would make the project *claim* 11.14. Whether that is an upgrade or
+a corruption is decided by the fourth column. Creating a blank 11.14 project and
+comparing settled it in one command:
+
+```
+11.14 blank : {SHA256}o9B9S8lorV9RD5gY9B6j1bJp4ALW87u4newnreIbRAg=
+ours (11.13): {SHA256}5Fk35jOyzj+cWnJe9ZkGWQjMEzsge3nIzS2zxH9jp6M=
+```
+
+**Different.** The model schema changed between the two, so 517 units stored
+against the old schema would be read against the new one — exactly what the
+version check exists to prevent. Stamping the column was off the table.
+
+### MxBuild does not convert, and its escape hatch is a trap too
+
+```
+ERROR: Project version '11.13.0' does not exactly match MxBuild version
+'11.14.0'. Use loose version check option for less strict version checking.
+```
+
+`--loose-version-check` makes that build succeed — and it is not an upgrade.
+The build passed, and the project was still 11.13.0 afterwards: the flag
+suppresses the check, it does not run a converter. A green build is not
+evidence of anything here.
+
+### `mx convert` is the converter, and mxcli does not wrap it
+
+The tool beside `mxbuild` has it:
+
+```
+mx convert --in-place Formula1Backend
+```
+
+0 errors, 65 warnings, 2 deprecations for the backend; 0 errors and 56 warnings
+for the frontend. Crucially it **preserved MPR v2** — 517 units and 517
+`.mxunit` sidecars before and after — which is not a given: FINDINGS' own
+account of `mxcli fix` exists because `mx update-widgets` and
+`mx rename-design-properties` collapse v2 into a 39 MB v1 file as a side effect.
+`mx convert` does not. Verified on a copy before touching the real project.
+
+The converted copy's schema hash then matched the blank 11.14 reference exactly,
+which is the check that the conversion actually happened rather than merely
+being claimed.
+
+### The version upgrade drags the tool with it
+
+The apps then would not start:
+
+```
+Error: bundling web client: no rollup.config.mjs in …/deployment/web
+       (run a serve Deploy build first)
+```
+
+Not stale output — deleting `deployment/` and running a full `--target=deploy`
+did not produce that file either, because **11.14's MxBuild bundles the web
+client itself**. The separate rollup step mxcli used to run no longer has
+anything to configure. The mxcli built four days earlier says so plainly:
+
+```
+Web client already bundled by mxbuild; skipping rollup step
+```
+
+So the Mendix upgrade was not a Mendix-only upgrade. **A runtime version and its
+tooling move together**, and the failure surfaced as a missing config file
+rather than as anything mentioning a version.
+
+### What to check after, and what not to touch
+
+The one thing worth being anxious about was §6: the `BYOD` connection type is
+what lets DuckDB in, and it is not in Mendix's own documented picker. It
+survived — a full sync cycle on 11.14 fetched 1,369 laps, parsed them through
+DuckDB and wrote all 1,369, with zero `ExternalDatabaseConnector` errors.
+
+A side effect worth recording: with the newer mxcli, six of the seven scripts
+that used to fail `check` with forward-reference errors now pass. The remaining
+one is `03-persistent-entities.mdl`, which uses `create persistent entity` for
+entities that already exist — a first-run-only script, and correct to fail.
+
+Only two lines in the docs changed: the version in the README and in this
+file's header table. The version numbers inside the older findings stay as they
+are — each records what was true when it was written, and editing them to match
+today would turn a lab notebook into a brochure.
+
+## 79. The upgrade wants a skill, and the bar it has to clear
+
+*Not written yet. This records the case for it and the shape it should take,
+so the next session does not have to re-derive either.*
+
+§78 cost most of a session and produced about six things worth knowing. The
+question is whether that belongs in a skill or stays as prose here, and this
+project has already answered it twice.
+
+### The bar, set by the two skills that exist
+
+`mendix-vega-charts` and `mendix-odata-pushdown` are both about tasks that are
+not especially hard. They exist because the failure is **silent**. The pushdown
+skill's own description names the symptom: *"a published resource returns 200
+with the wrong rows and nothing appears in the log."* §77 is the chart version
+of the same thing — three specifications that compiled, rendered, and meant
+nothing.
+
+A headless version upgrade clears that bar twice over, and more dangerously,
+because both false successes are *green*:
+
+| what you do | what you see | what is true |
+|---|---|---|
+| `mxbuild --loose-version-check` | `BUILD SUCCEEDED` | still 11.13.0 |
+| `UPDATE _MetaData SET _ProductVersion` | project reports 11.14, mxcli agrees | 517 units read against the wrong schema |
+
+The first one is not hypothetical: it is what happened here, and it took going
+back to look at the version column to notice that a successful build had
+upgraded nothing.
+
+### What generalises, and what does not
+
+Most of §78 is about one version pair and will be wrong next time. The
+web-client bundling change is 11.13→11.14 and will not recur. A skill that
+encodes the *procedure* is a skill that misleads on the next upgrade.
+
+What generalises is a decision procedure and three traps:
+
+1. **`_SchemaHash` decides.** Create a blank project at the target version and
+   compare that column against the project's. Same → the version is a label and
+   can be set. Different → a converter must run. One command, and it is the only
+   thing that actually answers the question.
+2. **`mx convert` is the converter**, it sits beside `mxbuild`, mxcli does not
+   wrap it, and unlike `update-widgets` and `rename-design-properties` it
+   preserves MPR v2 — verify by counting units and `.mxunit` sidecars either
+   side, because that is exactly what a sibling tool gets wrong.
+3. **A runtime version and its tooling move together.** Here it surfaced as a
+   missing `rollup.config.mjs`, mentioning no version anywhere.
+
+Plus the discipline that made it safe rather than lucky: convert a **copy**
+first, confirm the copy's hash matches the reference, and only then touch the
+real project.
+
+### The caveat that should go in the skill itself
+
+This has been done **once**, on **one** version pair, by one person. A skill
+written from a single instance risks encoding coincidence as rule. So the
+decision procedure is the load-bearing part, and the 11.13→11.14 specifics
+belong in it as *what happened once* rather than *what happens* — clearly
+marked as such, so the next upgrade checks them rather than trusting them.
+
+### Shape
+
+`.claude/skills/packs/` rather than the project's own skill directory, because
+none of it is specific to this solution — any mxcli project upgrading without
+Studio Pro hits the same three traps. Around 140 lines, matching the other two,
+with no `references/` directory: there is not yet enough evidence to fill one.

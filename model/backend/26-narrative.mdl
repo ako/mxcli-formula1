@@ -1,0 +1,547 @@
+/*
+ * The race narrative.
+ * ===================
+ *
+ * A race told as a list of things that happened, each pinned to the lap it
+ * happened on, beside the position chart and the win-probability bands for the
+ * same lap. The design is prototypes/"Race Narrative.dc.html"; this is the
+ * half of it that is data.
+ *
+ * Nothing here is fetched and nothing here is new information. Every event is
+ * derived from tables the sync already filled during the race:
+ *
+ *   retirement   a car whose last lap is three or more behind the leader's
+ *   lead         the car in P1 changing between one lap and the next
+ *   flag         LiveMessageRow, safety cars and the flags that are not noise
+ *   steward      the messages that ended in a penalty or a deleted lap
+ *   pit          laps where enough cars stopped to call it a window
+ *   battle       LiveOvertake, where the position gained is one that matters
+ *   model        the laps where the forecast changed its mind
+ *
+ * The prototype hand-writes its event text as narration -- "the orange
+ * grandstands go quiet". These sentences are assembled from the row instead.
+ * That is a real loss and the honest trade: a generated line can say what
+ * happened and cannot say what it felt like, and inventing the second from the
+ * first is exactly the failure the provenance note on the live screen warns
+ * about.
+ *
+ * ---------------------------------------------------------- why it is stored
+ *
+ * Built once per session into a table and published from source, rather than
+ * derived per request. A narrative is of a race that has finished, so it is
+ * computed once; and publishing from source is what lets the screen filter to
+ * one session as an indexed query instead of building every race's events and
+ * discarding all but one.
+ */
+
+/* ------------------------------------------------------------- the table -- */
+
+create or modify persistent entity Formula1Backend.LiveNarrative (
+  RowId: autonumber default 1 unique error 'LiveNarrative row id must be unique',
+  SessionKey: string(20),
+  Lap: long,
+  /* retirement · lead · flag · steward · pit · battle · model */
+  Kind: string(20),
+  Headline: string(300),
+  /* Percentage points the winner's chance moved, for the model events; 0 for
+   * the rest. Kept signed -- the direction is most of the meaning. */
+  Swing: long,
+  SwingCode: string(10),
+  /* The events the design draws a full-width rule against: the ones that
+   * changed the race rather than described it. */
+  Major: boolean,
+  BuiltAt: datetime
+) index (SessionKey);
+
+/* A swing, before it has been decided whether it is real. */
+create or modify non-persistent entity Formula1Backend.Stg_Swing (
+  DriverNumber: long, Code: string(10), Lap: long, Points: long, Keep: boolean
+);
+
+/* One car's stop, on its way to being counted into a window. */
+create or modify non-persistent entity Formula1Backend.Stg_Stop (
+  Lap: long
+);
+
+/* ------------------------------------------------------------- the parts -- */
+
+/*
+ * "22nd", not "22th".
+ *
+ * English ordinals are regular except for the teens, which take 'th' despite
+ * ending in 1, 2 and 3. Worth the eight lines: a generated sentence with a
+ * wrong ordinal in it reads as machine output, and the whole point of this
+ * panel is that it reads as an account of a race.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Ordinal (
+  $N: Long
+)
+  RETURNS String AS $Text
+BEGIN
+  DECLARE $Text String = toString($N) + 'th';
+  /* `div` is division, not integer division -- it returns a Decimal, so
+   * ($N div 100) * 100 is $N again and the remainder was always zero. floor()
+   * is what makes it a modulo, and without it every ordinal came out 'th':
+   * "22th", "takes 1th from". */
+  DECLARE $Ten Long = round($N - (floor($N div 100) * 100));
+  IF $Ten < 11 OR $Ten > 13 THEN
+    DECLARE $One Long = round($N - (floor($N div 10) * 10));
+    IF $One = 1 THEN SET $Text = toString($N) + 'st'; END IF;
+    IF $One = 2 THEN SET $Text = toString($N) + 'nd'; END IF;
+    IF $One = 3 THEN SET $Text = toString($N) + 'rd'; END IF;
+  END IF;
+  RETURN $Text;
+END;
+
+/*
+ * Retirements.
+ *
+ * There is no retirement flag in the lap feed, so it is inferred the same way
+ * the forecaster infers it: a car whose last completed lap is three or more
+ * behind the leader has stopped. Three rather than one, because a car that has
+ * simply not crossed the line yet is one lap behind for perfectly ordinary
+ * reasons.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Retirements (
+  $SessionKey: String,
+  $MaxLap: Long
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $SessionKey;
+  LOOP $D IN $Drivers BEGIN
+    RETRIEVE $Last FROM Formula1Backend.LiveLap
+      WHERE SessionKey = $SessionKey and DriverNumber = $D/DriverNumber
+      SORT BY LapNumber DESC LIMIT 1;
+    IF $Last != empty AND $Last/LapNumber <= $MaxLap - 3 THEN
+      DECLARE $Where String = '';
+      IF $Last/Position != empty THEN
+        $Ord = CALL MICROFLOW Formula1Backend.Nar_Ordinal(N = $Last/Position);
+        SET $Where = ', running ' + $Ord;
+      END IF;
+      $Row = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $Last/LapNumber, Kind = 'retirement',
+        Headline = $D/DriverName + ' is out on lap ' + toString($Last/LapNumber)
+                   + $Where + '. ' + toString($MaxLap - $Last/LapNumber)
+                   + ' laps still to run.',
+        Swing = 0, Major = true, BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+  END LOOP;
+  RETURN $Made;
+END;
+
+/*
+ * Lead changes.
+ *
+ * The car in P1 differing from the car in P1 on the previous lap. This counts
+ * changes made in the pits as well as on track, which is right: the lead is
+ * the lead however it was taken, and at Zandvoort the two are hard to tell
+ * apart from timing alone.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_LeadChanges (
+  $SessionKey: String
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Leaders FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $SessionKey and Position = 1 SORT BY LapNumber ASC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $SessionKey;
+
+  DECLARE $Prev Long = -1;
+  LOOP $L IN $Leaders BEGIN
+    IF $Prev != -1 AND $L/DriverNumber != $Prev THEN
+      $New = FIND($Drivers, DriverNumber = $L/DriverNumber);
+      $Old = FIND($Drivers, DriverNumber = $Prev);
+      DECLARE $NewName String = 'car ' + toString($L/DriverNumber);
+      DECLARE $OldName String = 'car ' + toString($Prev);
+      IF $New != empty THEN SET $NewName = $New/DriverName; END IF;
+      IF $Old != empty THEN SET $OldName = $Old/DriverName; END IF;
+      $Row = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $L/LapNumber, Kind = 'lead',
+        Headline = $NewName + ' leads, from ' + $OldName + '.',
+        Swing = 0, Major = true, BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+    SET $Prev = $L/DriverNumber;
+  END LOOP;
+  RETURN $Made;
+END;
+
+/*
+ * Flags and the stewards.
+ *
+ * The message feed is mostly noise by volume: of 333 messages in this race,
+ * 111 are blue flags telling a lapped car to move and 117 are sector flags
+ * clearing and re-setting. What is left is the safety car, the race starting
+ * and ending, and the decisions that changed a result.
+ *
+ * Everything is deduplicated to one row per lap per kind, because a double
+ * yellow is reported once per affected sector and reads as four events.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Flags (
+  $SessionKey: String
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Msgs FROM Formula1Backend.LiveMessageRow
+    WHERE SessionKey = $SessionKey SORT BY At ASC;
+
+  DECLARE $SeenSafety String = '|';
+  DECLARE $SeenYellow String = '|';
+  LOOP $M IN $Msgs BEGIN
+    DECLARE $Up String = toUpperCase($M/Message);
+    DECLARE $Key String = '|' + toString($M/Lap) + '|';
+
+    IF $M/Category = 'SafetyCar' AND contains($SeenSafety, $Key) = false THEN
+      $S = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $M/Lap, Kind = 'flag',
+        Headline = $M/Message, Swing = 0, Major = true,
+        BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $SeenSafety = $SeenSafety + toString($M/Lap) + '|';
+      SET $Made = $Made + 1;
+    END IF;
+
+    /* A penalty or a deleted lap changes a result; an incident "noted" or
+     * "reviewed, no further investigation" does not.
+     *
+     * Race control writes for a timing screen, not for a line of prose: "FIA
+     * STEWARDS: 10 SECOND TIME PENALTY FOR CAR 55 (SAI) - CAUSING A COLLISION
+     * (17:04:55)" is 88 characters of which the first fourteen and the last
+     * eleven carry nothing. The prefix and the trailing clock go. */
+    IF contains($Up, 'PENALTY') OR contains($Up, 'DELETED') THEN
+      DECLARE $Txt String = trim($M/Message);
+      IF startsWith(toUpperCase($Txt), 'FIA STEWARDS:') THEN
+        SET $Txt = trim(substring($Txt, 13));
+      END IF;
+      /* A trailing wall-clock: "... AT TURN 3 LAP 57 16:50:48". Matched by
+       * shape rather than searched, because Mendix has no lastIndexOf. */
+      IF length($Txt) > 12 AND substring($Txt, length($Txt) - 9, 1) = ' '
+         AND substring($Txt, length($Txt) - 6, 1) = ':' THEN
+        SET $Txt = trim(substring($Txt, 0, length($Txt) - 9));
+      END IF;
+      /* And the same clock in brackets: "... INFRINGEMENT (15:04:49)". */
+      IF length($Txt) > 14 AND endsWith($Txt, ')')
+         AND substring($Txt, length($Txt) - 11, 2) = ' (' THEN
+        SET $Txt = trim(substring($Txt, 0, length($Txt) - 11));
+      END IF;
+      $P = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $M/Lap, Kind = 'steward',
+        Headline = $Txt, Swing = 0, Major = false,
+        BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+
+    IF ($M/Flag = 'RED' OR $M/Flag = 'CHEQUERED' OR $M/Flag = 'GREEN')
+       AND contains($Up, 'TRACK SECTOR') = false THEN
+      $F = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $M/Lap, Kind = 'flag',
+        Headline = $M/Message, Swing = 0, Major = ($M/Flag != 'GREEN'),
+        BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+
+    IF $M/Flag = 'DOUBLE YELLOW' AND contains($SeenYellow, $Key) = false THEN
+      $Y = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $M/Lap, Kind = 'flag',
+        Headline = $M/Message, Swing = 0, Major = false,
+        BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $SeenYellow = $SeenYellow + toString($M/Lap) + '|';
+      SET $Made = $Made + 1;
+    END IF;
+  END LOOP;
+  RETURN $Made;
+END;
+
+/*
+ * Pit windows.
+ *
+ * One car stopping is not an event; eleven cars stopping on the same lap is
+ * the race changing shape. A stop is a lap on which a driver's stop count went
+ * up, and a window is three or more of them landing together.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Pits (
+  $SessionKey: String
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Laps FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $SessionKey SORT BY DriverNumber ASC, LapNumber ASC;
+
+  /*
+   * Every lap on which somebody's stop count went up.
+   *
+   * The list is walked once in driver-then-lap order, so "the previous row" is
+   * the same car's previous lap except at each boundary, where the count is
+   * reset.
+   */
+  $Stops = CREATE LIST OF Formula1Backend.Stg_Stop;
+  DECLARE $PrevDriver Long = -1;
+  DECLARE $PrevStops Long = 0;
+  LOOP $L IN $Laps BEGIN
+    IF $L/DriverNumber != $PrevDriver THEN
+      SET $PrevStops = 0;
+      SET $PrevDriver = $L/DriverNumber;
+    END IF;
+    IF $L/PitStops != empty AND $L/PitStops > $PrevStops THEN
+      $S = CREATE Formula1Backend.Stg_Stop (Lap = $L/LapNumber);
+      ADD $S TO $Stops;
+      SET $PrevStops = $L/PitStops;
+    END IF;
+  END LOOP;
+
+  /*
+   * Then count runs of the same lap.
+   *
+   * Sorted and walked rather than searched. The first version tallied laps
+   * into a string and counted substrings, which quietly counted lap 1 once for
+   * every lap 11, 12 and 13 as well.
+   */
+  $Sorted = SORT($Stops, Lap);
+  DECLARE $Run Long = 0;
+  DECLARE $At Long = -1;
+  LOOP $T IN $Sorted BEGIN
+    IF $T/Lap != $At THEN
+      IF $Run >= 3 THEN
+        $W = CREATE Formula1Backend.LiveNarrative (
+          SessionKey = $SessionKey, Lap = $At, Kind = 'pit',
+          Headline = toString($Run) + ' cars stop.',
+          Swing = 0, Major = ($Run >= 6), BuiltAt = [%CurrentDateTime%]) COMMIT;
+        SET $Made = $Made + 1;
+      END IF;
+      SET $At = $T/Lap;
+      SET $Run = 0;
+    END IF;
+    SET $Run = $Run + 1;
+  END LOOP;
+  /* The last run has no boundary after it to close it. */
+  IF $Run >= 3 THEN
+    $Wl = CREATE Formula1Backend.LiveNarrative (
+      SessionKey = $SessionKey, Lap = $At, Kind = 'pit',
+      Headline = toString($Run) + ' cars stop.',
+      Swing = 0, Major = ($Run >= 6), BuiltAt = [%CurrentDateTime%]) COMMIT;
+    SET $Made = $Made + 1;
+  END IF;
+  RETURN $Made;
+END;
+
+/*
+ * Overtakes that were for something.
+ *
+ * There were 292 in this race. All of them are stored and almost none of them
+ * belong in a narrative: a pass for fourteenth between two cars a lap down is
+ * a fact, not a story beat. Only passes into the top six are kept.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Overtakes (
+  $SessionKey: String
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Passes FROM Formula1Backend.LiveOvertake
+    WHERE SessionKey = $SessionKey SORT BY LapNumber ASC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $SessionKey;
+
+  LOOP $O IN $Passes BEGIN
+    IF $O/Position != empty AND $O/Position <= 6 AND $O/LapNumber != empty THEN
+      $A = FIND($Drivers, DriverNumber = $O/OvertakingDriver);
+      $B = FIND($Drivers, DriverNumber = $O/OvertakenDriver);
+      DECLARE $An String = 'car ' + toString($O/OvertakingDriver);
+      DECLARE $Bn String = 'car ' + toString($O/OvertakenDriver);
+      IF $A != empty THEN SET $An = $A/DriverName; END IF;
+      IF $B != empty THEN SET $Bn = $B/DriverName; END IF;
+      $Pos = CALL MICROFLOW Formula1Backend.Nar_Ordinal(N = $O/Position);
+      /* P1 has a name of its own, and "takes 1st" is not it. */
+      IF $O/Position = 1 THEN
+        SET $Pos = 'the lead';
+      END IF;
+      $Row = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $O/LapNumber, Kind = 'battle',
+        Headline = $An + ' takes ' + $Pos + ' from ' + $Bn + '.',
+        Swing = 0, Major = ($O/Position <= 2), BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+  END LOOP;
+  RETURN $Made;
+END;
+
+/*
+ * The laps the forecast changed its mind.
+ *
+ * The prototype fires a callout on any swing above six points. Run against a
+ * real Monte Carlo that is a disaster: over the first eight laps of this race
+ * the model gave Lindblad 78 points and took 83 back the lap after, which is
+ * not a race event, it is a regression fitted on four laps. Three conditions
+ * instead of one:
+ *
+ *   magnitude   fifteen points, not six
+ *   evidence    at least ten clean laps behind the estimate -- the same
+ *               LapsUsed the forecast screen carries for the same reason
+ *   persistence a swing that reverses within two laps is an artefact of the
+ *               simulation, not a change in the race
+ *
+ * The third is what removes Tsunoda gaining 34 points on lap 46 and losing 34
+ * on lap 47 with nothing whatever happening in between.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Swings (
+  $SessionKey: String
+)
+  RETURNS Integer AS $Made
+BEGIN
+  DECLARE $Made Integer = 0;
+  RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $SessionKey SORT BY DriverNumber ASC, AtLap ASC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $SessionKey;
+
+  $Cand = CREATE LIST OF Formula1Backend.Stg_Swing;
+  DECLARE $Who Long = -1;
+  DECLARE $PrevP Decimal = 0;
+  LOOP $F IN $Fcst BEGIN
+    IF $F/DriverNumber != $Who THEN
+      SET $Who = $F/DriverNumber;
+      SET $PrevP = -1;
+    END IF;
+    IF $PrevP >= 0 AND $F/LapsUsed != empty AND $F/LapsUsed >= 10
+       AND $F/PWin + $PrevP > 0.10
+       AND ($F/PWin - $PrevP >= 0.15 OR $PrevP - $F/PWin >= 0.15) THEN
+      $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+      DECLARE $Code String = toString($F/DriverNumber);
+      IF $D != empty AND trim($D/Code) != '' THEN SET $Code = $D/Code; END IF;
+      $S = CREATE Formula1Backend.Stg_Swing (
+        DriverNumber = $F/DriverNumber, Code = $Code, Lap = $F/AtLap,
+        Points = round(($F/PWin - $PrevP) * 100), Keep = true);
+      ADD $S TO $Cand;
+    END IF;
+    SET $PrevP = $F/PWin;
+  END LOOP;
+
+  /* Persistence: drop any pair that undoes itself inside two laps. */
+  LOOP $X IN $Cand BEGIN
+    LOOP $Y IN $Cand BEGIN
+      IF $X/DriverNumber = $Y/DriverNumber AND $X/Lap != $Y/Lap
+         AND $Y/Lap - $X/Lap <= 2 AND $Y/Lap - $X/Lap >= -2
+         AND ($X/Points * $Y/Points) < 0 THEN
+        CHANGE $X (Keep = false);
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  LOOP $Z IN $Cand BEGIN
+    IF $Z/Keep THEN
+      DECLARE $Dir String = 'lengthens';
+      IF $Z/Points > 0 THEN SET $Dir = 'shortens'; END IF;
+      $Row = CREATE Formula1Backend.LiveNarrative (
+        SessionKey = $SessionKey, Lap = $Z/Lap, Kind = 'model',
+        Headline = 'The forecast ' + $Dir + ' for ' + $Z/Code + '.',
+        Swing = $Z/Points, SwingCode = $Z/Code,
+        Major = ($Z/Points >= 30 OR $Z/Points <= -30),
+        BuiltAt = [%CurrentDateTime%]) COMMIT;
+      SET $Made = $Made + 1;
+    END IF;
+  END LOOP;
+  RETURN $Made;
+END;
+
+/* -------------------------------------------------------------- the build -- */
+
+CREATE OR REPLACE MICROFLOW Formula1Backend.Narrative_Build (
+  $SessionKey: String
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  RETRIEVE $Top FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $SessionKey SORT BY LapNumber DESC LIMIT 1;
+  IF $Top = empty THEN
+    SET $Result = 'session ' + $SessionKey + ': no laps';
+    RETURN $Result;
+  END IF;
+  RETRIEVE $HasFcst FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $SessionKey LIMIT 1;
+  IF $HasFcst = empty THEN
+    SET $Result = 'session ' + $SessionKey + ': no forecast, not a race';
+    RETURN $Result;
+  END IF;
+
+  /* Rebuilt whole rather than appended to, so a change to any of the rules
+   * below takes effect everywhere rather than only on the laps run since. */
+  RETRIEVE $Old FROM Formula1Backend.LiveNarrative WHERE SessionKey = $SessionKey;
+  LOOP $O IN $Old BEGIN
+    DELETE $O;
+  END LOOP;
+
+  $A = CALL MICROFLOW Formula1Backend.Nar_Retirements(
+    SessionKey = $SessionKey, MaxLap = $Top/LapNumber);
+  $B = CALL MICROFLOW Formula1Backend.Nar_LeadChanges(SessionKey = $SessionKey);
+  $C = CALL MICROFLOW Formula1Backend.Nar_Flags(SessionKey = $SessionKey);
+  $D = CALL MICROFLOW Formula1Backend.Nar_Pits(SessionKey = $SessionKey);
+  $E = CALL MICROFLOW Formula1Backend.Nar_Overtakes(SessionKey = $SessionKey);
+  $F = CALL MICROFLOW Formula1Backend.Nar_Swings(SessionKey = $SessionKey);
+
+  SET $Result = 'session ' + $SessionKey + ': ' + toString($A + $B + $C + $D + $E + $F)
+    + ' events (' + toString($A) + ' out, ' + toString($B) + ' lead, '
+    + toString($C) + ' flag, ' + toString($D) + ' pit, ' + toString($E)
+    + ' pass, ' + toString($F) + ' model)';
+  LOG INFO NODE 'F1Narrative' $Result;
+  RETURN $Result;
+END;
+
+/*
+ * Build a narrative for any race that has a forecast and does not have one.
+ *
+ * The test is whether the race has finished, not whether it is the one the
+ * sync is pointed at.
+ *
+ * Skipping the sync target was the first version and it was wrong in exactly
+ * the case that matters: the sync stays parked on a race long after it ends,
+ * so the race with the best story in the database was the one session that
+ * could never get a narrative. What the guard is actually for is not writing
+ * events for a race that is still producing them, and "has run its full
+ * distance" says that directly -- the same test the forecaster uses to decide
+ * it has nothing left to forecast.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Narrative_Sweep ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = 'nothing to build';
+
+  RETRIEVE $Sessions FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC;
+  LOOP $S IN $Sessions BEGIN
+    DECLARE $Done Boolean = false;
+    $Total = CALL MICROFLOW Formula1Backend.Fcst_RaceLength(Session = $S);
+    IF $Total > 0 THEN
+      RETRIEVE $Far FROM Formula1Backend.LiveLap
+        WHERE SessionKey = $S/SessionKey SORT BY LapNumber DESC LIMIT 1;
+      IF $Far != empty AND $Far/LapNumber >= $Total THEN
+        SET $Done = true;
+      END IF;
+    END IF;
+
+    IF $Result = 'nothing to build' AND $Done THEN
+      RETRIEVE $Have FROM Formula1Backend.LiveNarrative
+        WHERE SessionKey = $S/SessionKey LIMIT 1;
+      IF $Have = empty THEN
+        $Built = CALL MICROFLOW Formula1Backend.Narrative_Build(
+          SessionKey = $S/SessionKey);
+        IF contains($Built, 'no laps') = false
+           AND contains($Built, 'not a race') = false THEN
+          SET $Result = $Built;
+        END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  RETURN $Result;
+END;
+
+CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_NarrativeBuild (
+  Microflow: Formula1Backend.Narrative_Sweep,
+  Enabled: true,
+  Repeat: Minutely,
+  Multiplier: 5,
+  TimeZone: Server
+);

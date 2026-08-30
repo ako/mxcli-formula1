@@ -302,6 +302,58 @@ authentication microflow Formula1Backend.AuthenticateApiClient
     X as 'x' (Filterable, Sortable),
     Y as 'y' (Filterable, Sortable)
   );
+  /*
+   * The forecast, every lap of every session it has been run for.
+   *
+   * Published from source rather than through a microflow, so a client asking
+   * for one session at one lap is one indexed query rather than a scan the
+   * runtime filters afterwards. That is what makes stepping through a race
+   * feel like stepping rather than waiting.
+   */
+  publish entity Formula1Backend.LiveForecast as 'Forecast' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    AtLap as 'atLap' (Filterable, Sortable),
+    DriverNumber as 'driverNumber' (Filterable, Sortable),
+    LapsRemaining as 'lapsRemaining' (Filterable, Sortable),
+    StopsLeft as 'stopsLeft' (Filterable, Sortable),
+    LapsUsed as 'lapsUsed' (Filterable, Sortable),
+    BasePace as 'basePace' (Filterable, Sortable),
+    DegPerLap as 'degPerLap' (Filterable, Sortable),
+    PitLoss as 'pitLoss' (Filterable, Sortable),
+    MeanPosition as 'meanPosition' (Filterable, Sortable),
+    MedianPosition as 'medianPosition' (Filterable, Sortable),
+    PWin as 'pWin' (Filterable, Sortable),
+    PPodium as 'pPodium' (Filterable, Sortable),
+    PPoints as 'pPoints' (Filterable, Sortable),
+    BestCase as 'bestCase' (Filterable, Sortable),
+    WorstCase as 'worstCase' (Filterable, Sortable),
+    ProjectedTime as 'projectedTime' (Filterable, Sortable),
+    ComputedAt as 'computedAt' (Filterable, Sortable)
+  );
+  /*
+   * The race narrative: one row per event, built in 26-narrative.mdl. From
+   * source, so the screen filters to one session as an indexed query.
+   */
+  publish entity Formula1Backend.LiveNarrative as 'Narrative' (
+    InsertMode: not_supported, UpdateMode: not_supported,
+    DeleteMode: not_supported, Countable: Yes
+  )
+  expose (
+    RowId as 'rowId' (KEY, Filterable, Sortable),
+    SessionKey as 'sessionKey' (Filterable, Sortable),
+    Lap as 'lap' (Filterable, Sortable),
+    Kind as 'kind' (Filterable, Sortable),
+    Headline as 'headline' (Filterable, Sortable),
+    Swing as 'swing' (Filterable, Sortable),
+    SwingCode as 'swingCode' (Filterable, Sortable),
+    Major as 'major' (Filterable, Sortable),
+    BuiltAt as 'builtAt' (Filterable, Sortable)
+  );
   publish entity Formula1Backend.LiveSyncRun as 'SyncRuns' (
     InsertMode: not_supported, UpdateMode: not_supported,
     DeleteMode: not_supported, Countable: Yes

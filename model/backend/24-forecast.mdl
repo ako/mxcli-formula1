@@ -1,0 +1,399 @@
+/*
+ * The race-result forecaster.
+ * ===========================
+ *
+ * Once a minute, take the race so far and say where it ends: for every car, a
+ * distribution over finishing positions rather than a single guess.
+ *
+ * Every path out of Sync_Forecast says why, because most of them are silent
+ * ones -- the session is not a race, the race has not started, the race is
+ * over -- and a scheduled event that is correctly doing nothing looks exactly
+ * like a scheduled event that has died. The quiet reasons log at DEBUG so a
+ * qualifying afternoon does not fill the log with them; the one that means
+ * something is wrong logs at WARNING.
+ *
+ * The model is one DuckDB statement and it does not live here. It is
+ * spikes/forecaster/forecast.sql, embedded into GetOpenF1Forecast in
+ * 01-foundation.mdl -- which owns F1Warehouse, and a query belongs to its
+ * connection. Keeping the SQL in a file outside the model is what lets
+ * spikes/forecaster/backtest.py score the exact text that runs here against
+ * races whose results are already known. It was worth doing: two of the
+ * model's failures only showed up that way, and both looked like the model
+ * being appropriately unsure rather than broken.
+ *
+ * ----------------------------------------------------------- why it is here
+ *
+ * This is a second scheduled event with its own fetches, not another tier of
+ * Sync_Cycle.
+ *
+ * The cycle is the thing that captures a race, and a race happens once. A
+ * forecaster is a nice-to-have that reads pace out of a regression and could
+ * fail in a dozen ways nobody has thought of yet; a bug in it must not be able
+ * to take the timing screen down with it. Separate microflow, separate
+ * schedule, separate transaction: if this throws, the cycle does not notice.
+ *
+ * It costs three requests a minute -- laps, stints, pit -- on top of the
+ * cycle's twenty-six, against an allowance of sixty.
+ *
+ * The intervals feed is deliberately not among them. The obvious use for it is
+ * to drop laps run in traffic, and measured against both archived races that
+ * filter made the forecast very slightly worse while adding the largest
+ * payload of the five, 4.36 MB for a grand prix. The +-7% band around each
+ * driver's own median already removes the laps traffic ruins.
+ */
+
+/* ------------------------------------------------------------ the tables -- */
+
+/*
+ * A forecast, as it stood at one lap of one session.
+ *
+ * Kept rather than overwritten, because the interesting thing about a forecast
+ * is how it moves. One row per car per lap is 22 x 72 for a grand prix, which
+ * is nothing, and it is what the win-probability chart is drawn from.
+ */
+create or modify persistent entity Formula1Backend.LiveForecast (
+  RowId: autonumber default 1 unique error 'LiveForecast row id must be unique',
+  SessionKey: string(20),
+  AtLap: long,
+  DriverNumber: long,
+  LapsRemaining: long,
+  StopsLeft: long,
+  /* How many clean laps the driver's pace estimate rests on. Under about eight
+   * the forecast is a guess with a decimal point on it. */
+  LapsUsed: long,
+  BasePace: decimal,
+  DegPerLap: decimal,
+  PitLoss: decimal,
+  MeanPosition: decimal,
+  MedianPosition: long,
+  PWin: decimal,
+  PPodium: decimal,
+  PPoints: decimal,
+  BestCase: long,
+  WorstCase: long,
+  ProjectedTime: decimal,
+  ComputedAt: datetime
+) index (SessionKey);
+
+/* What the screen reads: the latest forecast, with the driver attached. */
+create or modify non-persistent entity Formula1Backend.Stg_LiveForecast (
+  ForecastKey: string(60),
+  SessionKey: string(20),
+  AtLap: long,
+  DriverNumber: long,
+  Code: string(10),
+  DriverName: string(120),
+  Team: string(120),
+  TeamColour: string(10),
+  LapsRemaining: long,
+  StopsLeft: long,
+  LapsUsed: long,
+  MeanPosition: decimal,
+  MedianPosition: long,
+  PWin: decimal,
+  PPodium: decimal,
+  PPoints: decimal,
+  BestCase: long,
+  WorstCase: long,
+  DegPerLap: decimal,
+  PitLoss: decimal,
+  /* Formatted here, for the same reason the replay screen formats them: a
+   * probability shown as 0.684 is a number the reader has to convert, and the
+   * 10-90 band is two columns saying one thing. Eleven columns in half a
+   * screen rendered as "3 0... 0... 0...". */
+  Range: string(12), WinPct: string(8), PodiumPct: string(8), PointsPct: string(8)
+);
+
+/* The same thing over time, one row per car per lap, for the chart. */
+create or modify non-persistent entity Formula1Backend.Stg_ForecastTrace (
+  TraceKey: string(60),
+  SessionKey: string(20),
+  AtLap: long,
+  DriverNumber: long,
+  Code: string(10),
+  PWin: decimal,
+  PPodium: decimal,
+  MeanPosition: decimal
+);
+
+/* ------------------------------------------------------- the race length -- */
+
+/*
+ * How many laps this race is.
+ *
+ * OpenF1 does not say. It reports what has happened, and the scheduled
+ * distance is not something that has happened -- session_result carries it,
+ * but only once the race is over, which is exactly too late.
+ *
+ * f1db does say, and it is already in the database: Race carries Laps and
+ * Distance for every round, including the one being run today. Matching on
+ * circuit name and year is enough because a circuit hosts one grand prix a
+ * year, and the live session row and the f1db row agree on the spelling --
+ * both say "Zandvoort".
+ *
+ * A sprint is a third of the grand prix, rounded. That is not an approximation
+ * dressed up as a rule: 72/3 = 24 at Zandvoort, 71/3 = 24 at Interlagos, 44/3
+ * = 15 at Spa, 56/3 = 19 in Austin and Shanghai, 57/3 = 19 in Miami and Qatar.
+ * Every sprint on the calendar comes out exact.
+ *
+ * Returns 0 when there is nothing to forecast -- a session that is not a race,
+ * or a circuit f1db does not know -- and the caller stops there.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Fcst_RaceLength (
+  $Session: Formula1Backend.LiveSessionRow
+)
+  RETURNS Integer AS $Laps
+BEGIN
+  DECLARE $Laps Integer = 0;
+  IF $Session = empty THEN
+    RETURN $Laps;
+  END IF;
+
+  /* Practice and qualifying have no finishing order that pace predicts: what
+   * decides them is one lap, not fifty. */
+  IF $Session/SessionType != 'Race' THEN
+    RETURN $Laps;
+  END IF;
+
+  RETRIEVE $Race FROM Formula1Backend.Race
+    WHERE CircuitName = $Session/CircuitName and Year = $Session/Year LIMIT 1;
+  IF $Race = empty OR $Race/Laps = empty OR $Race/Laps < 1 THEN
+    RETURN $Laps;
+  END IF;
+
+  IF contains(toUpperCase($Session/SessionName), 'SPRINT') THEN
+    SET $Laps = round($Race/Laps div 3);
+  ELSE
+    SET $Laps = $Race/Laps;
+  END IF;
+  RETURN $Laps;
+END;
+
+/* --------------------------------------------------------------- the run -- */
+
+/*
+ * One forecast.
+ *
+ * Follows the session the screen is showing rather than the one the sync is
+ * pointed at, so the chart and the timing table are always about the same
+ * race. On a Sunday morning those differ: the sync is parked on a race that
+ * has not started and the screen is still showing yesterday's session.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Forecast ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+
+  /* The forecaster follows the sync's switch. Turning the sync off should not
+   * leave one scheduled event still calling OpenF1 every minute. */
+  $State = CALL MICROFLOW Formula1Backend.Sync_State();
+  IF $State/Enabled != true THEN
+    SET $Result = 'disabled';
+    LOG DEBUG NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    SET $Result = 'no session';
+    LOG DEBUG NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+
+  RETRIEVE $Session FROM Formula1Backend.LiveSessionRow
+    WHERE SessionKey = $Key LIMIT 1;
+  $Total = CALL MICROFLOW Formula1Backend.Fcst_RaceLength(Session = $Session);
+  IF $Total < 1 THEN
+    SET $Result = 'session ' + $Key + ': not a race, nothing to forecast';
+    LOG DEBUG NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+
+  /*
+   * Nothing to forecast before there is a lap to fit, and nothing to forecast
+   * once the race is over -- at which point the classification is the answer
+   * and a simulation of it would only be a worse copy.
+   */
+  RETRIEVE $Latest FROM Formula1Backend.LiveLap
+    WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
+  IF $Latest = empty THEN
+    SET $Result = 'session ' + $Key + ': no laps yet';
+    LOG DEBUG NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+  IF $Latest/LapNumber >= $Total THEN
+    SET $Result = 'session ' + $Key + ': race finished at lap '
+      + toString($Latest/LapNumber);
+    LOG DEBUG NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+
+  $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+  $LapsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'laps?session_key=' + $Key, Token = $Token);
+  $StintsJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'stints?session_key=' + $Key, Token = $Token);
+  $PitJson = CALL MICROFLOW Formula1Backend.Sync_Fetch(
+    Path = 'pit?session_key=' + $Key, Token = $Token);
+
+  IF trim($LapsJson) = '' OR $LapsJson = '[]' THEN
+    SET $Result = 'session ' + $Key + ': no lap payload';
+    LOG WARNING NODE 'F1Forecast' $Result;
+    RETURN $Result;
+  END IF;
+
+  /* cutLap 0 means "everything we have". The parameter exists for the offline
+   * backtest, which forecasts a finished race as of lap N. */
+  $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Forecast
+    (sessionKey = $Key, lapsJson = $LapsJson, stintsJson = $StintsJson,
+     pitJson = $PitJson, cutLap = 0, totalLaps = $Total);
+
+  DECLARE $AtLap Long = $Latest/LapNumber;
+  DECLARE $Written Long = 0;
+
+  /*
+   * One snapshot per lap, not one per cycle.
+   *
+   * The event fires every minute and a lap takes about eighty seconds, so most
+   * laps get forecast twice and some get forecast three times. Replacing the
+   * lap's existing rows rather than adding to them keeps the history one row
+   * per car per lap, which is what the chart expects, and means the last
+   * forecast of a lap -- the best informed one -- is the one that survives.
+   */
+  RETRIEVE $Old FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $Key AND AtLap = $AtLap;
+  LOOP $O IN $Old BEGIN
+    DELETE $O;
+  END LOOP;
+
+  LOOP $R IN $Rows BEGIN
+    $Saved = CREATE Formula1Backend.LiveForecast (
+      SessionKey = $Key, AtLap = $AtLap, DriverNumber = $R/DriverNumber,
+      LapsRemaining = $R/LapsRemaining, StopsLeft = $R/StopsLeft,
+      LapsUsed = $R/LapsUsed, BasePace = $R/BasePace,
+      DegPerLap = $R/DegPerLap, PitLoss = $R/PitLoss,
+      MeanPosition = $R/MeanPosition, MedianPosition = $R/MedianPosition,
+      PWin = $R/PWin, PPodium = $R/PPodium, PPoints = $R/PPoints,
+      BestCase = $R/BestCase, WorstCase = $R/WorstCase,
+      ProjectedTime = $R/ProjectedTime,
+      ComputedAt = [%CurrentDateTime%]) COMMIT;
+    SET $Written = $Written + 1;
+  END LOOP;
+
+  SET $Result = 'session ' + $Key + ': forecast at lap ' + toString($AtLap)
+    + ' of ' + toString($Total) + ', ' + toString($Written) + ' cars';
+  LOG INFO NODE 'F1Forecast' $Result;
+  RETURN $Result;
+END;
+
+/*
+ * Its own schedule, deliberately.
+ *
+ * Minutely, like the sync, and unsynchronised with it: two events that both
+ * fire on the minute will sometimes have their OpenF1 requests interleaved,
+ * which is fine at 29 a minute against 60 and is why the forecaster reads only
+ * three endpoints.
+ */
+CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_LiveForecast (
+  Microflow: Formula1Backend.Sync_Forecast,
+  Enabled: true,
+  Repeat: Minutely,
+  Multiplier: 1,
+  TimeZone: Server
+);
+
+/* -------------------------------------------------------------- the reads -- */
+
+/*
+ * The current forecast, one row per car, in predicted finishing order.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveForecast (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_LiveForecast AS $Ordered
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_LiveForecast;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Newest FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $Key SORT BY AtLap DESC LIMIT 1;
+  IF $Newest = empty THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $Key and AtLap = $Newest/AtLap;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+
+  LOOP $F IN $Fcst BEGIN
+    $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+    $Row = CREATE Formula1Backend.Stg_LiveForecast (
+      ForecastKey = $F/SessionKey + '-' + toString($F/AtLap) + '-'
+                    + toString($F/DriverNumber),
+      SessionKey = $F/SessionKey, AtLap = $F/AtLap,
+      DriverNumber = $F/DriverNumber,
+      LapsRemaining = $F/LapsRemaining, StopsLeft = $F/StopsLeft,
+      LapsUsed = $F/LapsUsed, MeanPosition = $F/MeanPosition,
+      MedianPosition = $F/MedianPosition, PWin = $F/PWin,
+      PPodium = $F/PPodium, PPoints = $F/PPoints,
+      BestCase = $F/BestCase, WorstCase = $F/WorstCase,
+      DegPerLap = $F/DegPerLap, PitLoss = $F/PitLoss,
+      Range = toString($F/BestCase) + '-' + toString($F/WorstCase),
+      WinPct = formatDecimal($F/PWin * 100, '0') + '%',
+      PodiumPct = formatDecimal($F/PPodium * 100, '0') + '%',
+      PointsPct = formatDecimal($F/PPoints * 100, '0') + '%');
+    IF $D != empty THEN
+      CHANGE $Row (Code = $D/Code, DriverName = $D/DriverName,
+                   Team = $D/Team, TeamColour = $D/TeamColour);
+    END IF;
+    ADD $Row TO $Rows;
+  END LOOP;
+
+  /* SORT takes no direction; ascending is the default. §69. */
+  $Ordered = SORT($Rows, MeanPosition);
+  RETURN $Ordered;
+END;
+
+/*
+ * Every forecast the race has produced, for the chart that shows them moving.
+ */
+CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ForecastTrace (
+  $Request: System.HttpRequest,
+  $Response: System.ODataResponse
+)
+  RETURNS List of Formula1Backend.Stg_ForecastTrace AS $Rows
+BEGIN
+  $Rows = CREATE LIST OF Formula1Backend.Stg_ForecastTrace;
+  $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
+  IF trim($Key) = '' THEN
+    RETURN $Rows;
+  END IF;
+
+  RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+    WHERE SessionKey = $Key SORT BY AtLap ASC;
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+
+  LOOP $F IN $Fcst BEGIN
+    $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+    $Row = CREATE Formula1Backend.Stg_ForecastTrace (
+      TraceKey = $F/SessionKey + '-' + toString($F/AtLap) + '-'
+                 + toString($F/DriverNumber),
+      SessionKey = $F/SessionKey, AtLap = $F/AtLap,
+      DriverNumber = $F/DriverNumber, PWin = $F/PWin,
+      PPodium = $F/PPodium, MeanPosition = $F/MeanPosition);
+    IF $D != empty THEN
+      CHANGE $Row (Code = $D/Code);
+    END IF;
+    ADD $Row TO $Rows;
+  END LOOP;
+  RETURN $Rows;
+END;
+
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveForecast TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveForecast TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_ForecastTrace TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_ForecastTrace TO Formula1Backend.DataAdmin;

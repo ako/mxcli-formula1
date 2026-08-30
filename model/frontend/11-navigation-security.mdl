@@ -76,6 +76,12 @@ grant F1Now.Reader ON F1Now.Session (READ *);
 grant F1Now.Reader ON F1Now.Trace (READ *);
 grant F1Now.Reader ON F1Now.Stints (READ *);
 
+/* The forecast, and every forecast the race has produced. Read-only like the
+ * rest -- these are the backend's opinion, and the frontend does not get to
+ * revise it. */
+grant F1Now.Reader ON F1Now.Forecast (READ *);
+grant F1Now.Reader ON F1Now.ForecastTrace (READ *);
+
 /* -------------------------------------------------------------- default -- */
 
 /*
@@ -142,6 +148,8 @@ END;
 /* ---------------------------------------------------------------- pages -- */
 
 GRANT VIEW ON PAGE Formula1Frontend.Narrate TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Replay TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Narrative TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Season TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Weekend TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Constructor TO Formula1Frontend.Enthusiast;
@@ -190,6 +198,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessages TO Formula1Frontend.
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStints TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveTrace TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveLeaderCodes TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveForecast TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ForecastTrace TO Formula1Frontend.Enthusiast;
 
 /*
  * Vega charts. Each of these wraps one of the DS_ microflows above and returns
@@ -211,6 +221,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_WeekendPace TO Formula1Frontend.
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveGaps TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LivePositions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveStints TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ForecastWin TO Formula1Frontend.Enthusiast;
 
 /* The view-model rows the season screen binds to. */
 GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonHeadline (READ *);
@@ -248,6 +259,8 @@ create or replace navigation Responsive
   HOME PAGE Formula1Frontend.Narrate
   MENU (
     MENU ITEM 'Narrate' PAGE Formula1Frontend.Narrate ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Replay' PAGE Formula1Frontend.Replay ICON Atlas_Core.Atlas."time-clock";
+    MENU ITEM 'Narrative' PAGE Formula1Frontend.Narrative ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Season' MICROFLOW Formula1Frontend.NAV_Season ICON Atlas_Core.Atlas.calendar;
     MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
     MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
@@ -257,7 +270,7 @@ create or replace navigation Responsive
      * the comp. A menu item whose page the signed-in user cannot view is not
      * rendered, so a fan never sees this one.
      */
-    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin_Sync ICON Atlas_Core.Atlas."layout-list";
+    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin ICON Atlas_Core.Atlas."layout-list";
   );
 
 /* The circuit outline: the shape, the points behind it, and the chart. */
@@ -304,9 +317,48 @@ grant F1Admin.Reader ON F1Admin.Weather (READ *);
 grant F1Admin.Reader ON F1Admin.Messages (READ *);
 grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
 grant F1Admin.Reader ON F1Admin.Radio (READ *);
+grant F1Admin.Reader ON F1Admin.Forecast (READ *);
+grant F1Admin.Reader ON F1Admin.Narrative (READ *);
 
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Sync TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Laps TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Telemetry TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Session TO Formula1Frontend.Administrator;
-GRANT VIEW ON PAGE Formula1Frontend.Admin_Events TO Formula1Frontend.Administrator;
+/* The narrative screen: where the reader is, and the three view rows it builds. */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeState (READ *, WRITE *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeHead (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeEvent (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeState TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeEnsure TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeSessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativePick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeFilter TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeAll TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeTurning TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeStops TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeTrack TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeHead TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeEvents TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativePos TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeProb TO Formula1Frontend.Enthusiast;
+
+/* Replay: where the viewer is in a past race, and the two view rows the
+ * screen builds. Writable, unlike everything else here -- the buttons change
+ * it, and it is the only state this app owns. */
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayState (READ *, WRITE *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayEntry (READ *);
+GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayCall (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayState TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayEnsure TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplaySessions TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayPick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayNext TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayPrev TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayStart TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayEnd TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayOrder TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayForecast TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ReplayWin TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ReplayPositions TO Formula1Frontend.Enthusiast;
+
+GRANT VIEW ON PAGE Formula1Frontend.Admin TO Formula1Frontend.Administrator;
+
+/* The story rail on Narrate. */
+grant F1Now.Reader ON F1Now.Story (READ *);
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStory TO Formula1Frontend.Enthusiast;
