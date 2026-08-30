@@ -8,7 +8,7 @@ mxcli. Append, do not rewrite.
 | | |
 |---|---|
 | mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de` |
-| Mendix | 11.13.0 (MxBuild + runtime cached under `/root/.mxcli/mxbuild/11.13.0/`) |
+| Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.24.7 / OpenJDK 21.0.10 / antlr4-tools 0.2.2 with ANTLR 4.13.2 |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
 | F1 dataset | [f1db/f1db](https://github.com/f1db/f1db) `f1db-csv.zip`, latest release |
@@ -6172,3 +6172,101 @@ it cannot know that a line joining lap 12 to lap 47 is nonsense.
 about anything.** All three of these needed the data in front of them — one
 needed a deliberate probe, and one needed a screenshot from someone looking at
 it.
+
+## 78. Upgrading Mendix headlessly, and the schema hash that decides whether you can
+
+Moving 11.13.0 → 11.14.0 with no Studio Pro anywhere. The whole question is
+whether the model needs converting or only relabelling, and there is a single
+artefact that answers it.
+
+### The version is one column, and that is a trap
+
+`.mpr` is SQLite. The version lives in `_MetaData`:
+
+```
+_FormatVersion  _ProductVersion  _BuildVersion  _SchemaHash
+2               11.13.0          11.13.0        {SHA256}5Fk35jOy…
+```
+
+One `UPDATE` would make the project *claim* 11.14. Whether that is an upgrade or
+a corruption is decided by the fourth column. Creating a blank 11.14 project and
+comparing settled it in one command:
+
+```
+11.14 blank : {SHA256}o9B9S8lorV9RD5gY9B6j1bJp4ALW87u4newnreIbRAg=
+ours (11.13): {SHA256}5Fk35jOyzj+cWnJe9ZkGWQjMEzsge3nIzS2zxH9jp6M=
+```
+
+**Different.** The model schema changed between the two, so 517 units stored
+against the old schema would be read against the new one — exactly what the
+version check exists to prevent. Stamping the column was off the table.
+
+### MxBuild does not convert, and its escape hatch is a trap too
+
+```
+ERROR: Project version '11.13.0' does not exactly match MxBuild version
+'11.14.0'. Use loose version check option for less strict version checking.
+```
+
+`--loose-version-check` makes that build succeed — and it is not an upgrade.
+The build passed, and the project was still 11.13.0 afterwards: the flag
+suppresses the check, it does not run a converter. A green build is not
+evidence of anything here.
+
+### `mx convert` is the converter, and mxcli does not wrap it
+
+The tool beside `mxbuild` has it:
+
+```
+mx convert --in-place Formula1Backend
+```
+
+0 errors, 65 warnings, 2 deprecations for the backend; 0 errors and 56 warnings
+for the frontend. Crucially it **preserved MPR v2** — 517 units and 517
+`.mxunit` sidecars before and after — which is not a given: FINDINGS' own
+account of `mxcli fix` exists because `mx update-widgets` and
+`mx rename-design-properties` collapse v2 into a 39 MB v1 file as a side effect.
+`mx convert` does not. Verified on a copy before touching the real project.
+
+The converted copy's schema hash then matched the blank 11.14 reference exactly,
+which is the check that the conversion actually happened rather than merely
+being claimed.
+
+### The version upgrade drags the tool with it
+
+The apps then would not start:
+
+```
+Error: bundling web client: no rollup.config.mjs in …/deployment/web
+       (run a serve Deploy build first)
+```
+
+Not stale output — deleting `deployment/` and running a full `--target=deploy`
+did not produce that file either, because **11.14's MxBuild bundles the web
+client itself**. The separate rollup step mxcli used to run no longer has
+anything to configure. The mxcli built four days earlier says so plainly:
+
+```
+Web client already bundled by mxbuild; skipping rollup step
+```
+
+So the Mendix upgrade was not a Mendix-only upgrade. **A runtime version and its
+tooling move together**, and the failure surfaced as a missing config file
+rather than as anything mentioning a version.
+
+### What to check after, and what not to touch
+
+The one thing worth being anxious about was §6: the `BYOD` connection type is
+what lets DuckDB in, and it is not in Mendix's own documented picker. It
+survived — a full sync cycle on 11.14 fetched 1,369 laps, parsed them through
+DuckDB and wrote all 1,369, with zero `ExternalDatabaseConnector` errors.
+
+A side effect worth recording: with the newer mxcli, six of the seven scripts
+that used to fail `check` with forward-reference errors now pass. The remaining
+one is `03-persistent-entities.mdl`, which uses `create persistent entity` for
+entities that already exist — a first-run-only script, and correct to fail.
+
+Only two lines in the docs changed: the version in the README and in this
+file's header table. The version numbers inside the older findings stay as they
+are — each records what was true when it was written, and editing them to match
+today would turn a lab notebook into a brochure.
