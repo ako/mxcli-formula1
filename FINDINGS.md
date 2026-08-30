@@ -6338,3 +6338,73 @@ marked as such, so the next upgrade checks them rather than trusting them.
 none of it is specific to this solution — any mxcli project upgrading without
 Studio Pro hits the same three traps. Around 140 lines, matching the other two,
 with no `references/` directory: there is not yet enough evidence to fill one.
+
+## 80. `AND` in a retrieve, and a reproducer that did not reproduce
+
+§72 closes with a one-line aside: *"`RETRIEVE ... WHERE a = x AND b = y` emits
+invalid XPath: the build fails CE0161. Lowercase `and` works."* That is the
+right advice and the wrong diagnosis, and going to write it up as its own entry
+is what exposed the difference.
+
+### The reproducer that passed
+
+Two lines, uppercase `AND`, exactly as §72 describes it:
+
+```
+RETRIEVE $X FROM Formula1Backend.LiveLap
+  WHERE SessionKey = '1' AND LapNumber = 2 LIMIT 1;
+```
+
+`mxcli check` passes — expected, that was the complaint — and then **the build
+succeeds**. No CE0161. Had this gone upstream as filed, it would have been
+closed as not-reproducible, and correctly.
+
+### What actually breaks it
+
+The two real failures both compared against a variable, not a literal. Restore
+that and the build fails:
+
+```
+RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+  WHERE SessionKey = $Newest/SessionKey AND AtLap = $Newest/AtLap;
+```
+
+```
+ERROR at Formula1Backend, Microflow 'ZZ_AndProbe2',
+  Retrieve object(s) activity 'Retrieve list of LiveForecast from database':
+  Error(s) in XPath constraint.
+BUILD FAILED
+```
+
+So the trigger is not the casing on its own:
+
+| constraint | `mxcli check` | build |
+|---|---|---|
+| `= '1' AND = 2` — literals both sides | passes | **succeeds** |
+| `= $N/SessionKey AND = $N/AtLap` — variables | passes | **CE0161** |
+| the same with lowercase `and` | passes | succeeds |
+
+Uppercase `AND` is only harmful once a variable reference is on one side. A
+literal-only test says the feature works.
+
+### Still live, on current everything
+
+Measured 2026-08-30 on Mendix **11.14.0** with mxcli **`81595f63`**
+(`nightly-396`) — and on the previous `85c9708` too. Both builds of `check`
+pass the failing form, so this is not something the newer checker has picked
+up.
+
+That makes it the sharpest of the open upstream items: a form the checker
+declares clean and the build rejects, where the checker already has both halves
+it needs — it parses the operator and it resolves the variable.
+
+### The lesson, which is not about `AND`
+
+§72's advice was correct because it came from the failure. The *explanation*
+attached to it was a guess made while fixing something else, and it generalised
+one variable too far: from "this statement failed" to "this construct fails".
+
+**A workaround found under time pressure records what you changed, not what was
+wrong.** The two are the same often enough to be trusted, and the way to tell is
+to reproduce it deliberately later — which costs one build, and here turned a
+report that would have been dismissed into one that lands.
