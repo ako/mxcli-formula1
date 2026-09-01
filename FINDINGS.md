@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -6408,3 +6408,84 @@ one variable too far: from "this statement failed" to "this construct fails".
 wrong.** The two are the same often enough to be trusted, and the way to tell is
 to reproduce it deliberately later — which costs one build, and here turned a
 report that would have been dismissed into one that lands.
+
+## 81. The test runner stopped blanking the app, and still rewrites its classes
+
+*Measured 2026-09-01 on Mendix 11.14.0 with mxcli `a739d2e2` (`nightly-465`),
+against the two-app solution with both apps running.*
+
+§62 recorded that `mxcli test` blanked a running app. Upstream has fixed it —
+`fix(test): give a local test run its own deployment tree` describes the exact
+symptom this project reported, down to the 1,718-byte SPA shell and the 404 on
+`dist/index.js`. It works. Both suites pass with both apps live:
+
+| | tests | time |
+|---|---|---|
+| Formula1Backend | 71 / 71 | 491 ms |
+| Formula1Frontend | 34 / 34 | 9.0 s |
+
+`deployment/web/dist` survives, the run takes its own ports and its own
+`<project>_test` database, and the web client is untouched.
+
+### The half that is still shared
+
+`deployment/run/bin` is not. A local test run recompiles the Java of the
+project it is testing, into the tree a live runtime is holding open, and a JVM
+does not survive its class files being replaced:
+
+```
+CRITICAL - ActionManager: Error in execution of monitored action
+  '{"name":"Formula1Backend.Read_Drivers","type":"Microflow"}'
+java.lang.NoClassDefFoundError: odatapushdown/QueryObject
+```
+
+Every microflow-backed resource that reaches `ODataPushdown.Parse` then answers
+**HTTP 200 with a zero-byte body** — `f1-live/*`, `f1-fan/*`, `f1-ops/*`. Not an
+error page, not a 500. An empty success. 108 of them in the runtime log before
+this was understood.
+
+The source-backed services are untouched, because they need no Java at all, so
+`odata/f1/` and `odata/f1-now/` keep working perfectly throughout. Half the app
+is fine and half returns nothing, which is not a shape that suggests "the test
+run did this".
+
+### Why it hides, and how it nearly got dismissed
+
+It only breaks a class the JVM **has not loaded yet**. Measured both ways on a
+fresh runtime:
+
+| order of events | result |
+|---|---|
+| call `f1-live` → run tests → call `f1-live` | **works** — class already resident |
+| run tests → call `f1-live` (first time) | **0 bytes** |
+
+The first attempt to reproduce it therefore *passed*, and passed convincingly:
+identical byte counts before and after the run, web bundle 200, every endpoint
+green. The conclusion "the runner is clean" was one measurement away from being
+written down.
+
+What made it wrong is that the "before" measurement **was the fix**. Calling the
+endpoint to establish a baseline loaded the class, which is exactly what
+immunises it. §68 said a differential is only as sound as the procedure both
+sides share; this is the sharper version — **an observation that changes the
+thing it observes cannot be its own control.** The way out was to run the test
+with the endpoint deliberately never called, which is the opposite of what
+careful measurement instinctively wants to do.
+
+### And the failure it caused looked like something else entirely
+
+The frontend suite reported **21 of 34 failing**, all "exception during
+execution". Nothing about that says "your backend's classloader is broken" —
+the frontend tests call the backend over OData, so a broken backend surfaces as
+a frontend test problem, and the natural reading is that the new runner broke
+the frontend.
+
+The tell was that 13 tests passed, and the split was not random: everything
+touching `f1/` and `f1-now/` passed, everything touching `f1-live/` and `f1-fan/`
+failed. Two near-identical tests — "Live client: name maps to the remote name"
+and "Cached client: name maps to the remote name" — landed on opposite sides,
+which is what pointed at the service rather than the runner. With the backend
+restarted, the same suite is 34/34.
+
+**A test failure in app A can be the symptom of a rebuild in app B**, and the
+suite that reports it has no way to say so.
