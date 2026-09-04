@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82 on **`41c55d09`** (`nightly-578`), built 2026-09-04 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -6489,3 +6489,76 @@ restarted, the same suite is 34/34.
 
 **A test failure in app A can be the symptom of a rebuild in app B**, and the
 suite that reports it has no way to say so.
+
+## 82. §81 came back as a warning, and the warning needed a restart to fire
+
+*Measured 2026-09-04 on mxcli `41c55d09` (`nightly-578`), Mendix 11.14.0.*
+
+§81 reported that a local test run rewrites `deployment/run/bin` under a live
+JVM. Upstream took it and did not fix it, for a stated reason worth recording:
+
+> mxcli cannot prevent it: mxbuild's Gradle pass owns the compile, and the
+> deployment directory cannot be moved — mxbuild writes it to
+> `<app dir>/deployment` and takes no option to change it.
+
+So it reports the collision instead. The warning names the port and pid, states
+the symptom, gives the remedy, and cites the section it came from:
+
+```
+Warning: `mxcli run --local` is serving this project on port 8080 (pid 2404598).
+  This test run recompiles the project's Java into deployment/run/bin, which is
+  that app's classpath — every class file is rewritten. A class the running app
+  has not loaded yet can then fail with NoClassDefFoundError, and the microflows
+  behind it answer HTTP 200 with an EMPTY BODY rather than an error, so the app
+  looks half-working (mxcli-formula1 §81).
+  If anything it serves stops returning data, restart that app.
+```
+
+Verified against this project: the warning fires, and its prediction is exact —
+after the run `f1-live/Drivers` returns **0 bytes** while `f1-now/Order` returns
+9,553. Half the app, as advertised.
+
+Their own measurement is sharper than ours was: after one test run all 134 class
+files have **new inodes and byte-identical content**. Every one deleted and
+rewritten, changing nothing. §81 inferred the mechanism from the symptom; this
+names it.
+
+### It warns rather than refuses, and that is the right call
+
+The warm loop exists so an app can stay up while you work on it, and this
+solution runs two that way as a matter of course. A refusal would break the
+workflow the feature is for. Neither `--attach` nor `--skip-build` compiles, so
+neither warns — the warning tracks the actual hazard rather than the command.
+
+### The guard reads a file that has to already exist
+
+It did not fire on the first run. The warning reads `.mxcli/run-local.json`, the
+dev-loop handshake, and our loop had been started by the *previous* binary,
+which wrote none. Restart the app on the new build and it appears.
+
+That is the third time in this document a guard has been silent because the
+thing it reads was not there yet — §75's supervisor could not see a dead tunnel,
+§78's version check could not see a schema it had never been given, and now this.
+**A new check does not apply retroactively to a process already running**, and
+the window where it looks like the check is broken is exactly the window where
+the hazard is still live.
+
+### The rest of the drop
+
+113 commits, 67 non-merge: 24 fixes, 23 docs, 16 features. All 40 of this
+project's MDL scripts were checked against both binaries before installing —
+identical error counts, no regressions.
+
+New surface worth knowing about: `mxcli brain`, a project knowledge store with
+requirements, slices and decision capture; `messagedefs` collections with
+grammar, storage and executor; domain-model layout that spreads entities instead
+of stacking them in one row, which matters here because the whole domain model
+is MDL-generated; and two new checks, MDL073 (after-startup microflow must
+return Boolean) and MDL-WIDGET23 (an on-click action mxcli will not write).
+
+### Still open
+
+Nothing in this drop touches §80. No commit mentions XPath, a retrieve
+constraint or CE0161, and the two-condition retrieve with an uppercase `AND`
+and a variable reference still passes `check` and still fails the build. It
+remains the one item here with a reproducer and no upstream response.
