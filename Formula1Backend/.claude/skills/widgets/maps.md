@@ -73,6 +73,7 @@ Item properties:
 | `title` | texttemplate |
 | `onClick` | action |
 | `markerStyle` | primitive |
+| `customMarker` | image |
 
 ### `dynamicmarker` → property `dynamicMarkers`
 
@@ -88,6 +89,7 @@ Item properties:
 | `title` | attribute |
 | `onClickAttribute` | action |
 | `markerStyleDynamic` | primitive |
+| `customMarkerDynamic` | image |
 
 ---
 
