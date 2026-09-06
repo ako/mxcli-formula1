@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82 on **`41c55d09`** (`nightly-578`), built 2026-09-04 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82 on **`41c55d09`** (`nightly-578`), built 2026-09-04; §83 on **`e6a83b5d`** (`nightly-648`, v0.21.0), built 2026-09-06 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -6562,3 +6562,76 @@ Nothing in this drop touches §80. No commit mentions XPath, a retrieve
 constraint or CE0161, and the two-condition retrieve with an uppercase `AND`
 and a variable reference still passes `check` and still fails the build. It
 remains the one item here with a reproducer and no upstream response.
+
+## 83. Monza captured whole, and a release whose worst bug we had already dodged
+
+*2026-09-06. Monza race weekend; mxcli `e6a83b5d` (`nightly-648`, v0.21.0),
+Mendix 11.14.0.*
+
+### The weekend
+
+| session | ours | OpenF1 |
+|---|---:|---:|
+| FP1 (11354) | 544 | 545 |
+| FP2 (11355) | 617 | 618 |
+| Race (11361) | **1,055** | **1,055** |
+
+The race is exact — 22 cars, all 53 laps — with 51 laps of forecast and 143
+narrative events built by the sweeps without intervention. Antonelli won from
+Russell and Verstappen.
+
+The practices are each one row short, and each short by exactly the one lap
+OpenF1 sends with `date_start: null`, which the ASOF join has nothing to place
+it against. Checked rather than assumed, both times: FP1 car 36 lap 1, FP2 car 5
+lap 1. **A shortfall that matches a known cause is not the same as a shortfall
+that resembles one**, and the difference is one query.
+
+Parking on the race rather than qualifying was deliberate: only the live window
+is one-shot, and everything else backfills from the whole-session endpoints.
+
+### The release
+
+v0.21.0, 70 commits, no regressions — all 40 MDL scripts checked identically
+against both binaries before installing, and both suites green at 71/71 and
+34/34.
+
+The one worth recording is a landmine this project happens not to have stepped
+on. `HOME PAGE … FOR <role>` written module-qualified — `for MyModule.Administrator`
+— produces a project **Mendix cannot load**:
+
+```
+StorageLoadException: … 'MyFirstModule.Administrator' is not a valid UserRoleIdentifier
+```
+
+Raised before any checking runs, so there is no error code and no location. It
+was the form mxcli's own documentation, skill and `syntax` output all
+recommended, in ten places including a runnable example. `FOR` binds a *user*
+role, which is project-level and written bare; a module role is module-scoped
+and shares the name, so the wrong one reads as correct.
+
+We use `HOME PAGE Formula1Frontend.Narrate` with no `FOR` clause and are
+unaffected — but the general warning in that entry outlives the bug: **a load
+failure suppresses the `The app contains: N errors` line while still exiting 1**,
+so `mx check` reads as having succeeded. Upstream notes it has already been
+misread that way twice.
+
+### The gap in §74 is now closed upstream
+
+`call external action` now types its return value and its parameters, and the
+previous drop added `publish microflow as an OData action`. Together those are
+exactly what was missing when the Replay screen was built: MDL could not declare
+an action, so changing backend state from the frontend went through a published
+updatable entity and a persistent singleton. That constraint is gone. The
+existing design still works and is not worth rewriting for its own sake, but a
+new screen needing the same thing should not repeat it.
+
+### §82 reproduced itself, which is the point
+
+Running the backend suite broke the backend; the frontend suite then reported
+**21 of 34 failing**, because its tests call it. The warning fired for both apps,
+naming port and pid. Restart the backend and the same frontend suite is 34/34.
+
+Nothing new — and that is worth a line rather than a section. **A finding that
+reproduces on demand, in the shape it was written down in, is finished.** The
+value of recording it was never the fix; it was that the next occurrence costs a
+restart instead of a diagnosis.
