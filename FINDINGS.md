@@ -7,10 +7,11 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0) |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
+| DuckDB CLI | 1.5.5 (`linux-arm64`) at `~/.local/bin/duckdb`, pinned to match the jar's engine; native, so it does **not** reproduce JDBC-only failures (the `regr_slope` NaN of §49 passed there and broke under JDBC) |
 | F1 dataset | [f1db/f1db](https://github.com/f1db/f1db) `f1db-csv.zip`, latest release |
 
 ---
@@ -6489,3 +6490,174 @@ restarted, the same suite is 34/34.
 
 **A test failure in app A can be the symptom of a rebuild in app B**, and the
 suite that reports it has no way to say so.
+
+## 82. `AND` in a retrieve: fixed upstream, and where the fix had to go
+
+§80 filed a form the checker called clean and the build rejected: a two-condition
+`RETRIEVE` with uppercase `AND` and a variable path on either side. It has
+landed, on `064fa4c7` (2026-09-20), as a new file — `mdl/visitor/xpath_operators.go`,
+whose comment records our correction rather than the original complaint:
+
+> the casing survived exactly when a path was present — which is why the
+> reporting project's literal-only reproducer built cleanly and looked like a
+> non-bug (mxcli-formula1 §80).
+
+That is the part worth keeping. §80's value was not "uppercase `AND` breaks" —
+that was §72's claim and it was wrong. It was "the literal-only reproducer does
+not reproduce, and here is the variable that makes it", which is what turned a
+would-be not-reproducible closure into a fix.
+
+### Verified here, not just read
+
+A probe microflow carrying the exact failing form:
+
+```
+RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+  WHERE SessionKey = $Newest/SessionKey AND AtLap = $Newest/AtLap;
+```
+
+now stores as
+
+```
+XpathConstraint = '[SessionKey = $Newest/SessionKey and AtLap = $Newest/AtLap]'
+```
+
+and the backend **built and booted with that probe in the model** — no CE0161,
+where the same shape failed the build on `81595f63`. The probe was dropped
+afterwards.
+
+### Two choices in the fix worth stealing
+
+It normalises in `FormatXPathConstraint`, not in the retrieve builder, so one
+change covers all three of mxcli's constraint writers — retrieve, page data
+source, entity access rule. The bug was reported against one of them; fixing it
+where they converge is why the other two did not have to be found separately.
+
+And it **scans rather than substitutes**. A blanket replace of `AND` would
+rewrite `'A AND B'` inside a string literal, changing which rows match — a
+silent wrong answer, strictly worse than the build error being fixed. The
+scanner tracks quotes and whole tokens, so `Brand` and `NOTES` are untouched.
+The general rule: a textual fix to a language you are not parsing has to respect
+the one construct where the letters are data.
+
+## 83. The warning fired, told me the remedy, and I still blamed the wrong app
+
+§81 shipped too, as a warning rather than a fix — mxbuild owns the compile and
+the deployment directory cannot be moved, so the collision is reported, not
+prevented. It fires correctly:
+
+```
+Warning: `mxcli run --local` is serving this project on port 8080 (pid 6420).
+  This test run recompiles the project's Java into deployment/run/bin, which is
+  that app's classpath — every class file is rewritten. ...
+  If anything it serves stops returning data, restart that app.
+```
+
+Then, in the same session, I walked into the thing it had just warned me about.
+
+### The sequence
+
+| step | result |
+|---|---|
+| ran backend `live.test.mdl` (warning printed) | 4/4 pass |
+| ran frontend `fan-pages.test.mdl` | **10 pass / 18 fail** |
+| re-ran it with the **previous** mxcli binary | **10 pass / 18 fail** — identical |
+| concluded: pre-existing, not a regression from the upgrade | **wrong** |
+| restarted the backend, re-ran the same suite | **28/28** |
+
+The 18 failures were the backend's rewritten classes, caused by step 1. §81
+documents this exact cascade in this exact repository, including that the
+frontend suite is where it surfaces.
+
+### The control was invalid, and it looked like the strongest kind
+
+Running the old binary felt decisive because it is the textbook move: change one
+variable, observe. It proved the two binaries behaved identically, which was
+true and useless — **both arms were querying the same poisoned backend.** The
+variable I controlled for was not the one that mattered, and agreement between
+the arms was guaranteed by the shared fault rather than by the hypothesis.
+
+§81 closed on "an observation that changes the thing it observes cannot be its
+own control." This is the neighbouring trap: **when both arms of an A/B agree,
+that is evidence about the arms, not about the hypothesis.** A dependency
+corrupted before either arm ran produces identical results in both, and identical
+results read as *conclusive*. Before trusting agreement, ask what state both arms
+inherited.
+
+### The warning is in the right place and still lands one app away
+
+It prints in app A's terminal; the symptom appears in app B's test output some
+minutes later, by which time the warning has scrolled off and the natural reading
+of "18 frontend tests failed right after I upgraded mxcli" is that the upgrade
+did it. The remedy was on screen and I did not connect it. That is not an
+argument against the warning — without it there is nothing at all — but it does
+mean the *failing* side is where a pointer would pay: a suite that fails wholesale
+against an external service could name the last time that service's deployment
+directory changed.
+
+With both apps clean the full picture is green: backend **71/71** across four
+suites, frontend **34/34** across three — the same 34/34 §81 recorded.
+
+## 84. `mxcli check` cannot pass a `.test.mdl` file
+
+Upstream #1103 taught `check` and the editor that a test block is a microflow
+body, which it always was. Before, the top-level grammar swallowed `RETRIEVE` as
+an identifier and told the author their retrieve needed a `SELECT`; 9 of
+upstream's own 10 test files reported errors, one of them 392. That half works —
+our suites now report `✓ Syntax OK`.
+
+The reference pass then fails every one of them:
+
+```
+$ ./mxcli check tests/live.test.mdl
+✓ Syntax OK (4 statements)
+Reference errors:
+  statement 1: module not found: MxTest
+  ... ×4        (frontend fan-pages.test.mdl: ×28)
+```
+
+`MxTest` is generated by the runner at the start of a run and removed at the end
+— `show modules` reports 11 both before and after, with no `MxTest` in either. So
+it is **never** present in a project at rest, and a `.test.mdl` file can never
+pass `check`. The new capability cannot be used as the gate it was added to be.
+
+This is the same shape as the bug it fixes: parse succeeds, then a check fires
+against something that is correct. Worth sending back, with the note that the
+fix is probably to seed the injected module into the reference index the way the
+runner does, rather than to exempt the file.
+
+## 85. The Postgres fallback started working, which is what makes it dangerous
+
+Upstream `40b2ecd5` (closes mendixlabs/mxcli#984) fixes `--ensure-db` in a
+non-root devcontainer — the environment `mxcli init` itself generates, wired into
+the Claude Code SessionStart hook, so it runs on every fresh session whether or
+not anyone typed the flag. Three defects sat on one path; the one that matters
+here is that the user-owned-cluster fallback was **inert on Debian and Ubuntu**,
+because `initdb` and `pg_ctl` live in `/usr/lib/postgresql/<major>/bin` while
+only the client tools are wrapped into `/usr/bin`.
+
+That is the line in the hook output on 2026-09-11 — *"Initializing user-owned
+PostgreSQL cluster..."* — which got as far as creating a `sock/` directory and
+stopped. The system cluster was down but intact at 279 MB; starting it brought
+every race session back.
+
+**The fix removes the thing that made that harmless.** The fallback now succeeds.
+So the failure mode is no longer "provisioning fails and you go and look", it is:
+
+- the container restarts with the system cluster down (twice in ten days here),
+- the session hook provisions a fresh, empty, user-owned cluster,
+- both apps boot healthy against it and answer 200,
+- and every captured session — 7,966 lap rows — is simply absent, with no error
+  anywhere to say so.
+
+An empty database is not a state the app distinguishes from a new one. This is
+the same class as §60's black page and §81's empty body: **the app is up, and up
+is not the question.** It belongs with the other three blind spots the supervisor
+has, and it is the worst of them, because the others cost an outage and this one
+costs the data.
+
+The remedy is cheap and belongs in `scripts/keep-app-running.sh`: before
+launching, assert the expected cluster is the one answering — check that
+`formula1backend` exists and that `LiveLap` is non-empty — and refuse to start
+rather than come up against an empty database. A supervisor that will not start
+is a far better failure than one that starts against nothing.
