@@ -7,10 +7,11 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0) |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
+| DuckDB CLI | 1.5.5 (`linux-arm64`) at `~/.local/bin/duckdb`, pinned to match the jar's engine; native, so it does **not** reproduce JDBC-only failures (the `regr_slope` NaN of §49 passed there and broke under JDBC) |
 | F1 dataset | [f1db/f1db](https://github.com/f1db/f1db) `f1db-csv.zip`, latest release |
 
 ---
@@ -6489,3 +6490,357 @@ restarted, the same suite is 34/34.
 
 **A test failure in app A can be the symptom of a rebuild in app B**, and the
 suite that reports it has no way to say so.
+
+## 82. `AND` in a retrieve: fixed upstream, and where the fix had to go
+
+§80 filed a form the checker called clean and the build rejected: a two-condition
+`RETRIEVE` with uppercase `AND` and a variable path on either side. It has
+landed, on `064fa4c7` (2026-09-20), as a new file — `mdl/visitor/xpath_operators.go`,
+whose comment records our correction rather than the original complaint:
+
+> the casing survived exactly when a path was present — which is why the
+> reporting project's literal-only reproducer built cleanly and looked like a
+> non-bug (mxcli-formula1 §80).
+
+That is the part worth keeping. §80's value was not "uppercase `AND` breaks" —
+that was §72's claim and it was wrong. It was "the literal-only reproducer does
+not reproduce, and here is the variable that makes it", which is what turned a
+would-be not-reproducible closure into a fix.
+
+### Verified here, not just read
+
+A probe microflow carrying the exact failing form:
+
+```
+RETRIEVE $Fcst FROM Formula1Backend.LiveForecast
+  WHERE SessionKey = $Newest/SessionKey AND AtLap = $Newest/AtLap;
+```
+
+now stores as
+
+```
+XpathConstraint = '[SessionKey = $Newest/SessionKey and AtLap = $Newest/AtLap]'
+```
+
+and the backend **built and booted with that probe in the model** — no CE0161,
+where the same shape failed the build on `81595f63`. The probe was dropped
+afterwards.
+
+### Two choices in the fix worth stealing
+
+It normalises in `FormatXPathConstraint`, not in the retrieve builder, so one
+change covers all three of mxcli's constraint writers — retrieve, page data
+source, entity access rule. The bug was reported against one of them; fixing it
+where they converge is why the other two did not have to be found separately.
+
+And it **scans rather than substitutes**. A blanket replace of `AND` would
+rewrite `'A AND B'` inside a string literal, changing which rows match — a
+silent wrong answer, strictly worse than the build error being fixed. The
+scanner tracks quotes and whole tokens, so `Brand` and `NOTES` are untouched.
+The general rule: a textual fix to a language you are not parsing has to respect
+the one construct where the letters are data.
+
+## 83. The warning fired, told me the remedy, and I still blamed the wrong app
+
+§81 shipped too, as a warning rather than a fix — mxbuild owns the compile and
+the deployment directory cannot be moved, so the collision is reported, not
+prevented. It fires correctly:
+
+```
+Warning: `mxcli run --local` is serving this project on port 8080 (pid 6420).
+  This test run recompiles the project's Java into deployment/run/bin, which is
+  that app's classpath — every class file is rewritten. ...
+  If anything it serves stops returning data, restart that app.
+```
+
+Then, in the same session, I walked into the thing it had just warned me about.
+
+### The sequence
+
+| step | result |
+|---|---|
+| ran backend `live.test.mdl` (warning printed) | 4/4 pass |
+| ran frontend `fan-pages.test.mdl` | **10 pass / 18 fail** |
+| re-ran it with the **previous** mxcli binary | **10 pass / 18 fail** — identical |
+| concluded: pre-existing, not a regression from the upgrade | **wrong** |
+| restarted the backend, re-ran the same suite | **28/28** |
+
+The 18 failures were the backend's rewritten classes, caused by step 1. §81
+documents this exact cascade in this exact repository, including that the
+frontend suite is where it surfaces.
+
+### The control was invalid, and it looked like the strongest kind
+
+Running the old binary felt decisive because it is the textbook move: change one
+variable, observe. It proved the two binaries behaved identically, which was
+true and useless — **both arms were querying the same poisoned backend.** The
+variable I controlled for was not the one that mattered, and agreement between
+the arms was guaranteed by the shared fault rather than by the hypothesis.
+
+§81 closed on "an observation that changes the thing it observes cannot be its
+own control." This is the neighbouring trap: **when both arms of an A/B agree,
+that is evidence about the arms, not about the hypothesis.** A dependency
+corrupted before either arm ran produces identical results in both, and identical
+results read as *conclusive*. Before trusting agreement, ask what state both arms
+inherited.
+
+### The warning is in the right place and still lands one app away
+
+It prints in app A's terminal; the symptom appears in app B's test output some
+minutes later, by which time the warning has scrolled off and the natural reading
+of "18 frontend tests failed right after I upgraded mxcli" is that the upgrade
+did it. The remedy was on screen and I did not connect it. That is not an
+argument against the warning — without it there is nothing at all — but it does
+mean the *failing* side is where a pointer would pay: a suite that fails wholesale
+against an external service could name the last time that service's deployment
+directory changed.
+
+With both apps clean the full picture is green: backend **71/71** across four
+suites, frontend **34/34** across three — the same 34/34 §81 recorded.
+
+## 84. `mxcli check` cannot pass a `.test.mdl` file
+
+Upstream #1103 taught `check` and the editor that a test block is a microflow
+body, which it always was. Before, the top-level grammar swallowed `RETRIEVE` as
+an identifier and told the author their retrieve needed a `SELECT`; 9 of
+upstream's own 10 test files reported errors, one of them 392. That half works —
+our suites now report `✓ Syntax OK`.
+
+The reference pass then fails every one of them:
+
+```
+$ ./mxcli check tests/live.test.mdl
+✓ Syntax OK (4 statements)
+Reference errors:
+  statement 1: module not found: MxTest
+  ... ×4        (frontend fan-pages.test.mdl: ×28)
+```
+
+`MxTest` is generated by the runner at the start of a run and removed at the end
+— `show modules` reports 11 both before and after, with no `MxTest` in either. So
+it is **never** present in a project at rest, and a `.test.mdl` file can never
+pass `check`. The new capability cannot be used as the gate it was added to be.
+
+This is the same shape as the bug it fixes: parse succeeds, then a check fires
+against something that is correct. Worth sending back, with the note that the
+fix is probably to seed the injected module into the reference index the way the
+runner does, rather than to exempt the file.
+
+## 85. The Postgres fallback started working, which is what makes it dangerous
+
+Upstream `40b2ecd5` (closes mendixlabs/mxcli#984) fixes `--ensure-db` in a
+non-root devcontainer — the environment `mxcli init` itself generates, wired into
+the Claude Code SessionStart hook, so it runs on every fresh session whether or
+not anyone typed the flag. Three defects sat on one path; the one that matters
+here is that the user-owned-cluster fallback was **inert on Debian and Ubuntu**,
+because `initdb` and `pg_ctl` live in `/usr/lib/postgresql/<major>/bin` while
+only the client tools are wrapped into `/usr/bin`.
+
+That is the line in the hook output on 2026-09-11 — *"Initializing user-owned
+PostgreSQL cluster..."* — which got as far as creating a `sock/` directory and
+stopped. The system cluster was down but intact at 279 MB; starting it brought
+every race session back.
+
+**The fix removes the thing that made that harmless.** The fallback now succeeds.
+So the failure mode is no longer "provisioning fails and you go and look", it is:
+
+- the container restarts with the system cluster down (twice in ten days here),
+- the session hook provisions a fresh, empty, user-owned cluster,
+- both apps boot healthy against it and answer 200,
+- and every captured session — 7,966 lap rows — is simply absent, with no error
+  anywhere to say so.
+
+An empty database is not a state the app distinguishes from a new one. This is
+the same class as §60's black page and §81's empty body: **the app is up, and up
+is not the question.** It belongs with the other three blind spots the supervisor
+has, and it is the worst of them, because the others cost an outage and this one
+costs the data.
+
+The remedy is cheap and belongs in `scripts/keep-app-running.sh`: before
+launching, assert the expected cluster is the one answering — check that
+`formula1backend` exists and that `LiveLap` is non-empty — and refuse to start
+rather than come up against an empty database. A supervisor that will not start
+is a far better failure than one that starts against nothing.
+
+## 86. The GUID nobody can see, and a symptom this project keeps misreading
+
+Upstream v0.24.0 closes a class of defect worth recording even though it never
+touched this project, because the shape of its failure is one we have now met
+three times and misdiagnosed twice.
+
+### What it was
+
+The Mendix runtime keys `mendixsystem$entity.id` and
+`mendixsystem$attribute.id` on the model's stored **GUID** — not on the `$ID`
+that MDL scripts and `DESCRIBE` talk about. Move a GUID while keeping the `$ID`
+and the synchroniser reads the element as deleted-and-re-added: it drops the
+column and creates a new empty one. Reported from production as **28 attributes
+of 607 rows emptied by one edit** (mendixlabs/mxcli#1119), across five separate
+write paths, each silent.
+
+A second, larger shape followed. `Backend.UpdateDomainModel` rebuilds the whole
+Entities and Associations lists, so every element arrived with no stored bytes
+and the codec's default wrote `GUID = $ID` across the entire domain-model unit —
+including elements the statement never named. Measured: **282 moved GUIDs in one
+module** (37 entities, 224 attributes, 21 associations), and a runtime crash:
+
+```
+Cannot invoke "...Table.getTableName()" because "table" is null
+```
+
+`RENAME ENTITY` is the expensive one, because an entity's name *is* its table
+name. On 11.13.0 with PostgreSQL 16: with the GUID preserved the runtime renames
+the table, 250 rows to 250. Re-minted, it drops the table and creates an empty
+one — **250 rows to 0**. An ALTER loses a column; a rename loses the table.
+
+Six statements shared that path:
+
+| statement |
+|---|
+| `ALTER ASSOCIATION … SET COMMENT` |
+| `ALTER ASSOCIATION … SET OWNER` |
+| `CREATE OR MODIFY ASSOCIATION` — **even an identical re-run** |
+| `RENAME ASSOCIATION` |
+| `RENAME ENTITY` |
+| view-entity association sync |
+
+### Why it survived every gate
+
+This is the part worth keeping:
+
+> the model stays valid, `mx check` passes, the build succeeds, and `DESCRIBE`
+> is byte-identical because the reader never surfaces a GUID. It becomes
+> visible only when the package meets a database that already holds data.
+
+Every instrument this project relies on — `check`, the build, describe →
+re-exec round-tripping — is blind to it by construction. The CLI's own help for
+`CREATE OR MODIFY` promised "preserves UUID. Safe to re-run", which was true of
+the `$ID` and false of the GUID. v0.24.0 adds the guard that was missing: a
+write that moves a storage GUID is now refused outright.
+
+### We were exposed and untouched, and it was luck
+
+Verified on the running database rather than assumed:
+
+```
+68 registrations, 68 distinct entities, 68 distinct tables   (no duplicates)
+laps 8,075 · cycles 32,979 · results 27,533                  (nothing dropped)
+```
+
+The reason is narrow: `model/backend/03-persistent-entities.mdl` uses plain
+`create association`, which is not one of the six. Had it used `create or
+modify` — the spelling the deprecation registry is now pushing everything
+towards (§88) — a re-run would have moved every identity in the module.
+
+### The symptom, for the third time
+
+An app that is **up and answering while holding nothing** is now this project's
+recurring failure shape:
+
+| § | what was empty | what the app reported |
+|---|---|---|
+| 60 | the web client bundle | 200, black page |
+| 81 | Java-backed OData services | 200, empty body |
+| 85 | a freshly provisioned database | 200, no data |
+| 86 | a dropped and recreated column | 200, null column |
+
+Twice I read that shape as something else — §83's frontend test failures, and
+§85's "provisioning is harmless". **The lesson is not "check more carefully";
+it is that "the app responds" carries no information in this architecture, and
+any check whose pass condition is a status code is not a check.** The only
+instruments that have ever caught this family are row counts and the registry
+tables.
+
+## 87. `PRIVATE` did nothing, and the tool that would migrate it cannot parse it
+
+Upgrading to `5ccbd480` broke four of our model scripts outright:
+
+```
+line 22:80 no viable alternative at input 'PRIVATE'
+```
+
+`PRIVATE` is not deprecated — it is **gone from the grammar**, with no token in
+the lexer and no entry in the deprecation registry. It appears on nine constant
+declarations across four files, and every one of them is a credential:
+
+| file | constants |
+|---|---|
+| `model/backend/01-foundation.mdl` | `DuckDbPassword` |
+| `model/backend/16-ops-procedures.mdl` | `ApiKey`, `OpsDbPassword` |
+| `model/backend/19-live-sync.mdl` | `OpenF1Password` |
+| `model/frontend/01-odata-clients.mdl` | the OData client key, ×5 |
+
+### The migration tool is on the wrong side of the error
+
+`mxcli fmt --upgrade` is the answer to every other deprecated spelling in §88.
+On these four files it fails with the same parse error, because it must parse a
+script before it can rewrite it. **A syntax removal is the one deprecation an
+automatic upgrader cannot handle**, which is an argument for removals landing as
+errors-with-a-rewrite rather than as grammar deletions.
+
+### What `PRIVATE` was actually doing: nothing
+
+The instinct on a credential declaration is to treat the modifier as load-bearing
+and migrate it carefully. It was not. `DESCRIBE CONSTANT` against the stored
+model emits:
+
+```
+create or modify constant Formula1Backend.OpenF1Password (
+  Type: String,
+  DefaultValue: ''
+);
+```
+
+No `PRIVATE`. The old parser accepted the token and the model never stored it, so
+the correct migration is to delete nine tokens and change nothing. The real
+mechanism was always separate and is untouched — `mxcli constant list` still
+reports `OpenF1Password  ****  this machine`, held in mode-600
+`.mxcli/constants.json` and set with `constant set`.
+
+**So four credential declarations carried a security-shaped no-op for weeks.**
+Anyone reading those lines — including me, writing them — would reasonably
+conclude the value was protected by the declaration. What protected it was a
+different mechanism entirely, and the word in the script was decoration.
+
+Worth generalising: a modifier that a permissive parser accepts and the writer
+discards is worse than a missing feature, because it reads as a control that is
+in force. `DESCRIBE` is the test — if a round-trip does not emit it, the model
+never held it.
+
+## 88. `mdl 1` arrives, and `limit 1` changes meaning without changing text
+
+The same upgrade brings a language-version scheme: scripts are `mdl 0` unless
+they open with `mdl 1;`, some spellings are refused from `mdl 2`, and `check`
+now reports the gap. Across the 24 backend scripts: **0 errors, 284 warnings.**
+
+| rule | count | change |
+|---|---|---|
+| `MDL-DEPR001` | 89 | `create or replace` → `create or modify`. Refused from mdl 2 |
+| `MDL-DEPR004` | 39 | `count($List, …)` → `count $List …`. Refused from mdl 2 |
+| `MDL-DEPR030` | 32 | a list operation written as a call |
+| `MDL-V1-LIMIT1` | **25** | see below |
+| `MDL-DEPR552` | 21 | |
+| `MDL-DEPR021` | 19 | |
+| `MDL-V1-LIST` | 16 | |
+| `MDL-V1-SLASH` | 3 | `/` as a terminator becomes an error under mdl 1 |
+
+The `DEPR*` rules are mechanical and `fmt --upgrade` rewrites them. `MDL-V1-LIMIT1`
+is not, and it is the one to be careful with:
+
+> `retrieve … limit 1` binds a single object … under mdl 1 it means a list of
+> one (a Custom range), and the object is written `first`.
+
+**Same text, opposite meaning, no error on either side of the change.** We have
+25 of them. A script that silently switches from "an object" to "a list of one"
+does not fail at the boundary — it fails later, wherever the variable is used,
+as CE0100 or CE0097 if we are lucky and as wrong behaviour if we are not.
+
+That makes the migration order matter: run `fmt --upgrade` for the `DEPR*`
+sweep, but **do not add the `mdl 1;` header until every `limit 1` has been read
+and rewritten as `first` or as an explicit list.** The header is the thing that
+changes the meaning; the rewrite is what makes the meaning survive it.
+
+Note also that §84 is unchanged on this build — `check` still cannot pass a
+`.test.mdl` file, because `MxTest` is still absent at rest. Two upgrades have
+gone by without it being reported upstream, which is this project's fault and
+not mxcli's.
