@@ -140,35 +140,106 @@ create or modify non-persistent entity Formula1Backend.Stg_ForecastTrace (
  * Returns 0 when there is nothing to forecast -- a session that is not a race,
  * or a circuit f1db does not know -- and the caller stops there.
  */
-CREATE OR MODIFY MICROFLOW Formula1Backend.Fcst_RaceLength (
+/**
+ * OpenF1 circuit name -> f1db circuit name, for the cases where the two
+ * datasets disagree. Semicolon-delimited `openf1=f1db` pairs, wrapped in
+ * semicolons so a lookup can anchor on both sides and `Baku` never matches
+ * inside `Baku City`.
+ *
+ * Kuala Lumpur is the case that forced it: OpenF1 names this circuit by its
+ * city, f1db by its venue (Sepang), and no amount of date or id matching
+ * reconciles them because they are simply different words for one place.
+ */
+create or modify constant Formula1Backend.CircuitAliases (
+  Type: String,
+  DefaultValue: ';Kuala Lumpur=Sepang;'
+);
+
+/**
+ * How many laps the race is, resolved against f1db.
+ *
+ * Two things defeat the direct (circuit, year) lookup, and both happened at
+ * once for the 2026 Bahrain Grand Prix:
+ *
+ *   The race moved. It is officially Bahrain and was held at Sepang, so f1db's
+ *   2026 calendar -- 22 rounds, none of them here, nearest Baku on 26 September
+ *   and Singapore on 11 October -- has no row for it at all. Matching on round,
+ *   date or grand prix id fails for the same reason: there is nothing to match.
+ *
+ *   The datasets name the venue differently. OpenF1 says 'Kuala Lumpur', f1db
+ *   says 'Sepang'. Even the historical rows are unreachable under OpenF1's
+ *   spelling.
+ *
+ * So: translate the name, then fall back from this year's row to the most
+ * recent running at the same circuit. Sepang last raced in 2017 over 56 laps,
+ * which is the distance the broadcast shows.
+ *
+ * The fallback is a lesser answer than a calendar row and says so in the log:
+ * a circuit that returns after a layout change keeps its old distance here.
+ * Returning 0 -- the old behaviour -- disables the forecast AND the narrative,
+ * since Narrative_Sweep gates on this same number, so a dated lap count beats
+ * silence.
+ */
+create or modify microflow Formula1Backend.Fcst_RaceLength (
   $Session: Formula1Backend.LiveSessionRow
 )
-  RETURNS Integer AS $Laps
-BEGIN
-  DECLARE $Laps Integer = 0;
-  IF $Session = empty THEN
-    RETURN $Laps;
-  END IF;
+  returns Integer as $Laps
+begin
+  declare $Laps Integer = 0;
+  if $Session = empty then
+    return $Laps;
+  end if;
 
   /* Practice and qualifying have no finishing order that pace predicts: what
    * decides them is one lap, not fifty. */
-  IF $Session/SessionType != 'Race' THEN
-    RETURN $Laps;
-  END IF;
+  if $Session/SessionType != 'Race' then
+    return $Laps;
+  end if;
 
-  RETRIEVE $Race FROM Formula1Backend.Race
-    WHERE CircuitName = $Session/CircuitName and Year = $Session/Year FIRST;
-  IF $Race = empty OR $Race/Laps = empty OR $Race/Laps < 1 THEN
-    RETURN $Laps;
-  END IF;
+  /* Translate the venue name if the two datasets disagree about it. */
+  declare $Name String = trim($Session/CircuitName);
+  declare $Aliases String = @Formula1Backend.CircuitAliases;
+  declare $Marker String = ';' + $Name + '=';
+  declare $At Integer = find($Aliases, $Marker);
+  if $At >= 0 then
+    declare $Tail String = substring($Aliases, $At + length($Marker));
+    declare $Cut Integer = find($Tail, ';');
+    if $Cut > 0 then
+      set $Name = trim(substring($Tail, 0, $Cut));
+    end if;
+  end if;
 
-  IF contains(toUpperCase($Session/SessionName), 'SPRINT') THEN
-    SET $Laps = round($Race/Laps div 3);
-  ELSE
-    SET $Laps = $Race/Laps;
-  END IF;
-  RETURN $Laps;
-END;
+  declare $Total Integer = 0;
+
+  retrieve $Race from Formula1Backend.Race
+    where CircuitName = $Name and Year = $Session/Year first;
+  if $Race != empty and $Race/Laps != empty and $Race/Laps > 0 then
+    set $Total = $Race/Laps;
+  else
+    /* Not on this year's calendar. The circuit's last running is the best
+     * distance available, and better than disabling the forecast. */
+    retrieve $Prev from Formula1Backend.Race
+      where CircuitName = $Name sort by Year desc first;
+    if $Prev != empty and $Prev/Laps != empty and $Prev/Laps > 0 then
+      set $Total = $Prev/Laps;
+      log warning node 'F1Forecast' 'race length for ' + $Name
+        + ' taken from its last running in ' + toString($Prev/Year)
+        + ' (' + toString($Prev/Laps) + ' laps): not on the '
+        + toString($Session/Year) + ' calendar';
+    end if;
+  end if;
+
+  if $Total < 1 then
+    return $Laps;
+  end if;
+
+  if contains(toUpperCase($Session/SessionName), 'SPRINT') then
+    set $Laps = round($Total div 3);
+  else
+    set $Laps = $Total;
+  end if;
+  return $Laps;
+end;
 
 /* --------------------------------------------------------------- the run -- */
 
