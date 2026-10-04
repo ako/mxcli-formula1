@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Formula1Backend — the DuckDB read layer.
  *
@@ -10,16 +11,14 @@
  * DataDir can be overridden per environment with MX_Formula1Backend_DataDir.
  */
 
-create or modify constant Formula1Backend.DataDir type string
-  default '/home/user/mxcli-formula1/data/f1db'
-  comment 'Folder holding the f1db CSVs. Override per environment.';
+/** Folder holding the f1db CSVs. Override per environment. */
+create or modify constant Formula1Backend.DataDir ( Type: string, DefaultValue: '/home/user/mxcli-formula1/data/f1db' );
 
-create or modify constant Formula1Backend.DuckDbUrl type string
-  default 'jdbc:duckdb:'
-  comment 'In-memory DuckDB — no database file; read_csv() reads the CSVs per query.';
+/** In-memory DuckDB — no database file; read_csv() reads the CSVs per query. */
+create or modify constant Formula1Backend.DuckDbUrl ( Type: string, DefaultValue: 'jdbc:duckdb:' );
 
-create or modify constant Formula1Backend.DuckDbUser type string default '';
-create or modify constant Formula1Backend.DuckDbPassword type string default '' PRIVATE;
+create or modify constant Formula1Backend.DuckDbUser ( Type: string, DefaultValue: '' );
+create or modify constant Formula1Backend.DuckDbPassword ( Type: string, DefaultValue: '' );
 
 /* ---------------------------------------------------------------------------
  * Row shapes. Non-persistable, because that is what the External Database
@@ -785,12 +784,12 @@ create or modify non-persistent entity Formula1Backend.Stg_SyncForecast (
   BestCase: long, WorstCase: long, ProjectedTime: decimal
 );
 
-create or modify database connection Formula1Backend.F1Warehouse
-type 'BYOD'
-connection string @Formula1Backend.DuckDbUrl
-username @Formula1Backend.DuckDbUser
-password @Formula1Backend.DuckDbPassword
-begin
+create or modify database connection Formula1Backend.F1Warehouse (
+Type: 'BYOD',
+ConnectionString: @Formula1Backend.DuckDbUrl,
+Username: @Formula1Backend.DuckDbUser,
+Password: @Formula1Backend.DuckDbPassword )
+{
   /*
    * `keyFilter` is how this resource answers a lookup by its own key.
    *
@@ -801,8 +800,8 @@ begin
    * empty means "the collection", anything else means "that row". Bound, not
    * interpolated, so it cannot carry SQL. FINDINGS §37, §42.
    */
-  query GetSeasons
-    sql 'SELECT * FROM (
+  query GetSeasons (
+    Sql: 'SELECT * FROM (
            SELECT s.year AS year,
                   COALESCE(d.name, ''—'') AS championDriverName,
                   COALESCE(c.name, ''—'') AS championConstructorName,
@@ -824,19 +823,19 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''raceCount'' THEN CAST(t.raceCount AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''raceCount'' THEN CAST(t.raceCount AS DOUBLE) END) END DESC NULLS LAST,
            t.year DESC
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_Season
-    map ( year as Year, championDriverName as ChampionDriverName,
-          championConstructorName as ChampionConstructorName, raceCount as RaceCount );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_Season,
+    Map: ( Year = year, ChampionDriverName = championDriverName,
+          ChampionConstructorName = championConstructorName, RaceCount = raceCount ) )
 
-  query GetCircuits
-    sql 'SELECT * FROM (
+  query GetCircuits (
+    Sql: 'SELECT * FROM (
            SELECT id, name, fullName, placeName, countryId, latitude, longitude,
                   length, turns, totalRacesHeld
            FROM read_csv({dataDir} || ''/f1db-circuits.csv'')
@@ -849,20 +848,20 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''latitude'' THEN CAST(t.latitude AS DOUBLE) WHEN ''longitude'' THEN CAST(t.longitude AS DOUBLE) WHEN ''length'' THEN CAST(t.length AS DOUBLE) WHEN ''turns'' THEN CAST(t.turns AS DOUBLE) WHEN ''racesHeld'' THEN CAST(t.totalRacesHeld AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''latitude'' THEN CAST(t.latitude AS DOUBLE) WHEN ''longitude'' THEN CAST(t.longitude AS DOUBLE) WHEN ''length'' THEN CAST(t.length AS DOUBLE) WHEN ''turns'' THEN CAST(t.turns AS DOUBLE) WHEN ''racesHeld'' THEN CAST(t.totalRacesHeld AS DOUBLE) END) END DESC NULLS LAST,
            t.name
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_Circuit
-    map ( id as CircuitId, name as Name, fullName as FullName, placeName as PlaceName,
-          countryId as Country, latitude as Latitude, longitude as Longitude,
-          length as Length, turns as Turns, totalRacesHeld as RacesHeld );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_Circuit,
+    Map: ( CircuitId = id, Name = name, FullName = fullName, PlaceName = placeName,
+          Country = countryId, Latitude = latitude, Longitude = longitude,
+          Length = length, Turns = turns, RacesHeld = totalRacesHeld ) )
 
-  query GetConstructors
-    sql 'SELECT * FROM (
+  query GetConstructors (
+    Sql: 'SELECT * FROM (
            SELECT id, name, fullName, countryId, totalChampionshipWins, totalRaceStarts,
                   totalRaceWins, totalPodiums, totalPoints, totalPolePositions
            FROM read_csv({dataDir} || ''/f1db-constructors.csv'')
@@ -875,36 +874,36 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''championshipWins'' THEN CAST(t.totalChampionshipWins AS DOUBLE) WHEN ''raceStarts'' THEN CAST(t.totalRaceStarts AS DOUBLE) WHEN ''raceWins'' THEN CAST(t.totalRaceWins AS DOUBLE) WHEN ''podiums'' THEN CAST(t.totalPodiums AS DOUBLE) WHEN ''points'' THEN CAST(t.totalPoints AS DOUBLE) WHEN ''polePositions'' THEN CAST(t.totalPolePositions AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''championshipWins'' THEN CAST(t.totalChampionshipWins AS DOUBLE) WHEN ''raceStarts'' THEN CAST(t.totalRaceStarts AS DOUBLE) WHEN ''raceWins'' THEN CAST(t.totalRaceWins AS DOUBLE) WHEN ''podiums'' THEN CAST(t.totalPodiums AS DOUBLE) WHEN ''points'' THEN CAST(t.totalPoints AS DOUBLE) WHEN ''polePositions'' THEN CAST(t.totalPolePositions AS DOUBLE) END) END DESC NULLS LAST,
            t.name
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_Constructor
-    map ( id as ConstructorId, name as Name, fullName as FullName, countryId as Country,
-          totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
-          totalRaceWins as RaceWins, totalPodiums as Podiums, totalPoints as Points,
-          totalPolePositions as PolePositions );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_Constructor,
+    Map: ( ConstructorId = id, Name = name, FullName = fullName, Country = countryId,
+          ChampionshipWins = totalChampionshipWins, RaceStarts = totalRaceStarts,
+          RaceWins = totalRaceWins, Podiums = totalPodiums, Points = totalPoints,
+          PolePositions = totalPolePositions ) )
 
-  query GetDrivers
-    sql 'SELECT id, name, fullName, abbreviation, permanentNumber, dateOfBirth,
+  query GetDrivers (
+    Sql: 'SELECT id, name, fullName, abbreviation, permanentNumber, dateOfBirth,
                 placeOfBirth, nationalityCountryId, totalChampionshipWins,
                 totalRaceStarts, totalRaceWins, totalPodiums, totalPoints,
                 totalPolePositions
-         FROM read_csv({dataDir} || ''/f1db-drivers.csv'') ORDER BY name'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Driver
-    map ( id as DriverId, name as Name, fullName as FullName, abbreviation as Abbreviation,
-          permanentNumber as PermanentNumber, dateOfBirth as DateOfBirth,
-          placeOfBirth as PlaceOfBirth, nationalityCountryId as Nationality,
-          totalChampionshipWins as ChampionshipWins, totalRaceStarts as RaceStarts,
-          totalRaceWins as RaceWins, totalPodiums as Podiums, totalPoints as Points,
-          totalPolePositions as PolePositions );
+         FROM read_csv({dataDir} || ''/f1db-drivers.csv'') ORDER BY name',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Driver,
+    Map: ( DriverId = id, Name = name, FullName = fullName, Abbreviation = abbreviation,
+          PermanentNumber = permanentNumber, DateOfBirth = dateOfBirth,
+          PlaceOfBirth = placeOfBirth, Nationality = nationalityCountryId,
+          ChampionshipWins = totalChampionshipWins, RaceStarts = totalRaceStarts,
+          RaceWins = totalRaceWins, Podiums = totalPodiums, Points = totalPoints,
+          PolePositions = totalPolePositions ) )
 
-  query GetRaces
-    sql 'SELECT * FROM (
+  query GetRaces (
+    Sql: 'SELECT * FROM (
            SELECT r.id, r.year, r.round, r.date, r.officialName, r.grandPrixId,
                   r.circuitId, c.name AS circuitName, r.laps, r.distance
            FROM read_csv({dataDir} || ''/f1db-races.csv'') r
@@ -918,23 +917,23 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''raceId'' THEN CAST(t.id AS DOUBLE) WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''round'' THEN CAST(t.round AS DOUBLE) WHEN ''laps'' THEN CAST(t.laps AS DOUBLE) WHEN ''distance'' THEN CAST(t.distance AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''raceId'' THEN CAST(t.id AS DOUBLE) WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''round'' THEN CAST(t.round AS DOUBLE) WHEN ''laps'' THEN CAST(t.laps AS DOUBLE) WHEN ''distance'' THEN CAST(t.distance AS DOUBLE) END) END DESC NULLS LAST,
            t.year DESC, t.round
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_Race
-    map ( id as RaceId, year as Year, round as Round, date as RaceDate,
-          officialName as OfficialName, grandPrixId as GrandPrixId,
-          circuitId as CircuitId, circuitName as CircuitName, laps as Laps,
-          distance as Distance );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_Race,
+    Map: ( RaceId = id, Year = year, Round = round, RaceDate = date,
+          OfficialName = officialName, GrandPrixId = grandPrixId,
+          CircuitId = circuitId, CircuitName = circuitName, Laps = laps,
+          Distance = distance ) )
 
   -- Every race result, 27533 rows. The cached service materialises all of it;
   -- the live service overrides this SQL per season so a request stays bounded.
-  query GetRaceResults
-    sql 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder, rr.positionNumber,
+  query GetRaceResults (
+    Sql: 'SELECT rr.raceId, rr.year, rr.round, rr.positionDisplayOrder, rr.positionNumber,
                 rr.positionText, rr.driverId, d.name AS driverName,
                 rr.constructorId, c.name AS constructorName, rr.driverNumber,
                 rr.laps, rr.time, rr.gap, rr.reasonRetired, rr.points,
@@ -942,34 +941,34 @@ begin
          FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'') rr
          LEFT JOIN read_csv({dataDir} || ''/f1db-drivers.csv'') d ON d.id = rr.driverId
          LEFT JOIN read_csv({dataDir} || ''/f1db-constructors.csv'') c ON c.id = rr.constructorId
-         ORDER BY rr.year DESC, rr.round, rr.positionDisplayOrder'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_RaceResult
-    map ( raceId as RaceId, year as Year, round as Round,
-          positionDisplayOrder as PositionOrder, positionNumber as PositionNumber,
-          positionText as PositionText, driverId as DriverId, driverName as DriverName,
-          constructorId as ConstructorId, constructorName as ConstructorName,
-          driverNumber as DriverNumber, laps as Laps, time as TimeText, gap as Gap,
-          reasonRetired as ReasonRetired, points as Points,
-          gridPositionNumber as GridPosition, positionsGained as PositionsGained,
-          fastestLap as FastestLap, polePosition as PolePosition );
+         ORDER BY rr.year DESC, rr.round, rr.positionDisplayOrder',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_RaceResult,
+    Map: ( RaceId = raceId, Year = year, Round = round,
+          PositionOrder = positionDisplayOrder, PositionNumber = positionNumber,
+          PositionText = positionText, DriverId = driverId, DriverName = driverName,
+          ConstructorId = constructorId, ConstructorName = constructorName,
+          DriverNumber = driverNumber, Laps = laps, TimeText = time, Gap = gap,
+          ReasonRetired = reasonRetired, Points = points,
+          GridPosition = gridPositionNumber, PositionsGained = positionsGained,
+          FastestLap = fastestLap, PolePosition = polePosition ) )
 
   -- Count queries. The SQL here is a placeholder: callers override it with
   -- `dynamic` so the WHERE clause matches the page query.
-  query GetDriverCount
-    sql 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-drivers.csv'')'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Count
-    map ( total as Total );
+  query GetDriverCount (
+    Sql: 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-drivers.csv'')',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Count,
+    Map: ( Total = total ) )
 
-  query GetRaceResultCount
-    sql 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'')'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Count
-    map ( total as Total );
+  query GetRaceResultCount (
+    Sql: 'SELECT count(*) AS total FROM read_csv({dataDir} || ''/f1db-races-race-results.csv'')',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Count,
+    Map: ( Total = total ) )
 
-  query GetDriverStandings
-    sql 'SELECT * FROM (
+  query GetDriverStandings (
+    Sql: 'SELECT * FROM (
            SELECT ds.year || ''-'' || ds.driverId AS standingKey,
                   ds.year, ds.positionDisplayOrder, ds.positionNumber, ds.positionText,
                   ds.driverId, d.name AS driverName, ds.points, ds.championshipWon
@@ -984,22 +983,22 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END DESC NULLS LAST,
            t.year DESC, t.positionDisplayOrder
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_DriverStanding
-    map ( standingKey as StandingKey, year as Year,
-          positionDisplayOrder as PositionOrder,
-          positionNumber as PositionNumber, positionText as PositionText,
-          driverId as DriverId, driverName as DriverName, points as Points,
-          championshipWon as ChampionshipWon );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_DriverStanding,
+    Map: ( StandingKey = standingKey, Year = year,
+          PositionOrder = positionDisplayOrder,
+          PositionNumber = positionNumber, PositionText = positionText,
+          DriverId = driverId, DriverName = driverName, Points = points,
+          ChampionshipWon = championshipWon ) )
 
-  query GetConstructorStandings
-    sql 'SELECT * FROM (
+  query GetConstructorStandings (
+    Sql: 'SELECT * FROM (
            SELECT cs.year || ''-'' || cs.constructorId AS standingKey,
                   cs.year, cs.positionDisplayOrder, cs.positionNumber, cs.positionText,
                   cs.constructorId, c.name AS constructorName, cs.engineManufacturerId,
@@ -1015,20 +1014,20 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''positionOrder'' THEN CAST(t.positionDisplayOrder AS DOUBLE) WHEN ''position'' THEN CAST(t.positionNumber AS DOUBLE) WHEN ''points'' THEN CAST(t.points AS DOUBLE) WHEN ''championshipWon'' THEN CAST(t.championshipWon AS INTEGER) END) END DESC NULLS LAST,
            t.year DESC, t.positionDisplayOrder
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_ConstructorStanding
-    map ( standingKey as StandingKey, year as Year,
-          positionDisplayOrder as PositionOrder,
-          positionNumber as PositionNumber, positionText as PositionText,
-          constructorId as ConstructorId, constructorName as ConstructorName,
-          engineManufacturerId as EngineManufacturer,
-          points as Points, championshipWon as ChampionshipWon );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_ConstructorStanding,
+    Map: ( StandingKey = standingKey, Year = year,
+          PositionOrder = positionDisplayOrder,
+          PositionNumber = positionNumber, PositionText = positionText,
+          ConstructorId = constructorId, ConstructorName = constructorName,
+          EngineManufacturer = engineManufacturerId,
+          Points = points, ChampionshipWon = championshipWon ) )
 
   /* -------------------------------------------------------------------------
    * The fan-page queries.
@@ -1040,8 +1039,8 @@ begin
    * keeps the placeholder from scanning 27533 rows at build time.
    * ---------------------------------------------------------------------- */
 
-  query GetDriverSeasons
-    sql 'SELECT rr.year || ''-'' || rr.driverId AS seasonKey, rr.driverId AS driverId,
+  query GetDriverSeasons (
+    Sql: 'SELECT rr.year || ''-'' || rr.driverId AS seasonKey, rr.driverId AS driverId,
                 rr.year AS year,
                 COALESCE(string_agg(DISTINCT c.name, '', ''), ''-'') AS constructors,
                 COALESCE(max(ds.positionText), ''-'') AS standingPosition,
@@ -1067,19 +1066,19 @@ begin
                     GROUP BY year) sb ON sb.year = rr.year
          GROUP BY rr.year, rr.driverId
          ORDER BY rr.year DESC
-         LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_DriverSeason
-    map ( seasonKey as SeasonKey, driverId as DriverId, year as Year,
-          constructors as Constructors, standingPosition as StandingPosition,
-          standingOrder as StandingOrder, points as Points, starts as Starts,
-          wins as Wins, podiums as Podiums, poles as Poles, bestFinish as BestFinish,
-          avgQualifying as AvgQualifying, avgFinish as AvgFinish,
-          retirements as Retirements, seasonBestPoints as SeasonBestPoints,
-          pointsShare as PointsShare );
+         LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_DriverSeason,
+    Map: ( SeasonKey = seasonKey, DriverId = driverId, Year = year,
+          Constructors = constructors, StandingPosition = standingPosition,
+          StandingOrder = standingOrder, Points = points, Starts = starts,
+          Wins = wins, Podiums = podiums, Poles = poles, BestFinish = bestFinish,
+          AvgQualifying = avgQualifying, AvgFinish = avgFinish,
+          Retirements = retirements, SeasonBestPoints = seasonBestPoints,
+          PointsShare = pointsShare ) )
 
-  query GetDriverRaces
-    sql 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey, rr.driverId AS driverId,
+  query GetDriverRaces (
+    Sql: 'SELECT rr.raceId || ''-'' || rr.driverId AS raceKey, rr.driverId AS driverId,
                 rr.year AS year, rr.round AS round,
                 COALESCE(r.officialName, ''Round '' || rr.round) AS raceName,
                 COALESCE(c.name, ''-'') AS constructorName,
@@ -1103,32 +1102,32 @@ begin
          LEFT JOIN read_csv({dataDir} || ''/f1db-races-free-practice-3-results.csv'') fp3
                 ON fp3.raceId = rr.raceId AND fp3.driverId = rr.driverId
          ORDER BY rr.year DESC, rr.round
-         LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_DriverRace
-    map ( raceKey as RaceKey, driverId as DriverId, year as Year, round as Round,
-          raceName as RaceName, constructorName as ConstructorName,
-          fp1Position as Fp1Position, fp2Position as Fp2Position, fp3Position as Fp3Position,
-          qualifyingPosition as QualifyingPosition, gridPosition as GridPosition,
-          finishPosition as FinishPosition, positionText as PositionText,
-          positionsGained as PositionsGained, points as Points,
-          reasonRetired as ReasonRetired );
+         LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_DriverRace,
+    Map: ( RaceKey = raceKey, DriverId = driverId, Year = year, Round = round,
+          RaceName = raceName, ConstructorName = constructorName,
+          Fp1Position = fp1Position, Fp2Position = fp2Position, Fp3Position = fp3Position,
+          QualifyingPosition = qualifyingPosition, GridPosition = gridPosition,
+          FinishPosition = finishPosition, PositionText = positionText,
+          PositionsGained = positionsGained, Points = points,
+          ReasonRetired = reasonRetired ) )
 
-  query GetSeasonProgress
-    sql 'SELECT ''0-0'' AS progressKey, 0 AS year, 0 AS round, '''' AS raceName,
+  query GetSeasonProgress (
+    Sql: 'SELECT ''0-0'' AS progressKey, 0 AS year, 0 AS round, '''' AS raceName,
                 '''' AS d1Name, '''' AS d2Name, '''' AS d3Name, '''' AS d4Name, '''' AS d5Name,
                 0.0 AS d1Points, 0.0 AS d2Points, 0.0 AS d3Points,
                 0.0 AS d4Points, 0.0 AS d5Points
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_SeasonProgress
-    map ( progressKey as ProgressKey, year as Year, round as Round, raceName as RaceName,
-          d1Name as D1Name, d2Name as D2Name, d3Name as D3Name, d4Name as D4Name,
-          d5Name as D5Name, d1Points as D1Points, d2Points as D2Points,
-          d3Points as D3Points, d4Points as D4Points, d5Points as D5Points );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_SeasonProgress,
+    Map: ( ProgressKey = progressKey, Year = year, Round = round, RaceName = raceName,
+          D1Name = d1Name, D2Name = d2Name, D3Name = d3Name, D4Name = d4Name,
+          D5Name = d5Name, D1Points = d1Points, D2Points = d2Points,
+          D3Points = d3Points, D4Points = d4Points, D5Points = d5Points ) )
 
-  query GetRetirements
-    sql 'SELECT rr.constructorId || ''|'' || COALESCE(rr.reasonRetired, ''Unknown'') AS retirementKey,
+  query GetRetirements (
+    Sql: 'SELECT rr.constructorId || ''|'' || COALESCE(rr.reasonRetired, ''Unknown'') AS retirementKey,
                 rr.constructorId AS constructorId,
                 COALESCE(c.name, rr.constructorId) AS constructorName,
                 COALESCE(rr.reasonRetired, ''Unknown'') AS reasonRetired,
@@ -1139,13 +1138,13 @@ begin
          WHERE rr.positionNumber IS NULL
          GROUP BY rr.constructorId, c.name, rr.reasonRetired
          ORDER BY count(*) DESC
-         LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Retirement
-    map ( retirementKey as RetirementKey, constructorId as ConstructorId,
-          constructorName as ConstructorName, reasonRetired as ReasonRetired,
-          retirements as Retirements, entries as Entries, sharePercent as SharePercent,
-          firstYear as FirstYear, lastYear as LastYear );
+         LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Retirement,
+    Map: ( RetirementKey = retirementKey, ConstructorId = constructorId,
+          ConstructorName = constructorName, ReasonRetired = reasonRetired,
+          Retirements = retirements, Entries = entries, SharePercent = sharePercent,
+          FirstYear = firstYear, LastYear = lastYear ) )
 
   /*
    * Facts. The file is written by scripts/fetch-f1-facts.sh and can legitimately
@@ -1153,19 +1152,19 @@ begin
    * are declared rather than sniffed: read_csv infers nothing from an empty file
    * and would fail on the column names instead of returning no rows.
    */
-  query GetFacts
-    sql 'SELECT scope || ''-'' || entityId AS factKey, scope AS scope,
+  query GetFacts (
+    Sql: 'SELECT scope || ''-'' || entityId AS factKey, scope AS scope,
                 entityId AS entityId, title AS title, extract AS extract,
                 sourceUrl AS sourceUrl, license AS license
          FROM read_csv({dataDir} || ''/../facts/f1db-facts.csv'', header = true,
                        columns = {''scope'': ''VARCHAR'', ''entityId'': ''VARCHAR'',
                                   ''title'': ''VARCHAR'', ''extract'': ''VARCHAR'',
                                   ''sourceUrl'': ''VARCHAR'', ''license'': ''VARCHAR''})
-         LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Fact
-    map ( factKey as FactKey, scope as Scope, entityId as EntityId, title as Title,
-          extract as Extract, sourceUrl as SourceUrl, license as License );
+         LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Fact,
+    Map: ( FactKey = factKey, Scope = scope, EntityId = entityId, Title = title,
+          Extract = extract, SourceUrl = sourceUrl, License = license ) )
 
 
   /* -------------------------------------------------------------------------
@@ -1174,8 +1173,8 @@ begin
    * the column list the connector maps.
    * ---------------------------------------------------------------------- */
 
-  query GetRaceWeekend
-    sql 'SELECT '''' AS weekendKey, 0 AS raceId, 0 AS year, 0 AS round,
+  query GetRaceWeekend (
+    Sql: 'SELECT '''' AS weekendKey, 0 AS raceId, 0 AS year, 0 AS round,
                 '''' AS roundLabel, '''' AS name, '''' AS circuitName,
                 '''' AS circuitId, CAST(NULL AS TIMESTAMP) AS raceDate,
                 0 AS laps, 0.0 AS distance,
@@ -1185,21 +1184,21 @@ begin
                 '''' AS fp1LeaderName, '''' AS fp1LeaderTime,
                 '''' AS fp2LeaderName, '''' AS fp2LeaderTime,
                 '''' AS fp3LeaderName, '''' AS fp3LeaderTime
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_RaceWeekend
-    map ( weekendKey as WeekendKey, raceId as RaceId, year as Year, round as Round,
-          roundLabel as RoundLabel, name as Name, circuitName as CircuitName,
-          circuitId as CircuitId, raceDate as RaceDate, laps as Laps,
-          distance as Distance, winnerName as WinnerName, winnerTeam as WinnerTeam,
-          poleName as PoleName, poleTime as PoleTime,
-          fastestLapName as FastestLapName, fastestLapTime as FastestLapTime,
-          fp1LeaderName as Fp1LeaderName, fp1LeaderTime as Fp1LeaderTime,
-          fp2LeaderName as Fp2LeaderName, fp2LeaderTime as Fp2LeaderTime,
-          fp3LeaderName as Fp3LeaderName, fp3LeaderTime as Fp3LeaderTime );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_RaceWeekend,
+    Map: ( WeekendKey = weekendKey, RaceId = raceId, Year = year, Round = round,
+          RoundLabel = roundLabel, Name = name, CircuitName = circuitName,
+          CircuitId = circuitId, RaceDate = raceDate, Laps = laps,
+          Distance = distance, WinnerName = winnerName, WinnerTeam = winnerTeam,
+          PoleName = poleName, PoleTime = poleTime,
+          FastestLapName = fastestLapName, FastestLapTime = fastestLapTime,
+          Fp1LeaderName = fp1LeaderName, Fp1LeaderTime = fp1LeaderTime,
+          Fp2LeaderName = fp2LeaderName, Fp2LeaderTime = fp2LeaderTime,
+          Fp3LeaderName = fp3LeaderName, Fp3LeaderTime = fp3LeaderTime ) )
 
-  query GetRaceSessions
-    sql 'SELECT '''' AS sessionKey, 0 AS raceId, 0 AS year, 0 AS round,
+  query GetRaceSessions (
+    Sql: 'SELECT '''' AS sessionKey, 0 AS raceId, 0 AS year, 0 AS round,
                 '''' AS driverId, '''' AS driverName, '''' AS abbreviation,
                 '''' AS constructorName,
                 0 AS fp1Position, '''' AS fp1Time, 0.0 AS fp1Gap,
@@ -1211,37 +1210,37 @@ begin
                 0 AS positionsGained, 0.0 AS points, '''' AS reasonRetired,
                 '''' AS bestLapTime, 0.0 AS bestLapGap, 0 AS bestLapRank,
                 0 AS pitStops
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_RaceSession
-    map ( sessionKey as SessionKey, raceId as RaceId, year as Year, round as Round,
-          driverId as DriverId, driverName as DriverName, abbreviation as Abbreviation,
-          constructorName as ConstructorName,
-          fp1Position as Fp1Position, fp1Time as Fp1Time, fp1Gap as Fp1Gap,
-          fp2Position as Fp2Position, fp2Time as Fp2Time, fp2Gap as Fp2Gap,
-          fp3Position as Fp3Position, fp3Time as Fp3Time, fp3Gap as Fp3Gap,
-          qualPosition as QualPosition, qualTime as QualTime, qualGap as QualGap,
-          q1 as Q1, q2 as Q2, q3 as Q3,
-          gridPosition as GridPosition, finishPosition as FinishPosition,
-          positionText as PositionText, positionsGained as PositionsGained,
-          points as Points, reasonRetired as ReasonRetired,
-          bestLapTime as BestLapTime, bestLapGap as BestLapGap,
-          bestLapRank as BestLapRank, pitStops as PitStops );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_RaceSession,
+    Map: ( SessionKey = sessionKey, RaceId = raceId, Year = year, Round = round,
+          DriverId = driverId, DriverName = driverName, Abbreviation = abbreviation,
+          ConstructorName = constructorName,
+          Fp1Position = fp1Position, Fp1Time = fp1Time, Fp1Gap = fp1Gap,
+          Fp2Position = fp2Position, Fp2Time = fp2Time, Fp2Gap = fp2Gap,
+          Fp3Position = fp3Position, Fp3Time = fp3Time, Fp3Gap = fp3Gap,
+          QualPosition = qualPosition, QualTime = qualTime, QualGap = qualGap,
+          Q1 = q1, Q2 = q2, Q3 = q3,
+          GridPosition = gridPosition, FinishPosition = finishPosition,
+          PositionText = positionText, PositionsGained = positionsGained,
+          Points = points, ReasonRetired = reasonRetired,
+          BestLapTime = bestLapTime, BestLapGap = bestLapGap,
+          BestLapRank = bestLapRank, PitStops = pitStops ) )
 
-  query GetCalendar
-    sql 'SELECT '''' AS calendarKey, 0 AS raceId, 0 AS year, 0 AS round,
+  query GetCalendar (
+    Sql: 'SELECT '''' AS calendarKey, 0 AS raceId, 0 AS year, 0 AS round,
                 '''' AS code, '''' AS name, '''' AS circuitName,
                 CAST(NULL AS TIMESTAMP) AS raceDate,
                 '''' AS winnerName, '''' AS winnerTeam
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_Calendar
-    map ( calendarKey as CalendarKey, raceId as RaceId, year as Year, round as Round,
-          code as Code, name as Name, circuitName as CircuitName,
-          raceDate as RaceDate, winnerName as WinnerName, winnerTeam as WinnerTeam );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_Calendar,
+    Map: ( CalendarKey = calendarKey, RaceId = raceId, Year = year, Round = round,
+          Code = code, Name = name, CircuitName = circuitName,
+          RaceDate = raceDate, WinnerName = winnerName, WinnerTeam = winnerTeam ) )
 
-  query GetWeekendShape
-    sql 'SELECT '''' AS shapeKey, 0 AS raceId, 0 AS sessionIndex, '''' AS sessionLabel,
+  query GetWeekendShape (
+    Sql: 'SELECT '''' AS shapeKey, 0 AS raceId, 0 AS sessionIndex, '''' AS sessionLabel,
                 '''' AS s1name,
                 '''' AS s2name,
                 '''' AS s3name,
@@ -1262,16 +1261,16 @@ begin
                 0 AS s8value,
                 0 AS s9value,
                 0 AS s10value
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_WeekendShape
-    map ( shapeKey as ShapeKey, raceId as RaceId, sessionIndex as SessionIndex,
-          sessionLabel as SessionLabel,
-          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
-          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_WeekendShape,
+    Map: ( ShapeKey = shapeKey, RaceId = raceId, SessionIndex = sessionIndex,
+          SessionLabel = sessionLabel,
+          S1Name = s1name, S2Name = s2name, S3Name = s3name, S4Name = s4name, S5Name = s5name, S6Name = s6name, S7Name = s7name, S8Name = s8name, S9Name = s9name, S10Name = s10name,
+          S1Value = s1value, S2Value = s2value, S3Value = s3value, S4Value = s4value, S5Value = s5value, S6Value = s6value, S7Value = s7value, S8Value = s8value, S9Value = s9value, S10Value = s10value ) )
 
-  query GetLapChart
-    sql 'SELECT '''' AS lapKey, 0 AS year, 0 AS round, 0 AS lap,
+  query GetLapChart (
+    Sql: 'SELECT '''' AS lapKey, 0 AS year, 0 AS round, 0 AS lap,
                 '''' AS s1name,
                 '''' AS s2name,
                 '''' AS s3name,
@@ -1292,52 +1291,52 @@ begin
                 0 AS s8value,
                 0 AS s9value,
                 0 AS s10value
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_LapChart
-    map ( lapKey as LapKey, year as Year, round as Round, lap as Lap,
-          s1name as S1Name, s2name as S2Name, s3name as S3Name, s4name as S4Name, s5name as S5Name, s6name as S6Name, s7name as S7Name, s8name as S8Name, s9name as S9Name, s10name as S10Name,
-          s1value as S1Value, s2value as S2Value, s3value as S3Value, s4value as S4Value, s5value as S5Value, s6value as S6Value, s7value as S7Value, s8value as S8Value, s9value as S9Value, s10value as S10Value );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_LapChart,
+    Map: ( LapKey = lapKey, Year = year, Round = round, Lap = lap,
+          S1Name = s1name, S2Name = s2name, S3Name = s3name, S4Name = s4name, S5Name = s5name, S6Name = s6name, S7Name = s7name, S8Name = s8name, S9Name = s9name, S10Name = s10name,
+          S1Value = s1value, S2Value = s2value, S3Value = s3value, S4Value = s4value, S5Value = s5value, S6Value = s6value, S7Value = s7value, S8Value = s8value, S9Value = s9value, S10Value = s10value ) )
 
 
-  query GetTeamSeason
-    sql 'SELECT '''' AS teamSeasonKey, '''' AS constructorId,
+  query GetTeamSeason (
+    Sql: 'SELECT '''' AS teamSeasonKey, '''' AS constructorId,
                 '''' AS constructorName, 0 AS year, 0 AS round,
                 '''' AS code, '''' AS raceName,
                 '''' AS driver1Name, 0.0 AS driver1Points,
                 '''' AS driver2Name, 0.0 AS driver2Points,
                 0.0 AS teamPoints, 0 AS standingPosition
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_TeamSeason
-    map ( teamSeasonKey as TeamSeasonKey, constructorId as ConstructorId,
-          constructorName as ConstructorName, year as Year, round as Round,
-          code as Code, raceName as RaceName,
-          driver1Name as Driver1Name, driver1Points as Driver1Points,
-          driver2Name as Driver2Name, driver2Points as Driver2Points,
-          teamPoints as TeamPoints, standingPosition as StandingPosition );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_TeamSeason,
+    Map: ( TeamSeasonKey = teamSeasonKey, ConstructorId = constructorId,
+          ConstructorName = constructorName, Year = year, Round = round,
+          Code = code, RaceName = raceName,
+          Driver1Name = driver1Name, Driver1Points = driver1Points,
+          Driver2Name = driver2Name, Driver2Points = driver2Points,
+          TeamPoints = teamPoints, StandingPosition = standingPosition ) )
 
-  query GetTeamH2H
-    sql 'SELECT '''' AS h2hKey, '''' AS constructorId, 0 AS year,
+  query GetTeamH2H (
+    Sql: 'SELECT '''' AS h2hKey, '''' AS constructorId, 0 AS year,
                 '''' AS leftName, '''' AS rightName,
                 0 AS qualLeft, 0 AS qualRight, 0 AS qualLeftShare, 0 AS qualRightShare,
                 0 AS raceLeft, 0 AS raceRight, 0 AS raceLeftShare, 0 AS raceRightShare,
                 0.0 AS pointsLeft, 0.0 AS pointsRight,
                 0 AS pointsLeftShare, 0 AS pointsRightShare,
                 0 AS dnfLeft, 0 AS dnfRight, 0 AS dnfLeftShare, 0 AS dnfRightShare
-         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_TeamH2H
-    map ( h2hKey as H2HKey, constructorId as ConstructorId, year as Year,
-          leftName as LeftName, rightName as RightName,
-          qualLeft as QualLeft, qualRight as QualRight,
-          qualLeftShare as QualLeftShare, qualRightShare as QualRightShare,
-          raceLeft as RaceLeft, raceRight as RaceRight,
-          raceLeftShare as RaceLeftShare, raceRightShare as RaceRightShare,
-          pointsLeft as PointsLeft, pointsRight as PointsRight,
-          pointsLeftShare as PointsLeftShare, pointsRightShare as PointsRightShare,
-          dnfLeft as DnfLeft, dnfRight as DnfRight,
-          dnfLeftShare as DnfLeftShare, dnfRightShare as DnfRightShare );
+         FROM read_csv({dataDir} || ''/f1db-seasons.csv'') LIMIT 1',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_TeamH2H,
+    Map: ( H2HKey = h2hKey, ConstructorId = constructorId, Year = year,
+          LeftName = leftName, RightName = rightName,
+          QualLeft = qualLeft, QualRight = qualRight,
+          QualLeftShare = qualLeftShare, QualRightShare = qualRightShare,
+          RaceLeft = raceLeft, RaceRight = raceRight,
+          RaceLeftShare = raceLeftShare, RaceRightShare = raceRightShare,
+          PointsLeft = pointsLeft, PointsRight = pointsRight,
+          PointsLeftShare = pointsLeftShare, PointsRightShare = pointsRightShare,
+          DnfLeft = dnfLeft, DnfRight = dnfRight,
+          DnfLeftShare = dnfLeftShare, DnfRightShare = dnfRightShare ) )
 
   /* -------------------------------------------------------------------------
    * The live snapshot. Columns are declared rather than sniffed: these files
@@ -1345,8 +1344,8 @@ begin
    * nothing from an empty file.
    * ---------------------------------------------------------------------- */
 
-  query GetLiveOrder
-    sql 'SELECT * FROM (
+  query GetLiveOrder (
+    Sql: 'SELECT * FROM (
          SELECT sessionKey || ''-'' || driverNumber AS entryKey, sessionKey, driverNumber,
                   code, driverName, team, teamColour, position, gapToLeader, interval,
                   lapNumber, lastLapSeconds, sector1, sector2, sector3, speedTrap,
@@ -1374,22 +1373,22 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''lastLapSeconds'' THEN CAST(t.lastLapSeconds AS DOUBLE) WHEN ''sector1'' THEN CAST(t.sector1 AS DOUBLE) WHEN ''sector2'' THEN CAST(t.sector2 AS DOUBLE) WHEN ''sector3'' THEN CAST(t.sector3 AS DOUBLE) WHEN ''speedTrap'' THEN CAST(t.speedTrap AS DOUBLE) WHEN ''tyreAge'' THEN CAST(t.tyreAge AS DOUBLE) WHEN ''pitStops'' THEN CAST(t.pitStops AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''lastLapSeconds'' THEN CAST(t.lastLapSeconds AS DOUBLE) WHEN ''sector1'' THEN CAST(t.sector1 AS DOUBLE) WHEN ''sector2'' THEN CAST(t.sector2 AS DOUBLE) WHEN ''sector3'' THEN CAST(t.sector3 AS DOUBLE) WHEN ''speedTrap'' THEN CAST(t.speedTrap AS DOUBLE) WHEN ''tyreAge'' THEN CAST(t.tyreAge AS DOUBLE) WHEN ''pitStops'' THEN CAST(t.pitStops AS DOUBLE) END) END DESC NULLS LAST,
            t.position
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_LiveEntry
-    map ( entryKey as EntryKey, sessionKey as SessionKey, driverNumber as DriverNumber,
-          code as Code, driverName as DriverName, team as Team, teamColour as TeamColour,
-          position as Position, gapToLeader as GapToLeader, interval as Interval,
-          lapNumber as LapNumber, lastLapSeconds as LastLapSeconds, sector1 as Sector1,
-          sector2 as Sector2, sector3 as Sector3, speedTrap as SpeedTrap,
-          compound as Compound, tyreAge as TyreAge, pitStops as PitStops,
-          drs as Drs, sector1Mark as Sector1Mark, sector2Mark as Sector2Mark,
-          sector3Mark as Sector3Mark );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_LiveEntry,
+    Map: ( EntryKey = entryKey, SessionKey = sessionKey, DriverNumber = driverNumber,
+          Code = code, DriverName = driverName, Team = team, TeamColour = teamColour,
+          Position = position, GapToLeader = gapToLeader, Interval = interval,
+          LapNumber = lapNumber, LastLapSeconds = lastLapSeconds, Sector1 = sector1,
+          Sector2 = sector2, Sector3 = sector3, SpeedTrap = speedTrap,
+          Compound = compound, TyreAge = tyreAge, PitStops = pitStops,
+          Drs = drs, Sector1Mark = sector1Mark, Sector2Mark = sector2Mark,
+          Sector3Mark = sector3Mark ) )
 
   /*
    * `at` is a reserved word in DuckDB (it introduces time travel: FROM t AT
@@ -1401,8 +1400,8 @@ begin
    * a race control message has no natural id, and two identical yellow flags in
    * one session are a real possibility.
    */
-  query GetLiveMessages
-    sql 'SELECT * FROM (
+  query GetLiveMessages (
+    Sql: 'SELECT * FROM (
          SELECT sessionKey || ''-'' || row_number() OVER () AS messageKey,
                   sessionKey, "at" AS atTime, category, flag, scope, lap, message
            FROM read_csv({dataDir} || ''/../live/live-messages.csv'', header = true,
@@ -1418,20 +1417,20 @@ begin
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''messageKey'' THEN t.messageKey WHEN ''sessionKey'' THEN t.sessionKey WHEN ''at'' THEN t.atTime WHEN ''category'' THEN t.category WHEN ''flag'' THEN t.flag WHEN ''scope'' THEN t.scope WHEN ''message'' THEN t.message END) END DESC NULLS LAST,
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''lap'' THEN CAST(t.lap AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''lap'' THEN CAST(t.lap AS DOUBLE) END) END DESC NULLS LAST
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_LiveMessage
-    map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
-          category as Category, flag as Flag, scope as Scope, lap as Lap,
-          message as Message );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_LiveMessage,
+    Map: ( MessageKey = messageKey, SessionKey = sessionKey, At = atTime,
+          Category = category, Flag = flag, Scope = scope, Lap = lap,
+          Message = message ) )
 
-  query GetLiveSession
-    sql 'SELECT * FROM (
+  query GetLiveSession (
+    Sql: 'SELECT * FROM (
          SELECT s.sessionKey, s.sessionName, s.sessionType, s.location, s.countryName,
                   s.circuitName, s.dateStart, s.year, s.driverCount, s.leadLap, s.fetchedAt,
                   w.airTemperature, w.trackTemperature, w.humidity, w.rainfall, w.windSpeed
@@ -1456,20 +1455,20 @@ begin
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''sessionKey'' THEN t.sessionKey WHEN ''sessionName'' THEN t.sessionName WHEN ''sessionType'' THEN t.sessionType WHEN ''location'' THEN t.location WHEN ''countryName'' THEN t.countryName WHEN ''circuitName'' THEN t.circuitName WHEN ''dateStart'' THEN t.dateStart WHEN ''fetchedAt'' THEN t.fetchedAt END) END DESC NULLS LAST,
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''driverCount'' THEN CAST(t.driverCount AS DOUBLE) WHEN ''leadLap'' THEN CAST(t.leadLap AS DOUBLE) WHEN ''airTemperature'' THEN CAST(t.airTemperature AS DOUBLE) WHEN ''trackTemperature'' THEN CAST(t.trackTemperature AS DOUBLE) WHEN ''humidity'' THEN CAST(t.humidity AS DOUBLE) WHEN ''rainfall'' THEN CAST(t.rainfall AS DOUBLE) WHEN ''windSpeed'' THEN CAST(t.windSpeed AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''year'' THEN CAST(t.year AS DOUBLE) WHEN ''driverCount'' THEN CAST(t.driverCount AS DOUBLE) WHEN ''leadLap'' THEN CAST(t.leadLap AS DOUBLE) WHEN ''airTemperature'' THEN CAST(t.airTemperature AS DOUBLE) WHEN ''trackTemperature'' THEN CAST(t.trackTemperature AS DOUBLE) WHEN ''humidity'' THEN CAST(t.humidity AS DOUBLE) WHEN ''rainfall'' THEN CAST(t.rainfall AS DOUBLE) WHEN ''windSpeed'' THEN CAST(t.windSpeed AS DOUBLE) END) END DESC NULLS LAST
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_LiveSession
-    map ( sessionKey as SessionKey, sessionName as SessionName, sessionType as SessionType,
-          location as Location, countryName as CountryName, circuitName as CircuitName,
-          dateStart as DateStart, year as Year, driverCount as DriverCount,
-          leadLap as LeadLap, fetchedAt as FetchedAt, airTemperature as AirTemperature,
-          trackTemperature as TrackTemperature, humidity as Humidity,
-          rainfall as Rainfall, windSpeed as WindSpeed );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_LiveSession,
+    Map: ( SessionKey = sessionKey, SessionName = sessionName, SessionType = sessionType,
+          Location = location, CountryName = countryName, CircuitName = circuitName,
+          DateStart = dateStart, Year = year, DriverCount = driverCount,
+          LeadLap = leadLap, FetchedAt = fetchedAt, AirTemperature = airTemperature,
+          TrackTemperature = trackTemperature, Humidity = humidity,
+          Rainfall = rainfall, WindSpeed = windSpeed ) )
 
   /*
    * The lap-by-lap history. One row per driver per lap, already resampled onto
@@ -1479,8 +1478,8 @@ begin
    * here -- unlike the race control messages next door, a driver completes a
    * given lap exactly once.
    */
-  query GetLiveTrace
-    sql 'SELECT * FROM (
+  query GetLiveTrace (
+    Sql: 'SELECT * FROM (
          SELECT sessionKey || ''-'' || driverNumber || ''-'' || lapNumber AS traceKey,
                   sessionKey, driverNumber, code, lapNumber, position,
                   gapToLeader, gapSeconds, lapSeconds
@@ -1497,23 +1496,23 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''gapSeconds'' THEN CAST(t.gapSeconds AS DOUBLE) WHEN ''lapSeconds'' THEN CAST(t.lapSeconds AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''lapNumber'' THEN CAST(t.lapNumber AS DOUBLE) WHEN ''position'' THEN CAST(t.position AS DOUBLE) WHEN ''gapSeconds'' THEN CAST(t.gapSeconds AS DOUBLE) WHEN ''lapSeconds'' THEN CAST(t.lapSeconds AS DOUBLE) END) END DESC NULLS LAST,
            t.lapNumber, t.position
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_LiveTrace
-    map ( traceKey as TraceKey, sessionKey as SessionKey, driverNumber as DriverNumber,
-          code as Code, lapNumber as LapNumber, position as Position,
-          gapToLeader as GapToLeader, gapSeconds as GapSeconds,
-          lapSeconds as LapSeconds );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_LiveTrace,
+    Map: ( TraceKey = traceKey, SessionKey = sessionKey, DriverNumber = driverNumber,
+          Code = code, LapNumber = lapNumber, Position = position,
+          GapToLeader = gapToLeader, GapSeconds = gapSeconds,
+          LapSeconds = lapSeconds ) )
 
   /* Every stint of every car. Ordered by driver then stint so a page can walk
    * it straight into per-driver bars without regrouping. */
-  query GetLiveStints
-    sql 'SELECT * FROM (
+  query GetLiveStints (
+    Sql: 'SELECT * FROM (
          SELECT sessionKey || ''-'' || driverNumber || ''-'' || stintNumber AS stintKey,
                   sessionKey, driverNumber, code, stintNumber, compound,
                   lapStart, lapEnd, tyreAgeAtStart
@@ -1530,23 +1529,23 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''stintNumber'' THEN CAST(t.stintNumber AS DOUBLE) WHEN ''lapStart'' THEN CAST(t.lapStart AS DOUBLE) WHEN ''lapEnd'' THEN CAST(t.lapEnd AS DOUBLE) WHEN ''tyreAgeAtStart'' THEN CAST(t.tyreAgeAtStart AS DOUBLE) END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''driverNumber'' THEN CAST(t.driverNumber AS DOUBLE) WHEN ''stintNumber'' THEN CAST(t.stintNumber AS DOUBLE) WHEN ''lapStart'' THEN CAST(t.lapStart AS DOUBLE) WHEN ''lapEnd'' THEN CAST(t.lapEnd AS DOUBLE) WHEN ''tyreAgeAtStart'' THEN CAST(t.tyreAgeAtStart AS DOUBLE) END) END DESC NULLS LAST,
            t.driverNumber, t.stintNumber
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_LiveStint
-    map ( stintKey as StintKey, sessionKey as SessionKey, driverNumber as DriverNumber,
-          code as Code, stintNumber as StintNumber, compound as Compound,
-          lapStart as LapStart, lapEnd as LapEnd, tyreAgeAtStart as TyreAgeAtStart );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_LiveStint,
+    Map: ( StintKey = stintKey, SessionKey = sessionKey, DriverNumber = driverNumber,
+          Code = code, StintNumber = stintNumber, Compound = compound,
+          LapStart = lapStart, LapEnd = lapEnd, TyreAgeAtStart = tyreAgeAtStart ) )
 
   /* One outline per circuit, keyed by the circuit's own id. A weekend page asks
    * for the one circuit it is about; nothing here asks for all of them, but the
    * unfiltered read is 22 rows and costs nothing. */
-  query GetCircuitOutlines
-    sql 'SELECT * FROM (
+  query GetCircuitOutlines (
+    Sql: 'SELECT * FROM (
          SELECT circuitId, name, fullName, viewBox, pathD, points,
                   tracedKm, officialKm, deltaPercent, source, license, attribution
            FROM read_csv({dataDir} || ''/../circuits/f1db-circuit-paths.csv'',
@@ -1563,34 +1562,34 @@ begin
            CASE WHEN {sortDir} = ''A'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.circuitId WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName END) END ASC NULLS LAST,
            CASE WHEN {sortDir} = ''D'' THEN (CASE {sortCol} WHEN ''circuitId'' THEN t.circuitId WHEN ''name'' THEN t.name WHEN ''fullName'' THEN t.fullName END) END DESC NULLS LAST,
            t.circuitId
-         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)'
-    parameter dataDir: string
-    parameter keyFilter: string
-    parameter topN: string
-    parameter skipN: string
-    parameter sortCol: string
-    parameter sortDir: string
-    returns Formula1Backend.Stg_CircuitOutline
-    map ( circuitId as CircuitId, name as Name, fullName as FullName,
-          viewBox as ViewBox, pathD as PathD, points as Points,
-          tracedKm as TracedKm, officialKm as OfficialKm,
-          deltaPercent as DeltaPercent, source as Source,
-          license as License, attribution as Attribution );
+         LIMIT CAST({topN} AS BIGINT) OFFSET CAST({skipN} AS BIGINT)',
+    Parameters: ( dataDir: string,
+    keyFilter: string,
+    topN: string,
+    skipN: string,
+    sortCol: string,
+    sortDir: string ),
+    Returns: Formula1Backend.Stg_CircuitOutline,
+    Map: ( CircuitId = circuitId, Name = name, FullName = fullName,
+          ViewBox = viewBox, PathD = pathD, Points = points,
+          TracedKm = tracedKm, OfficialKm = officialKm,
+          DeltaPercent = deltaPercent, Source = source,
+          License = license, Attribution = attribution ) )
 
   /* The outline as vertices. Called with dynamic SQL so a page's
    * ?$filter=circuitId eq 'zandvoort' is pushed into the scan rather than
    * pulling nine thousand points to keep four hundred. */
-  query GetCircuitPoints
-    sql 'SELECT circuitId || ''-'' || i AS pointKey, circuitId, i AS seq, x, y
+  query GetCircuitPoints (
+    Sql: 'SELECT circuitId || ''-'' || i AS pointKey, circuitId, i AS seq, x, y
            FROM read_csv({dataDir} || ''/../circuits/f1db-circuit-points.csv'',
                          header = true,
                          columns = {''circuitId'': ''VARCHAR'', ''i'': ''BIGINT'',
                                     ''x'': ''DOUBLE'', ''y'': ''DOUBLE''})
-          ORDER BY circuitId, i'
-    parameter dataDir: string
-    returns Formula1Backend.Stg_CircuitPoint
-    map ( pointKey as PointKey, circuitId as CircuitId, seq as Seq,
-          x as X, y as Y );
+          ORDER BY circuitId, i',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_CircuitPoint,
+    Map: ( PointKey = pointKey, CircuitId = circuitId, Seq = seq,
+          X = x, Y = y ) )
 
   /* -------------------------------------------------------- OpenF1, live -- */
 
@@ -1625,8 +1624,8 @@ begin
    * position sample at or before this lap ended" is one join here and a
    * bisect-and-loop anywhere else.
    */
-  query GetOpenF1Laps
-    sql 'WITH laps AS (
+  query GetOpenF1Laps (
+    Sql: 'WITH laps AS (
            SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
                   j.lap_duration AS lap_duration, j.duration_sector_1 AS s1,
                   j.duration_sector_2 AS s2, j.duration_sector_3 AS s3,
@@ -1677,20 +1676,20 @@ begin
            ASOF LEFT JOIN itv i ON i.driver_number = l.driver_number AND i.t <= l.t1
            LEFT JOIN st s ON s.driver_number = l.driver_number
                 AND l.lap_number >= s.lap_start
-                AND l.lap_number <= COALESCE(s.lap_end, 9999)'
-    parameter sessionKey: string
-    parameter lapsJson: string
-    parameter posJson: string
-    parameter itvJson: string
-    parameter stintsJson: string
-    parameter pitJson: string
-    returns Formula1Backend.Stg_SyncLap
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
-          lapNumber as LapNumber, position as Position,
-          gapToLeader as GapToLeader, gapSeconds as GapSeconds,
-          lapSeconds as LapSeconds, sector1 as Sector1, sector2 as Sector2,
-          sector3 as Sector3, speedTrap as SpeedTrap, compound as Compound,
-          tyreAge as TyreAge, pitStops as PitStops );
+                AND l.lap_number <= COALESCE(s.lap_end, 9999)',
+    Parameters: ( sessionKey: string,
+    lapsJson: string,
+    posJson: string,
+    itvJson: string,
+    stintsJson: string,
+    pitJson: string ),
+    Returns: Formula1Backend.Stg_SyncLap,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber,
+          LapNumber = lapNumber, Position = position,
+          GapToLeader = gapToLeader, GapSeconds = gapSeconds,
+          LapSeconds = lapSeconds, Sector1 = sector1, Sector2 = sector2,
+          Sector3 = sector3, SpeedTrap = speedTrap, Compound = compound,
+          TyreAge = tyreAge, PitStops = pitStops ) )
 
   /*
    * The entry list.
@@ -1707,32 +1706,32 @@ begin
    * team_colour comes back as bare hex with no '#', which is what the frontend
    * wants for a CSS custom property, so it is stored as sent.
    */
-  query GetOpenF1Drivers
-    sql 'SELECT {sessionKey} AS sessionKey, j.driver_number AS driverNumber,
+  query GetOpenF1Drivers (
+    Sql: 'SELECT {sessionKey} AS sessionKey, j.driver_number AS driverNumber,
                 COALESCE(j.name_acronym, '''') AS code,
                 COALESCE(j.full_name, j.broadcast_name, '''') AS driverName,
                 COALESCE(j.team_name, '''') AS team,
                 COALESCE(j.team_colour, '''') AS teamColour
            FROM (SELECT unnest(from_json({driversJson}::JSON,
                  ''[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]'')) AS j)
-          WHERE j.driver_number IS NOT NULL'
-    parameter sessionKey: string
-    parameter driversJson: string
-    returns Formula1Backend.Stg_SyncDriver
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber, code as Code,
-          driverName as DriverName, team as Team, teamColour as TeamColour );
+          WHERE j.driver_number IS NOT NULL',
+    Parameters: ( sessionKey: string,
+    driversJson: string ),
+    Returns: Formula1Backend.Stg_SyncDriver,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber, Code = code,
+          DriverName = driverName, Team = team, TeamColour = teamColour ) )
 
-  query GetOpenF1Stints
-    sql 'SELECT '''' AS stintKey, '''' AS sessionKey, 0 AS driverNumber,
+  query GetOpenF1Stints (
+    Sql: 'SELECT '''' AS stintKey, '''' AS sessionKey, 0 AS driverNumber,
                 '''' AS code, 0 AS stintNumber, '''' AS compound,
                 0 AS lapStart, 0 AS lapEnd, 0 AS tyreAgeAtStart
-         WHERE {dataDir} = ''never'''
-    parameter dataDir: string
-    returns Formula1Backend.Stg_LiveStint
-    map ( stintKey as StintKey, sessionKey as SessionKey,
-          driverNumber as DriverNumber, code as Code, stintNumber as StintNumber,
-          compound as Compound, lapStart as LapStart, lapEnd as LapEnd,
-          tyreAgeAtStart as TyreAgeAtStart );
+         WHERE {dataDir} = ''never''',
+    Parameters: ( dataDir: string ),
+    Returns: Formula1Backend.Stg_LiveStint,
+    Map: ( StintKey = stintKey, SessionKey = sessionKey,
+          DriverNumber = driverNumber, Code = code, StintNumber = stintNumber,
+          Compound = compound, LapStart = lapStart, LapEnd = lapEnd,
+          TyreAgeAtStart = tyreAgeAtStart ) )
 
   /*
    * Race control: flags, safety cars, investigations, deleted lap times.
@@ -1744,8 +1743,8 @@ begin
    * messageKey exists because two messages can share a second, so the timestamp
    * alone is not unique; the row number inside the ordering closes it.
    */
-  query GetOpenF1Messages
-    sql 'SELECT {sessionKey} AS sessionKey,
+  query GetOpenF1Messages (
+    Sql: 'SELECT {sessionKey} AS sessionKey,
                 {sessionKey} || ''-'' || strftime(CAST(j.date AS TIMESTAMP), ''%Y%m%d%H%M%S'')
                   || ''-'' || CAST(row_number() OVER (ORDER BY j.date) AS VARCHAR) AS messageKey,
                 strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
@@ -1756,21 +1755,21 @@ begin
                 COALESCE(j.message, '''') AS message
            FROM (SELECT unnest(from_json({messagesJson}::JSON,
                  ''[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","lap_number":"BIGINT","message":"VARCHAR"}]'')) AS j)
-          WHERE j.date IS NOT NULL'
-    parameter sessionKey: string
-    parameter messagesJson: string
-    returns Formula1Backend.Stg_LiveMessage
-    map ( messageKey as MessageKey, sessionKey as SessionKey, atTime as At,
-          category as Category, flag as Flag, scope as Scope, lap as Lap,
-          message as Message );
+          WHERE j.date IS NOT NULL',
+    Parameters: ( sessionKey: string,
+    messagesJson: string ),
+    Returns: Formula1Backend.Stg_LiveMessage,
+    Map: ( MessageKey = messageKey, SessionKey = sessionKey, At = atTime,
+          Category = category, Flag = flag, Scope = scope, Lap = lap,
+          Message = message ) )
 
   /*
    * Weather as a series. Eighty readings across a sprint, one a minute, which
    * is what the header tiles show the latest of and what a chart would need
    * the rest of.
    */
-  query GetOpenF1Weather
-    sql 'SELECT {sessionKey} AS sessionKey,
+  query GetOpenF1Weather (
+    Sql: 'SELECT {sessionKey} AS sessionKey,
                 strftime(CAST(j.date AS TIMESTAMP), ''%Y-%m-%dT%H:%M:%S'') AS atTime,
                 COALESCE(j.air_temperature, 0) AS airTemperature,
                 COALESCE(j.track_temperature, 0) AS trackTemperature,
@@ -1779,13 +1778,13 @@ begin
                 COALESCE(j.wind_speed, 0) AS windSpeed
            FROM (SELECT unnest(from_json({weatherJson}::JSON,
                  ''[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","rainfall":"DOUBLE","wind_speed":"DOUBLE"}]'')) AS j)
-          WHERE j.date IS NOT NULL'
-    parameter sessionKey: string
-    parameter weatherJson: string
-    returns Formula1Backend.Stg_SyncWeather
-    map ( sessionKey as SessionKey, atTime as At,
-          airTemperature as AirTemperature, trackTemperature as TrackTemperature,
-          humidity as Humidity, rainfall as Rainfall, windSpeed as WindSpeed );
+          WHERE j.date IS NOT NULL',
+    Parameters: ( sessionKey: string,
+    weatherJson: string ),
+    Returns: Formula1Backend.Stg_SyncWeather,
+    Map: ( SessionKey = sessionKey, At = atTime,
+          AirTemperature = airTemperature, TrackTemperature = trackTemperature,
+          Humidity = humidity, Rainfall = rainfall, WindSpeed = windSpeed ) )
 
   /*
    * The session itself: what it is, where, and how far it has run.
@@ -1795,8 +1794,8 @@ begin
    * out of the lap feed rather than taken from the session record, because the
    * session record does not carry them and the header wants both.
    */
-  query GetOpenF1Session
-    sql 'SELECT {sessionKey} AS sessionKey,
+  query GetOpenF1Session (
+    Sql: 'SELECT {sessionKey} AS sessionKey,
                 COALESCE(j.session_name, '''') AS sessionName,
                 COALESCE(j.session_type, '''') AS sessionType,
                 COALESCE(j.location, '''') AS location,
@@ -1809,16 +1808,16 @@ begin
                 (SELECT COALESCE(MAX(l.lap_number), 0) FROM (SELECT unnest(from_json({lapsJson}::JSON,
                    ''[{"driver_number":"BIGINT","lap_number":"BIGINT"}]'')) AS l)) AS leadLap
            FROM (SELECT unnest(from_json({sessionJson}::JSON,
-                 ''[{"session_name":"VARCHAR","session_type":"VARCHAR","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","date_start":"VARCHAR","year":"BIGINT"}]'')) AS j)'
-    parameter sessionKey: string
-    parameter sessionJson: string
-    parameter lapsJson: string
-    returns Formula1Backend.Stg_SyncSession
-    map ( sessionKey as SessionKey, sessionName as SessionName,
-          sessionType as SessionType, location as Location,
-          countryName as CountryName, circuitName as CircuitName,
-          dateStart as DateStart, year as Year, driverCount as DriverCount,
-          leadLap as LeadLap );
+                 ''[{"session_name":"VARCHAR","session_type":"VARCHAR","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","date_start":"VARCHAR","year":"BIGINT"}]'')) AS j)',
+    Parameters: ( sessionKey: string,
+    sessionJson: string,
+    lapsJson: string ),
+    Returns: Formula1Backend.Stg_SyncSession,
+    Map: ( SessionKey = sessionKey, SessionName = sessionName,
+          SessionType = sessionType, Location = location,
+          CountryName = countryName, CircuitName = circuitName,
+          DateStart = dateStart, Year = year, DriverCount = driverCount,
+          LeadLap = leadLap ) )
 
   /* ------------------------------------------------------ tiered retrieval -- */
 
@@ -1836,8 +1835,8 @@ begin
    * 10, 12 and 14 are "open". The encoding is written down here rather than on
    * a page.
    */
-  query GetOpenF1Telemetry
-    sql 'WITH car AS (
+  query GetOpenF1Telemetry (
+    Sql: 'WITH car AS (
            SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
                   j.speed AS speed, j.throttle AS throttle, j.brake AS brake,
                   j.n_gear AS n_gear, j.rpm AS rpm, j.drs AS drs
@@ -1862,17 +1861,17 @@ begin
            FROM laps l
            JOIN car c ON c.driver_number = l.driver_number
                      AND c.t >= l.t0 AND c.t < l.t1
-          GROUP BY l.driver_number, l.lap_number'
-    parameter sessionKey: string
-    parameter carJson: string
-    parameter lapsJson: string
-    parameter fromTs: string
-    returns Formula1Backend.Stg_SyncTelemetry
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
-          lapNumber as LapNumber, topSpeed as TopSpeed,
-          avgThrottle as AvgThrottle, maxGear as MaxGear,
-          drsOpenShare as DrsOpenShare, brakeShare as BrakeShare,
-          maxRpm as MaxRpm, samples as Samples );
+          GROUP BY l.driver_number, l.lap_number',
+    Parameters: ( sessionKey: string,
+    carJson: string,
+    lapsJson: string,
+    fromTs: string ),
+    Returns: Formula1Backend.Stg_SyncTelemetry,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber,
+          LapNumber = lapNumber, TopSpeed = topSpeed,
+          AvgThrottle = avgThrottle, MaxGear = maxGear,
+          DrsOpenShare = drsOpenShare, BrakeShare = brakeShare,
+          MaxRpm = maxRpm, Samples = samples ) )
 
   /*
    * The rolling window, downsampled to one sample per car per second.
@@ -1898,16 +1897,16 @@ begin
    * nothing extra in exposure: it is written to LiveToken a few activities
    * later regardless.
    */
-  query GetOpenF1Token
-    sql 'SELECT s.access_token AS accessToken, s.expires_in AS expiresIn
+  query GetOpenF1Token (
+    Sql: 'SELECT s.access_token AS accessToken, s.expires_in AS expiresIn
            FROM (SELECT from_json({tokenJson}::JSON,
-                 ''{"access_token":"VARCHAR","expires_in":"BIGINT"}'') AS s)'
-    parameter tokenJson: string
-    returns Formula1Backend.Stg_TokenParsed
-    map ( accessToken as AccessToken, expiresIn as ExpiresIn );
+                 ''{"access_token":"VARCHAR","expires_in":"BIGINT"}'') AS s)',
+    Parameters: ( tokenJson: string ),
+    Returns: Formula1Backend.Stg_TokenParsed,
+    Map: ( AccessToken = accessToken, ExpiresIn = expiresIn ) )
 
-  query GetOpenF1CarNow
-    sql 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
+  query GetOpenF1CarNow (
+    Sql: 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
                 strftime(t, ''%Y-%m-%dT%H:%M:%S'') AS atTime, speed, throttle,
                 brake, n_gear AS gear, rpm, drs
            FROM (
@@ -1919,17 +1918,17 @@ begin
                                        ORDER BY j.date) AS rn
                FROM (SELECT unnest(from_json({carJson}::JSON,
                      ''[{"driver_number":"BIGINT","date":"VARCHAR","speed":"BIGINT","throttle":"BIGINT","brake":"BIGINT","n_gear":"BIGINT","rpm":"BIGINT","drs":"BIGINT"}]'')) AS j)
-           ) WHERE rn = 1'
-    parameter sessionKey: string
-    parameter carJson: string
-    returns Formula1Backend.Stg_SyncCarNow
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber, atTime as At,
-          speed as Speed, throttle as Throttle, brake as Brake, gear as Gear,
-          rpm as Rpm, drs as Drs );
+           ) WHERE rn = 1',
+    Parameters: ( sessionKey: string,
+    carJson: string ),
+    Returns: Formula1Backend.Stg_SyncCarNow,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber, At = atTime,
+          Speed = speed, Throttle = throttle, Brake = brake, Gear = gear,
+          Rpm = rpm, Drs = drs ) )
 
   /* Track position, downsampled the same way and for the same reason. */
-  query GetOpenF1LocationNow
-    sql 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
+  query GetOpenF1LocationNow (
+    Sql: 'SELECT {sessionKey} AS sessionKey, driver_number AS driverNumber,
                 strftime(t, ''%Y-%m-%dT%H:%M:%S'') AS atTime, x, y, z
            FROM (
              SELECT j.driver_number AS driver_number, CAST(j.date AS TIMESTAMP) AS t,
@@ -1940,12 +1939,12 @@ begin
                FROM (SELECT unnest(from_json({locJson}::JSON,
                      ''[{"driver_number":"BIGINT","date":"VARCHAR","x":"DOUBLE","y":"DOUBLE","z":"DOUBLE"}]'')) AS j)
               WHERE NOT (j.x = 0 AND j.y = 0)
-           ) WHERE rn = 1'
-    parameter sessionKey: string
-    parameter locJson: string
-    returns Formula1Backend.Stg_SyncLocationNow
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber, atTime as At,
-          x as X, y as Y, z as Z );
+           ) WHERE rn = 1',
+    Parameters: ( sessionKey: string,
+    locJson: string ),
+    Returns: Formula1Backend.Stg_SyncLocationNow,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber, At = atTime,
+          X = x, Y = y, Z = z ) )
 
   /* Overtakes and radio: small, and pass straight through. */
   /*
@@ -1962,8 +1961,8 @@ begin
    * when it happened. That is an ASOF join: the latest lap of that driver that
    * had started by then.
    */
-  query GetOpenF1Overtakes
-    sql 'WITH laps AS (
+  query GetOpenF1Overtakes (
+    Sql: 'WITH laps AS (
            SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
                   CAST(j.date_start AS TIMESTAMP) AS t0
              FROM (SELECT unnest(from_json({lapsJson}::JSON,
@@ -1982,25 +1981,25 @@ begin
                 o.overtaken AS overtaken, o.position AS position
            FROM ov o
            ASOF LEFT JOIN laps l
-             ON l.driver_number = o.overtaking AND l.t0 <= o.t'
-    parameter sessionKey: string
-    parameter json: string
-    parameter lapsJson: string
-    returns Formula1Backend.Stg_SyncOvertake
-    map ( sessionKey as SessionKey, atTime as At, lapNumber as LapNumber,
-          overtaking as OvertakingDriver, overtaken as OvertakenDriver,
-          position as Position );
+             ON l.driver_number = o.overtaking AND l.t0 <= o.t',
+    Parameters: ( sessionKey: string,
+    json: string,
+    lapsJson: string ),
+    Returns: Formula1Backend.Stg_SyncOvertake,
+    Map: ( SessionKey = sessionKey, At = atTime, LapNumber = lapNumber,
+          OvertakingDriver = overtaking, OvertakenDriver = overtaken,
+          Position = position ) )
 
-  query GetOpenF1Radio
-    sql 'SELECT {sessionKey} AS sessionKey, j.date AS atTime,
+  query GetOpenF1Radio (
+    Sql: 'SELECT {sessionKey} AS sessionKey, j.date AS atTime,
                 j.driver_number AS driverNumber, j.recording_url AS recordingUrl
            FROM (SELECT unnest(from_json({json}::JSON,
-                 ''[{"date":"VARCHAR","driver_number":"BIGINT","recording_url":"VARCHAR"}]'')) AS j)'
-    parameter sessionKey: string
-    parameter json: string
-    returns Formula1Backend.Stg_SyncRadio
-    map ( sessionKey as SessionKey, atTime as At, driverNumber as DriverNumber,
-          recordingUrl as RecordingUrl );
+                 ''[{"date":"VARCHAR","driver_number":"BIGINT","recording_url":"VARCHAR"}]'')) AS j)',
+    Parameters: ( sessionKey: string,
+    json: string ),
+    Returns: Formula1Backend.Stg_SyncRadio,
+    Map: ( SessionKey = sessionKey, At = atTime, DriverNumber = driverNumber,
+          RecordingUrl = recordingUrl ) )
 
   /* ------------------------------------------------------------ track map -- */
 
@@ -2016,8 +2015,8 @@ begin
    * anything over five minutes is a safety-car crawl that would trace the pit
    * lane as often as the circuit.
    */
-  query GetOpenF1LapWindow
-    sql 'WITH laps AS (
+  query GetOpenF1LapWindow (
+    Sql: 'WITH laps AS (
            SELECT j.driver_number AS driver_number, j.lap_duration AS dur,
                   CAST(j.date_start AS TIMESTAMP) AS t0
              FROM (SELECT unnest(from_json({lapsJson}::JSON,
@@ -2041,10 +2040,10 @@ begin
                 strftime(t0, ''%Y-%m-%dT%H:%M:%S'') AS fromTs,
                 strftime(t0 + INTERVAL (CAST(dur AS INTEGER) + 2) SECOND,
                          ''%Y-%m-%dT%H:%M:%S'') AS toTs
-           FROM ranked WHERE rn = (n + 1) // 2'
-    parameter lapsJson: string
-    returns Formula1Backend.Stg_SyncLapWindow
-    map ( driverNumber as DriverNumber, fromTs as FromTs, toTs as ToTs );
+           FROM ranked WHERE rn = (n + 1) // 2',
+    Parameters: ( lapsJson: string ),
+    Returns: Formula1Backend.Stg_SyncLapWindow,
+    Map: ( DriverNumber = driverNumber, FromTs = fromTs, ToTs = toTs ) )
 
   /*
    * The circuit, traced from one car's way round it.
@@ -2054,18 +2053,18 @@ begin
    * Hungaroring lap is about three hundred points, which is a smooth outline
    * and a small table.
    */
-  query GetOpenF1TrackOutline
-    sql 'SELECT {sessionKey} AS sessionKey,
+  query GetOpenF1TrackOutline (
+    Sql: 'SELECT {sessionKey} AS sessionKey,
                 row_number() OVER (ORDER BY j.date) - 1 AS seq,
                 j.x AS x, j.y AS y
            FROM (SELECT unnest(from_json({locJson}::JSON,
                  ''[{"date":"VARCHAR","x":"DOUBLE","y":"DOUBLE"}]'')) AS j)
           WHERE j.x IS NOT NULL AND j.y IS NOT NULL
-            AND NOT (j.x = 0 AND j.y = 0)'
-    parameter sessionKey: string
-    parameter locJson: string
-    returns Formula1Backend.Stg_SyncTrackPoint
-    map ( sessionKey as SessionKey, seq as Seq, x as X, y as Y );
+            AND NOT (j.x = 0 AND j.y = 0)',
+    Parameters: ( sessionKey: string,
+    locJson: string ),
+    Returns: Formula1Backend.Stg_SyncTrackPoint,
+    Map: ( SessionKey = sessionKey, Seq = seq, X = x, Y = y ) )
 
   /*
    * The race-result forecaster.
@@ -2093,8 +2092,8 @@ begin
    * What it does not model is written down in spikes/forecaster/README.md --
    * overtaking, the reason a car retires, and weather changing.
    */
-  query GetOpenF1Forecast
-    sql 'WITH laps AS (
+  query GetOpenF1Forecast (
+    Sql: 'WITH laps AS (
   SELECT j.driver_number AS driver_number, j.lap_number AS lap_number,
          j.lap_duration AS lap_duration, j.is_pit_out_lap AS is_pit_out_lap,
          CAST(j.date_start AS TIMESTAMP) AS t
@@ -2302,21 +2301,21 @@ SELECT {sessionKey} AS sessionKey,
   FROM ranked r JOIN plan2 pl ON pl.driver_number = r.driver_number
  GROUP BY r.driver_number, pl.lap_number, pl.remaining, pl.stops, pl.laps_used,
           pl.base, pl.deg_per_lap
- ORDER BY meanPosition'
-    parameter sessionKey: string
-    parameter lapsJson: string
-    parameter stintsJson: string
-    parameter pitJson: string
-    parameter cutLap: integer
-    parameter totalLaps: integer
-    returns Formula1Backend.Stg_SyncForecast
-    map ( sessionKey as SessionKey, driverNumber as DriverNumber,
-          lapNow as LapNow, lapsRemaining as LapsRemaining,
-          stopsLeft as StopsLeft, lapsUsed as LapsUsed, basePace as BasePace,
-          degPerLap as DegPerLap, pitLoss as PitLoss,
-          meanPosition as MeanPosition, medianPosition as MedianPosition,
-          pWin as PWin, pPodium as PPodium, pPoints as PPoints,
-          bestCase as BestCase, worstCase as WorstCase,
-          projectedTime as ProjectedTime );
+ ORDER BY meanPosition',
+    Parameters: ( sessionKey: string,
+    lapsJson: string,
+    stintsJson: string,
+    pitJson: string,
+    cutLap: integer,
+    totalLaps: integer ),
+    Returns: Formula1Backend.Stg_SyncForecast,
+    Map: ( SessionKey = sessionKey, DriverNumber = driverNumber,
+          LapNow = lapNow, LapsRemaining = lapsRemaining,
+          StopsLeft = stopsLeft, LapsUsed = lapsUsed, BasePace = basePace,
+          DegPerLap = degPerLap, PitLoss = pitLoss,
+          MeanPosition = meanPosition, MedianPosition = medianPosition,
+          PWin = pWin, PPodium = pPodium, PPoints = pPoints,
+          BestCase = bestCase, WorstCase = worstCase,
+          ProjectedTime = projectedTime ) )
 
-end;
+};

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Folder layout for Formula1Backend.
  *
@@ -75,11 +76,11 @@ MOVE MICROFLOW Formula1Backend.Check_ServicesAgree      TO FOLDER 'Health';
 -- became the ODataPushdown module, which has its own folder tree because it has
 -- nothing to do with Formula 1. See model/odatapushdown/.
 
-MOVE ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
-MOVE ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
-MOVE ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
-MOVE ODATA SERVICE Formula1Backend.F1LiveNowApi TO FOLDER 'Services';
-MOVE ODATA SERVICE Formula1Backend.F1OpsApi     TO FOLDER 'Services';
+MOVE PUBLISHED ODATA SERVICE Formula1Backend.F1LiveApi   TO FOLDER 'Services';
+MOVE PUBLISHED ODATA SERVICE Formula1Backend.F1CachedApi TO FOLDER 'Services';
+MOVE PUBLISHED ODATA SERVICE Formula1Backend.F1FanApi    TO FOLDER 'Services';
+MOVE PUBLISHED ODATA SERVICE Formula1Backend.F1LiveNowApi TO FOLDER 'Services';
+MOVE PUBLISHED ODATA SERVICE Formula1Backend.F1OpsApi     TO FOLDER 'Services';
 
 -- The fan-facing reads: a career, a season's title fight, a team's failures.
 MOVE MICROFLOW Formula1Backend.Read_DriverSeasons  TO FOLDER 'Fan';

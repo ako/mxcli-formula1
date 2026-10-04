@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 7 — Race narrative.
  * ==========================
@@ -51,13 +52,13 @@ create or modify non-persistent entity Formula1Frontend.NarrativeEvent (
 /*
  * The races that have a narrative built.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeSessions ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_NarrativeSessions ()
   RETURNS List of F1Admin.Sessions AS $Have
 BEGIN
   $Have = CREATE LIST OF F1Admin.Sessions;
   RETRIEVE $Sessions FROM F1Admin.Sessions SORT BY dateStart DESC;
   LOOP $S IN $Sessions BEGIN
-    RETRIEVE $N FROM F1Admin.Narrative WHERE sessionKey = $S/sessionKey LIMIT 1;
+    RETRIEVE $N FROM F1Admin.Narrative WHERE sessionKey = $S/sessionKey FIRST;
     IF $N != empty THEN
       ADD $S TO $Have;
     END IF;
@@ -65,19 +66,19 @@ BEGIN
   RETURN $Have;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativePick (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativePick (
   $Session: F1Admin.Sessions
 )
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState FIRST;
   IF $State = empty OR $Session = empty THEN
     RETURN $Ok;
   END IF;
   DECLARE $Max Long = 0;
   RETRIEVE $Far FROM F1Admin.Laps
-    WHERE sessionKey = $Session/sessionKey SORT BY lapNumber DESC LIMIT 1;
+    WHERE sessionKey = $Session/sessionKey SORT BY lapNumber DESC FIRST;
   IF $Far != empty THEN
     SET $Max = $Far/lapNumber;
   END IF;
@@ -90,11 +91,11 @@ BEGIN
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeEnsure ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeEnsure ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $Held FROM Formula1Frontend.NarrativeState LIMIT 1;
+  RETRIEVE $Held FROM Formula1Frontend.NarrativeState FIRST;
   IF $Held != empty THEN
     RETURN $Ok;
   END IF;
@@ -111,11 +112,11 @@ BEGIN
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeState ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_NarrativeState ()
   RETURNS Formula1Frontend.NarrativeState AS $State
 BEGIN
   $Ensured = CALL MICROFLOW Formula1Frontend.ACT_NarrativeEnsure();
-  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState FIRST;
   RETURN $State;
 END;
 
@@ -127,38 +128,38 @@ END;
  *   stops       pit windows
  *   track       positions changing hands: passes and lead changes
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeFilter (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeFilter (
   $Which: String
 )
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.NarrativeState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.NarrativeState FIRST;
   IF $State != empty THEN
     CHANGE $State (Filter = $Which) COMMIT REFRESH;
   END IF;
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeAll ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeAll ()
   RETURNS Boolean AS $Ok
 BEGIN
   $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'everything');
   RETURN $Ok;
 END;
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeTurning ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeTurning ()
   RETURNS Boolean AS $Ok
 BEGIN
   $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'turning');
   RETURN $Ok;
 END;
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeStops ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeStops ()
   RETURNS Boolean AS $Ok
 BEGIN
   $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'stops');
   RETURN $Ok;
 END;
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_NarrativeTrack ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_NarrativeTrack ()
   RETURNS Boolean AS $Ok
 BEGIN
   $Ok = CALL MICROFLOW Formula1Frontend.ACT_NarrativeFilter(Which = 'track');
@@ -174,7 +175,7 @@ END;
  * count over data already on the screen and a stored copy is a second thing
  * that can be wrong.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_NarrativeHead (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_NarrativeHead (
   $State: Formula1Frontend.NarrativeState
 )
   RETURNS Formula1Frontend.NarrativeHead AS $Head
@@ -197,11 +198,11 @@ BEGIN
 
   RETRIEVE $Win FROM F1Admin.Laps
     WHERE sessionKey = $State/SessionKey and position = 1
-    SORT BY lapNumber DESC LIMIT 1;
+    SORT BY lapNumber DESC FIRST;
   IF $Win != empty THEN
     RETRIEVE $D FROM F1Admin.Drivers
       WHERE sessionKey = $State/SessionKey and driverNumber = $Win/driverNumber
-      LIMIT 1;
+      FIRST;
     IF $D != empty THEN
       CHANGE $Head (Winner = $D/code, WinnerName = $D/driverName);
     END IF;
@@ -215,7 +216,7 @@ END;
 /*
  * The events, as rows for the chart.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativeEvents (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_NarrativeEvents (
   $State: Formula1Frontend.NarrativeState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
@@ -283,7 +284,7 @@ END;
 /*
  * Position by lap, rotated: the lap is the vertical axis, P1 is at the left.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativePos (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_NarrativePos (
   $State: Formula1Frontend.NarrativeState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
@@ -296,7 +297,7 @@ BEGIN
     RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
     LOOP $L IN $Laps BEGIN
       IF $L/position != empty THEN
-        $D = FIND($Drivers, driverNumber = $L/driverNumber);
+        $D = FIND $Drivers BY driverNumber = $L/driverNumber;
         IF $D != empty AND trim($D/code) != '' THEN
           /* The team's own colour, sent per row and used raw -- a static spec
            * cannot hold a scale whose domain changes with the session, and
@@ -327,7 +328,7 @@ END;
  * into one "everyone else" band so the row still totals 100% and still says
  * so honestly.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_NarrativeProb (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_NarrativeProb (
   $State: Formula1Frontend.NarrativeState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
@@ -379,7 +380,7 @@ BEGIN
         SET $Rest = 0;
       END IF;
       IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
-        $D = FIND($Drivers, driverNumber = $P/driverNumber);
+        $D = FIND $Drivers BY driverNumber = $P/driverNumber;
         DECLARE $Code String = toString($P/driverNumber);
         DECLARE $Col String = '#8B949E';
         IF $D != empty THEN
@@ -414,7 +415,7 @@ END;
 
 /* --------------------------------------------------------------- the page -- */
 
-create or replace page Formula1Frontend.Narrative
+create or modify page Formula1Frontend.Narrative
 (
   title: 'Race narrative',
   layout: Atlas_Core.Atlas_Default,
@@ -429,7 +430,7 @@ create or replace page Formula1Frontend.Narrative
         container nHead (class: 'pagehead') {
           container nHeadMain (class: 'pagehead-main') {
             dynamictext nEyebrow (content: 'Narrative', class: 'pagehead-eyebrow')
-            dynamictext nTitle (content: '{1}', contentparams: [{1} = SessionLabel],
+            dynamictext nTitle (content: '{1}', contentparams: ({1} = SessionLabel),
                                 rendermode: H2, class: 'pagehead-title')
             dynamictext nSub (
               content: 'read across a row: one lap, three views',
@@ -437,40 +438,40 @@ create or replace page Formula1Frontend.Narrative
           }
         }
 
-        dataview dvNarHead (datasource: MICROFLOW Formula1Frontend.DS_NarrativeHead(State: $currentObject)) {
+        dataview dvNarHead (datasource: MICROFLOW Formula1Frontend.DS_NarrativeHead(State = $currentObject)) {
           container nStats (class: 'kpis') {
             container kWin (class: 'kpi') {
               dynamictext kWinL (content: 'Winner', class: 'kpi-label')
-              dynamictext kWinV (content: '{1}', contentparams: [{1} = Winner], class: 'kpi-value')
+              dynamictext kWinV (content: '{1}', contentparams: ({1} = Winner), class: 'kpi-value')
             }
             container kLaps (class: 'kpi') {
               dynamictext kLapsL (content: 'Laps', class: 'kpi-label')
-              dynamictext kLapsV (content: '{1}', contentparams: [{1} = Laps], class: 'kpi-value')
+              dynamictext kLapsV (content: '{1}', contentparams: ({1} = Laps), class: 'kpi-value')
             }
             container kLead (class: 'kpi') {
               dynamictext kLeadL (content: 'Lead chg', class: 'kpi-label')
-              dynamictext kLeadV (content: '{1}', contentparams: [{1} = LeadChanges], class: 'kpi-value')
+              dynamictext kLeadV (content: '{1}', contentparams: ({1} = LeadChanges), class: 'kpi-value')
             }
             container kOut (class: 'kpi') {
               dynamictext kOutL (content: 'Retirements', class: 'kpi-label')
-              dynamictext kOutV (content: '{1}', contentparams: [{1} = Retirements], class: 'kpi-value')
+              dynamictext kOutV (content: '{1}', contentparams: ({1} = Retirements), class: 'kpi-value')
             }
             container kEv (class: 'kpi') {
               dynamictext kEvL (content: 'Events', class: 'kpi-label')
-              dynamictext kEvV (content: '{1}', contentparams: [{1} = Events], class: 'kpi-value')
+              dynamictext kEvV (content: '{1}', contentparams: ({1} = Events), class: 'kpi-value')
             }
           }
         }
 
         container nFilters (class: 'replay-controls') {
           actionbutton bAll (Caption: 'everything', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_NarrativeAll)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_NarrativeAll)
           actionbutton bTurn (Caption: 'turning points', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_NarrativeTurning)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_NarrativeTurning)
           actionbutton bStop (Caption: 'stops', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_NarrativeStops)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_NarrativeStops)
           actionbutton bTrack (Caption: 'on track', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_NarrativeTrack)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_NarrativeTrack)
         }
       }
 
@@ -479,11 +480,11 @@ create or replace page Formula1Frontend.Narrative
                                 PageSize: 12) {
           container chipNar (
             class: 'chip-pick',
-            dynamicclasses: 'if $currentObject/sessionKey = $dvNar/SessionKey then ''is-picked'' else ''''',
-            OnClick: MICROFLOW Formula1Frontend.ACT_NarrativePick(Session: $currentObject)
+            dynamicclasses: if $currentObject/sessionKey = $dvNar/SessionKey then 'is-picked' else '',
+            OnClick: CALL MICROFLOW Formula1Frontend.ACT_NarrativePick(Session = $currentObject)
           ) {
             dynamictext chipNarName (content: '{1} {2}',
-              contentparams: [{1} = location, {2} = sessionName])
+              contentparams: ({1} = location, {2} = sessionName))
           }
         }
       }
@@ -504,7 +505,7 @@ create or replace page Formula1Frontend.Narrative
               content: 'P1 at the left · a crossing is an overtake',
               class: 'panel-sub')
           }
-          dataview dvNPos (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativePos(State: $currentObject)) {
+          dataview dvNPos (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativePos(State = $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarPos (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
@@ -519,7 +520,7 @@ create or replace page Formula1Frontend.Narrative
               content: 'every event pinned to its lap · derived from the timing, the flags and the forecast',
               class: 'panel-sub')
           }
-          dataview dvNEv (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeEvents(State: $currentObject)) {
+          dataview dvNEv (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeEvents(State = $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarEv (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
@@ -534,7 +535,7 @@ create or replace page Formula1Frontend.Narrative
               content: 'each lap is 100% wide, split by car',
               class: 'panel-sub')
           }
-          dataview dvNProb (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeProb(State: $currentObject)) {
+          dataview dvNProb (datasource: MICROFLOW Formula1Frontend.DSJ_NarrativeProb(State = $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartNarProb (
               chartData: json, datasetName: 'table', chartHeight: 0,
               renderer: 'svg', showActions: false,
@@ -550,4 +551,4 @@ create or replace page Formula1Frontend.Narrative
       }
     }
   }
-}
+};

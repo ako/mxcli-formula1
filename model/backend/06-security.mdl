@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Backend security.
  *
@@ -6,7 +7,7 @@
  * trigger the refresh. The frontend authenticates as the consumer.
  */
 
-alter project security level PROTOTYPE;
+alter app security ( SecurityLevel: prototype );
 
 create or modify module role Formula1Backend.ApiUser
   description 'Read the published OData services. Nothing else. This is who Formula1Frontend logs in as.';
@@ -16,43 +17,43 @@ create or modify module role Formula1Backend.DataAdmin
 
 /* Cached-service entities: both roles read, only the admin can do anything else
  * — and there is nothing else, because every resource is published read-only. */
-grant Formula1Backend.ApiUser ON Formula1Backend.Season (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Circuit (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Constructor (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Driver (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Race (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.RaceResult (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.DriverStanding (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.ConstructorStanding (READ *);
+grant READ * on entity Formula1Backend.Season to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Circuit to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Constructor to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Driver to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Race to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.RaceResult to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.DriverStanding to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.ConstructorStanding to Formula1Backend.ApiUser;
 
-grant Formula1Backend.DataAdmin ON Formula1Backend.Season (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Circuit (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Constructor (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Driver (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Race (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.RaceResult (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.DriverStanding (CREATE, DELETE, READ *, WRITE *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.ConstructorStanding (CREATE, DELETE, READ *, WRITE *);
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.Season to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.Circuit to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.Constructor to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.Driver to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.Race to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.RaceResult to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.DriverStanding to Formula1Backend.DataAdmin;
+grant CREATE, DELETE, READ *, WRITE * on entity Formula1Backend.ConstructorStanding to Formula1Backend.DataAdmin;
 
 /* Live-service row shapes. Non-persistable entities still need read rights for
  * the OData layer to serialise them. */
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_Season (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_Circuit (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_Constructor (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_Driver (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_Race (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_RaceResult (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_DriverStanding (READ *);
-grant Formula1Backend.ApiUser ON Formula1Backend.Stg_ConstructorStanding (READ *);
+grant READ * on entity Formula1Backend.Stg_Season to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_Circuit to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_Constructor to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_Driver to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_Race to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_RaceResult to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_DriverStanding to Formula1Backend.ApiUser;
+grant READ * on entity Formula1Backend.Stg_ConstructorStanding to Formula1Backend.ApiUser;
 
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_Season (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_Circuit (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_Constructor (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_Driver (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_Race (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_RaceResult (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_DriverStanding (READ *);
-grant Formula1Backend.DataAdmin ON Formula1Backend.Stg_ConstructorStanding (READ *);
+grant READ * on entity Formula1Backend.Stg_Season to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_Circuit to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_Constructor to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_Driver to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_Race to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_RaceResult to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_DriverStanding to Formula1Backend.DataAdmin;
+grant READ * on entity Formula1Backend.Stg_ConstructorStanding to Formula1Backend.DataAdmin;
 
 /* The read microflows are what the live service invokes, so the consumer must
  * be allowed to execute them. Only the admin may kick off a reload. */
@@ -67,9 +68,9 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_ConstructorStandings TO Formula1
 
 GRANT EXECUTE ON MICROFLOW Formula1Backend.ACT_RefreshAll TO Formula1Backend.DataAdmin;
 
-grant access on odata service Formula1Backend.F1LiveApi to Formula1Backend.ApiUser;
-grant access on odata service Formula1Backend.F1CachedApi to Formula1Backend.ApiUser;
+grant access on published odata service Formula1Backend.F1LiveApi to Formula1Backend.ApiUser;
+grant access on published odata service Formula1Backend.F1CachedApi to Formula1Backend.ApiUser;
 
 -- Every user role needs a System module role; System.User is the base one.
-create or modify user role ApiConsumer (Formula1Backend.ApiUser, System.User);
+create or modify user role ApiConsumer ( ModuleRoles: (Formula1Backend.ApiUser, System.User) );
 alter user role Administrator add module roles (Formula1Backend.DataAdmin);

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Service 2 of 2, part A — the persistent model behind F1CachedApi.
  *
@@ -28,14 +29,14 @@
  */
 
 create persistent entity Formula1Backend.Season (
-  Year: long unique error 'Season year must be unique',
+  Year: long unique error message 'Season year must be unique',
   ChampionDriverName: string(120),
   ChampionConstructorName: string(120),
   RaceCount: long
 ) index (Year);
 
 create persistent entity Formula1Backend.Circuit (
-  CircuitId: string(60) unique error 'Circuit id must be unique',
+  CircuitId: string(60) unique error message 'Circuit id must be unique',
   Name: string(120),
   FullName: string(200),
   PlaceName: string(120),
@@ -48,7 +49,7 @@ create persistent entity Formula1Backend.Circuit (
 ) index (CircuitId);
 
 create persistent entity Formula1Backend.Constructor (
-  ConstructorId: string(60) unique error 'Constructor id must be unique',
+  ConstructorId: string(60) unique error message 'Constructor id must be unique',
   Name: string(120),
   FullName: string(200),
   Country: string(60),
@@ -61,7 +62,7 @@ create persistent entity Formula1Backend.Constructor (
 ) index (ConstructorId);
 
 create persistent entity Formula1Backend.Driver (
-  DriverId: string(60) unique error 'Driver id must be unique',
+  DriverId: string(60) unique error message 'Driver id must be unique',
   Name: string(120),
   FullName: string(200),
   Abbreviation: string(10),
@@ -78,7 +79,7 @@ create persistent entity Formula1Backend.Driver (
 ) index (DriverId);
 
 create persistent entity Formula1Backend.Race (
-  RaceId: long unique error 'Race id must be unique',
+  RaceId: long unique error message 'Race id must be unique',
   Year: long,
   Round: long,
   RaceDate: datetime,
@@ -101,7 +102,7 @@ create persistent entity Formula1Backend.Race (
  * $filter over a table the live service cannot serve whole.
  */
 create persistent entity Formula1Backend.RaceResult (
-  ResultKey: string(40) unique error 'Result key must be unique',
+  ResultKey: string(40) unique error message 'Result key must be unique',
   RaceId: long,
   Year: long,
   Round: long,
@@ -125,7 +126,7 @@ create persistent entity Formula1Backend.RaceResult (
 ) index (RaceId), index (DriverId), index (Year);
 
 create persistent entity Formula1Backend.DriverStanding (
-  StandingKey: string(80) unique error 'Standing key must be unique',
+  StandingKey: string(80) unique error message 'Standing key must be unique',
   Year: long,
   PositionOrder: long,
   PositionNumber: long,
@@ -137,7 +138,7 @@ create persistent entity Formula1Backend.DriverStanding (
 );
 
 create persistent entity Formula1Backend.ConstructorStanding (
-  StandingKey: string(80) unique error 'Standing key must be unique',
+  StandingKey: string(80) unique error message 'Standing key must be unique',
   Year: long,
   PositionOrder: long,
   EngineManufacturer: string(60),

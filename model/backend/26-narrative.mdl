@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The race narrative.
  * ===================
@@ -37,7 +38,7 @@
 /* ------------------------------------------------------------- the table -- */
 
 create or modify persistent entity Formula1Backend.LiveNarrative (
-  RowId: autonumber default 1 unique error 'LiveNarrative row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveNarrative row id must be unique',
   SessionKey: string(20),
   Lap: long,
   /* retirement · lead · flag · steward · pit · battle · model */
@@ -73,7 +74,7 @@ create or modify non-persistent entity Formula1Backend.Stg_Stop (
  * wrong ordinal in it reads as machine output, and the whole point of this
  * panel is that it reads as an account of a race.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Ordinal (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Ordinal (
   $N: Long
 )
   RETURNS String AS $Text
@@ -102,7 +103,7 @@ END;
  * simply not crossed the line yet is one lap behind for perfectly ordinary
  * reasons.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Retirements (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Retirements (
   $SessionKey: String,
   $MaxLap: Long
 )
@@ -113,7 +114,7 @@ BEGIN
   LOOP $D IN $Drivers BEGIN
     RETRIEVE $Last FROM Formula1Backend.LiveLap
       WHERE SessionKey = $SessionKey and DriverNumber = $D/DriverNumber
-      SORT BY LapNumber DESC LIMIT 1;
+      SORT BY LapNumber DESC FIRST;
     IF $Last != empty AND $Last/LapNumber <= $MaxLap - 3 THEN
       DECLARE $Where String = '';
       IF $Last/Position != empty THEN
@@ -140,7 +141,7 @@ END;
  * the lead however it was taken, and at Zandvoort the two are hard to tell
  * apart from timing alone.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_LeadChanges (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_LeadChanges (
   $SessionKey: String
 )
   RETURNS Integer AS $Made
@@ -153,8 +154,8 @@ BEGIN
   DECLARE $Prev Long = -1;
   LOOP $L IN $Leaders BEGIN
     IF $Prev != -1 AND $L/DriverNumber != $Prev THEN
-      $New = FIND($Drivers, DriverNumber = $L/DriverNumber);
-      $Old = FIND($Drivers, DriverNumber = $Prev);
+      $New = FIND $Drivers BY DriverNumber = $L/DriverNumber;
+      $Old = FIND $Drivers BY DriverNumber = $Prev;
       DECLARE $NewName String = 'car ' + toString($L/DriverNumber);
       DECLARE $OldName String = 'car ' + toString($Prev);
       IF $New != empty THEN SET $NewName = $New/DriverName; END IF;
@@ -181,7 +182,7 @@ END;
  * Everything is deduplicated to one row per lap per kind, because a double
  * yellow is reported once per affected sector and reads as four events.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Flags (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Flags (
   $SessionKey: String
 )
   RETURNS Integer AS $Made
@@ -263,7 +264,7 @@ END;
  * the race changing shape. A stop is a lap on which a driver's stop count went
  * up, and a window is three or more of them landing together.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Pits (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Pits (
   $SessionKey: String
 )
   RETURNS Integer AS $Made
@@ -301,7 +302,7 @@ BEGIN
    * into a string and counted substrings, which quietly counted lap 1 once for
    * every lap 11, 12 and 13 as well.
    */
-  $Sorted = SORT($Stops, Lap);
+  $Sorted = SORT $Stops BY Lap;
   DECLARE $Run Long = 0;
   DECLARE $At Long = -1;
   LOOP $T IN $Sorted BEGIN
@@ -336,7 +337,7 @@ END;
  * belong in a narrative: a pass for fourteenth between two cars a lap down is
  * a fact, not a story beat. Only passes into the top six are kept.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Overtakes (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Overtakes (
   $SessionKey: String
 )
   RETURNS Integer AS $Made
@@ -348,8 +349,8 @@ BEGIN
 
   LOOP $O IN $Passes BEGIN
     IF $O/Position != empty AND $O/Position <= 6 AND $O/LapNumber != empty THEN
-      $A = FIND($Drivers, DriverNumber = $O/OvertakingDriver);
-      $B = FIND($Drivers, DriverNumber = $O/OvertakenDriver);
+      $A = FIND $Drivers BY DriverNumber = $O/OvertakingDriver;
+      $B = FIND $Drivers BY DriverNumber = $O/OvertakenDriver;
       DECLARE $An String = 'car ' + toString($O/OvertakingDriver);
       DECLARE $Bn String = 'car ' + toString($O/OvertakenDriver);
       IF $A != empty THEN SET $An = $A/DriverName; END IF;
@@ -387,7 +388,7 @@ END;
  * The third is what removes Tsunoda gaining 34 points on lap 46 and losing 34
  * on lap 47 with nothing whatever happening in between.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Nar_Swings (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Nar_Swings (
   $SessionKey: String
 )
   RETURNS Integer AS $Made
@@ -408,7 +409,7 @@ BEGIN
     IF $PrevP >= 0 AND $F/LapsUsed != empty AND $F/LapsUsed >= 10
        AND $F/PWin + $PrevP > 0.10
        AND ($F/PWin - $PrevP >= 0.15 OR $PrevP - $F/PWin >= 0.15) THEN
-      $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+      $D = FIND $Drivers BY DriverNumber = $F/DriverNumber;
       DECLARE $Code String = toString($F/DriverNumber);
       IF $D != empty AND trim($D/Code) != '' THEN SET $Code = $D/Code; END IF;
       $S = CREATE Formula1Backend.Stg_Swing (
@@ -448,7 +449,7 @@ END;
 
 /* -------------------------------------------------------------- the build -- */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Narrative_Build (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Narrative_Build (
   $SessionKey: String
 )
   RETURNS String AS $Result
@@ -456,13 +457,13 @@ BEGIN
   DECLARE $Result String = '';
 
   RETRIEVE $Top FROM Formula1Backend.LiveLap
-    WHERE SessionKey = $SessionKey SORT BY LapNumber DESC LIMIT 1;
+    WHERE SessionKey = $SessionKey SORT BY LapNumber DESC FIRST;
   IF $Top = empty THEN
     SET $Result = 'session ' + $SessionKey + ': no laps';
     RETURN $Result;
   END IF;
   RETRIEVE $HasFcst FROM Formula1Backend.LiveForecast
-    WHERE SessionKey = $SessionKey LIMIT 1;
+    WHERE SessionKey = $SessionKey FIRST;
   IF $HasFcst = empty THEN
     SET $Result = 'session ' + $SessionKey + ': no forecast, not a race';
     RETURN $Result;
@@ -505,7 +506,7 @@ END;
  * distance" says that directly -- the same test the forecaster uses to decide
  * it has nothing left to forecast.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Narrative_Sweep ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Narrative_Sweep ()
   RETURNS String AS $Result
 BEGIN
   DECLARE $Result String = 'nothing to build';
@@ -516,7 +517,7 @@ BEGIN
     $Total = CALL MICROFLOW Formula1Backend.Fcst_RaceLength(Session = $S);
     IF $Total > 0 THEN
       RETRIEVE $Far FROM Formula1Backend.LiveLap
-        WHERE SessionKey = $S/SessionKey SORT BY LapNumber DESC LIMIT 1;
+        WHERE SessionKey = $S/SessionKey SORT BY LapNumber DESC FIRST;
       IF $Far != empty AND $Far/LapNumber >= $Total THEN
         SET $Done = true;
       END IF;
@@ -524,7 +525,7 @@ BEGIN
 
     IF $Result = 'nothing to build' AND $Done THEN
       RETRIEVE $Have FROM Formula1Backend.LiveNarrative
-        WHERE SessionKey = $S/SessionKey LIMIT 1;
+        WHERE SessionKey = $S/SessionKey FIRST;
       IF $Have = empty THEN
         $Built = CALL MICROFLOW Formula1Backend.Narrative_Build(
           SessionKey = $S/SessionKey);

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The race weekend — the fourth screen of the redesign — and the lap traces
  * under it.
@@ -25,7 +26,7 @@
 
 /* ------------------------------------------------------------------ header */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceWeekend (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_RaceWeekend (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -100,7 +101,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -112,7 +113,7 @@ END;
  * lap join in on (raceId, driverId), and each gap is that driver's time minus
  * the session's best, in seconds.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceSessions (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_RaceSessions (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -189,14 +190,14 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
 
 /* ---------------------------------------------------------------- calendar */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Calendar (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Calendar (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -285,7 +286,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -298,7 +299,7 @@ END;
  * into one shape, then the pivot turns the ten drivers into columns because a
  * chart series cannot be created per season.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_WeekendShape (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_WeekendShape (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -371,7 +372,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -389,7 +390,7 @@ END;
  * declares them: the file is legitimately header-only when nothing was fetched,
  * and read_csv infers nothing from an empty file.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LapChart (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LapChart (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -478,7 +479,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -519,7 +520,7 @@ END;
  * rather than a different kind of promise. It travels in the row.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CircuitOutlines (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_CircuitOutlines (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -558,14 +559,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CircuitPoints (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_CircuitPoints (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -604,14 +605,14 @@ BEGIN
     $AllRows = execute database query Formula1Backend.F1Warehouse.GetCircuitPoints
       dynamic $CountSql
       (dataDir = @Formula1Backend.DataDir);
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-create or modify odata service Formula1Backend.F1FanApi (
+create or modify published odata service Formula1Backend.F1FanApi (
   path: 'odata/f1-fan/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -990,8 +991,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LapChart TO Formula1Backend.Data
  * them — verified. These stay because a fresh run still has to grant once.
  * FINDINGS §26, §41, §48.
  */
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitOutlines TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitOutlines TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CircuitPoints TO Formula1Backend.ApiUser;

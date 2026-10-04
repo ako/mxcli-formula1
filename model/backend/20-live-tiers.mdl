@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Tiered retrieval, watermarks, and the telemetry split.
  * =====================================================
@@ -81,7 +82,7 @@ create or modify persistent entity Formula1Backend.LiveWatermark (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveWatermark row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveWatermark row id must be unique',
   SessionKey: string(20),
   Endpoint: string(40),
   LastSeen: string(40),
@@ -97,7 +98,7 @@ create or modify persistent entity Formula1Backend.LiveOvertake (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveOvertake row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveOvertake row id must be unique',
   SessionKey: string(20),
   At: string(40),
   LapNumber: long,
@@ -112,7 +113,7 @@ create or modify persistent entity Formula1Backend.LiveRadio (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveRadio row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveRadio row id must be unique',
   SessionKey: string(20),
   At: string(40),
   DriverNumber: long,
@@ -133,7 +134,7 @@ create or modify persistent entity Formula1Backend.LiveLapTelemetry (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveLapTelemetry row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveLapTelemetry row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -158,7 +159,7 @@ create or modify persistent entity Formula1Backend.LiveCarNow (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveCarNow row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveCarNow row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   At: string(40),
@@ -173,7 +174,7 @@ create or modify persistent entity Formula1Backend.LiveCarNow (
 create or modify persistent entity Formula1Backend.LiveLocationNow (
   /* Keyed for publication: one car, one second. Unique because the key of a
    * published entity has to be, and because the downsample guarantees it. */
-  SampleKey: string(60) unique error 'Location sample key must be unique',
+  SampleKey: string(60) unique error message 'Location sample key must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   At: string(40),
@@ -198,7 +199,7 @@ create or modify persistent entity Formula1Backend.LiveLocationNow (
  * a lap instead of five thousand. The rolling window is kept for a minute and
  * then deleted, because that is all a track map reads.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Telemetry (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Telemetry (
   $Key: String,
   $Token: String
 )
@@ -325,7 +326,7 @@ END;
  * re-fetching the session and inserting only what is missing costs less than
  * tracking a watermark for them.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Slow (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Slow (
   $Key: String,
   $Token: String
 )
@@ -400,7 +401,7 @@ END;
  * A pass that throws does not take the cycle with it. A minute of a race is
  * worth losing; the rest of the race is not.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Cycle ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Cycle ()
   RETURNS String AS $Result
 BEGIN
   DECLARE $Result String = '';
@@ -417,6 +418,18 @@ BEGIN
   END IF;
 
   $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+
+  /*
+   * Resolve 'latest' to the key OpenF1 means by it, before anything is fetched
+   * or stamped. The warehouse queries select {sessionKey} rather than the
+   * payload's own session_key, so asking for 'latest' stored every row under
+   * the literal string -- and the next session stored under the same string,
+   * so the supersede merged the two by (driver, lap). A weekend of practice,
+   * qualifying and the race ended up as one table labelled whichever ran last.
+   */
+  $Resolved = CALL MICROFLOW Formula1Backend.Sync_ResolveKey(
+    Key = $Key, Token = $Token);
+  SET $Key = $Resolved;
 
   /*
    * How many passes fit in the minute depends on which tier we are on, and
@@ -559,7 +572,7 @@ create or modify persistent entity Formula1Backend.LiveTrackOutline (
   /* A published resource needs a key, and Mendix will only accept an attribute
    * as one if it carries a unique validation rule. sessionKey-seq is the
    * natural key here: one point, one position on one session's outline. */
-  PointKey: string(40) unique error 'Track outline point key must be unique',
+  PointKey: string(40) unique error message 'Track outline point key must be unique',
   SessionKey: string(20),
   Seq: long,
   X: decimal,
@@ -585,7 +598,7 @@ create or modify persistent entity Formula1Backend.LiveTrackOutline (
  * Runs every pass, not once per session: unlike the entry list, all three grow
  * while the session does.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Context (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Context (
   $Key: String,
   $Token: String
 )
@@ -676,7 +689,7 @@ END;
  * most damage: without it every other table is keyed on a bare driver_number,
  * and reading a result means supplying the mapping from somewhere else.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Entry (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Entry (
   $Key: String,
   $Token: String
 )
@@ -709,7 +722,7 @@ BEGIN
 
   $Rows = execute database query Formula1Backend.F1Warehouse.GetOpenF1Drivers
     (sessionKey = $Key, driversJson = $Json);
-  $Parsed = COUNT($Rows);
+  $Parsed = COUNT $Rows;
   IF $Parsed = 0 THEN
     SET $Result = 'entry list: nothing parsed, keeping what is stored';
     RETURN $Result;
@@ -727,7 +740,7 @@ BEGIN
   DECLARE $Seen String = '|';
   LOOP $R IN $Rows BEGIN
     SET $Seen = $Seen + toString($R/DriverNumber) + '|';
-    $Existing = FIND($Stored, DriverNumber = $R/DriverNumber);
+    $Existing = FIND $Stored BY DriverNumber = $R/DriverNumber;
     IF $Existing = empty THEN
       $New = CREATE Formula1Backend.LiveDriver (
         SessionKey = $R/SessionKey, DriverNumber = $R/DriverNumber,
@@ -760,7 +773,7 @@ BEGIN
   RETURN $Result;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_TrackMap (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_TrackMap (
   $Key: String,
   $Token: String
 )
@@ -770,7 +783,7 @@ BEGIN
 
   /* Once per session. The outline is the shape of the tarmac, not of the race. */
   RETRIEVE $Have FROM Formula1Backend.LiveTrackOutline
-    WHERE SessionKey = $Key LIMIT 1;
+    WHERE SessionKey = $Key FIRST;
   IF $Have != empty THEN
     SET $Result = 'track outline already captured';
     RETURN $Result;

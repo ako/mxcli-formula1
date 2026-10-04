@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The admin surface: every raw table, read-only, over OData.
  * =========================================================
@@ -57,7 +58,7 @@
  * running authenticated.
  */
 create or modify persistent entity Formula1Backend.LiveSyncRun (
-  RunId: autonumber default 1 unique error 'Sync run id must be unique',
+  RunId: autonumber default 1 unique error message 'Sync run id must be unique',
   StartedAt: datetime,
   FinishedAt: datetime,
   DurationMs: decimal,
@@ -72,7 +73,7 @@ create or modify persistent entity Formula1Backend.LiveSyncRun (
 
 /* ------------------------------------------------------------ service -- */
 
-create or modify odata service Formula1Backend.F1AdminApi (
+create or modify published odata service Formula1Backend.F1AdminApi (
   path: 'odata/f1-admin/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -373,5 +374,5 @@ authentication microflow Formula1Backend.AuthenticateApiClient
 };
 
 /* Same two roles as every other service on this backend. */
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.ApiUser;
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.DataAdmin;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1AdminApi TO Formula1Backend.DataAdmin;

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Vega charts: the data side.
  * ===========================
@@ -53,7 +54,7 @@ create or modify non-persistent entity Formula1Frontend.Chart (
  * layers them with independent y scales, which is what the second Plotly axis
  * used to do.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_Career (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_Career (
   $Driver: F1Live.Drivers)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -92,7 +93,7 @@ END;
  * that was a layout shape plus a reversed axis; here the rule is a spec layer
  * and the round comes along so the tooltip can name the race.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_QualRace (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_QualRace (
   $Driver: F1Live.Drivers)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -127,7 +128,7 @@ END;
  * chart to say who they were. In long form the name is the series column, so
  * the legend and the tooltip both carry it and the strip is redundant.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_SeasonProgress (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonProgress (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -176,7 +177,7 @@ END;
  * series grouped by name. Here the colour is just a column and the scale reads
  * it, so the grouping is no longer load-bearing.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_SeasonTeams (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonTeams (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -207,7 +208,7 @@ END;
  * row, so the stack is now labelled with who was actually in the car — which
  * changes mid-season more often than the old chart could admit.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_TeamPoints (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TeamPoints (
   $Constructor: F1Cached.Constructors)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -241,7 +242,7 @@ END;
  * Championship position through the season. Lower is better, so the scale is
  * reversed and the domain starts at 1 rather than 0.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_TeamPosition (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TeamPosition (
   $Constructor: F1Cached.Constructors)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -268,7 +269,7 @@ END;
  * Why the cars stopped. One bar per reason, with the share as a tooltip figure
  * so the bar length and the percentage cannot disagree.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_Retirements (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_Retirements (
   $Constructor: F1Cached.Constructors)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -299,7 +300,7 @@ END;
  * and the legend said P1..P10 because the names in `s1name`…`s10name` could
  * not reach it. One call now, and the lines are labelled with drivers.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_WeekendShape (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_WeekendShape (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -379,7 +380,7 @@ END;
  * The lap chart — position by lap, ten drivers. The other resource that was
  * fetched ten times for one picture.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_LapChart (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LapChart (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -452,7 +453,7 @@ END;
  * column now, so it is one call and the spec decides whether the sessions sit
  * side by side or stack.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_WeekendPace (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_WeekendPace (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -514,7 +515,7 @@ END;
  * the front of the race. A lapped car simply stops having a point, which is
  * the truthful shape — the line ends where the measurement does.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_LiveGaps ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LiveGaps ()
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   $Codes = CALL MICROFLOW Formula1Frontend.DS_LiveLeaderCodes ();
@@ -546,7 +547,7 @@ END;
  * information and reads better, because the crossings are the story and a
  * sparkline cuts every one of them out.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_LivePositions ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LivePositions ()
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveTrace ();
@@ -575,7 +576,7 @@ END;
  * still running has no lapEnd, so it is closed at the leader's lap: an open
  * range would draw as nothing at all, which reads as a car that has not run.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_LiveStints ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LiveStints ()
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   $Rows    = CALL MICROFLOW Formula1Frontend.DS_LiveStints ();
@@ -626,7 +627,7 @@ END;
  * and no `pos`, so the spec can mark it without the line pretending the driver
  * finished last.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_SeasonMultiples (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonMultiples (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -677,7 +678,7 @@ END;
  * closing point there is a gap on the start-finish straight, which reads as a
  * track that does not join up.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_CircuitOutline (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_CircuitOutline (
   $Outline: F1Fan.CircuitOutlines)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
@@ -728,7 +729,7 @@ END;
  * the cars as points. A car with no position sits at the origin in the feed and
  * is dropped at the backend, so anything arriving here is really on track.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_TrackMap ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TrackMap ()
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   $Track = CALL MICROFLOW Formula1Frontend.DS_TrackOutline ();
@@ -810,7 +811,7 @@ END;
  * are flat against the axis is fifteen lines of ink saying nothing, and they
  * make the six that matter unreadable.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ForecastWin ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ForecastWin ()
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
   $Rows = CALL MICROFLOW Formula1Frontend.DS_ForecastTrace ();

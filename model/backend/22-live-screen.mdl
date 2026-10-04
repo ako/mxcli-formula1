@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The Narrate screen, fed from the live tables instead of the CSVs.
  * =================================================================
@@ -41,7 +42,7 @@
  * its first lap on the board, and switches itself the moment it does. No blank
  * screen while waiting for lights out, and no blank screen if the key is wrong.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Live_CurrentKey ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Live_CurrentKey ()
   RETURNS String AS $Key
 BEGIN
   DECLARE $Key String = '';
@@ -50,7 +51,7 @@ BEGIN
   IF $State != empty AND trim($State/SessionKey) != '' THEN
     DECLARE $Target String = trim($State/SessionKey);
     RETRIEVE $Has FROM Formula1Backend.LiveLap
-      WHERE SessionKey = $Target LIMIT 1;
+      WHERE SessionKey = $Target FIRST;
     IF $Has != empty THEN
       SET $Key = $Target;
       RETURN $Key;
@@ -64,7 +65,7 @@ BEGIN
   LOOP $S IN $Sessions BEGIN
     IF trim($Key) = '' THEN
       RETRIEVE $Laps FROM Formula1Backend.LiveLap
-        WHERE SessionKey = $S/SessionKey LIMIT 1;
+        WHERE SessionKey = $S/SessionKey FIRST;
       IF $Laps != empty THEN
         SET $Key = $S/SessionKey;
       END IF;
@@ -81,7 +82,7 @@ END;
  *
  * Weather is stored as a series, so "the weather" is its last row.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveSession (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveSession (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -93,13 +94,13 @@ BEGIN
     RETURN $Rows;
   END IF;
 
-  RETRIEVE $S FROM Formula1Backend.LiveSessionRow WHERE SessionKey = $Key LIMIT 1;
+  RETRIEVE $S FROM Formula1Backend.LiveSessionRow WHERE SessionKey = $Key FIRST;
   IF $S = empty THEN
     RETURN $Rows;
   END IF;
 
   RETRIEVE $W FROM Formula1Backend.LiveWeatherRow
-    WHERE SessionKey = $Key SORT BY At DESC LIMIT 1;
+    WHERE SessionKey = $Key SORT BY At DESC FIRST;
 
   $Row = CREATE Formula1Backend.Stg_LiveSession (
     SessionKey = $S/SessionKey, SessionName = $S/SessionName,
@@ -132,7 +133,7 @@ END;
  * null DRS for the whole Zandvoort sprint. Empty is the honest answer; a zero
  * would read as a fact.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveOrder (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveOrder (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -149,9 +150,9 @@ BEGIN
   RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
 
   LOOP $L IN $Laps BEGIN
-    $Seen = FIND($Rows, DriverNumber = $L/DriverNumber);
+    $Seen = FIND $Rows BY DriverNumber = $L/DriverNumber;
     IF $Seen = empty THEN
-      $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+      $D = FIND $Drivers BY DriverNumber = $L/DriverNumber;
       $Row = CREATE Formula1Backend.Stg_LiveEntry (
         EntryKey = $L/SessionKey + '-' + toString($L/DriverNumber),
         SessionKey = $L/SessionKey, DriverNumber = $L/DriverNumber,
@@ -173,7 +174,7 @@ BEGIN
    * that is not in position order is not a timing screen. */
   /* SORT takes no direction: the documented `SORT($List, attr ASC)` fails the
    * parser with "extraneous input ASC". Ascending is the default. */
-  $Ordered = SORT($Rows, Position);
+  $Ordered = SORT $Rows BY Position;
   RETURN $Ordered;
 END;
 
@@ -183,7 +184,7 @@ END;
  * Every lap of every car: the gap chart and the position chart are both drawn
  * from this, one line per driver.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveTrace (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveTrace (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -200,7 +201,7 @@ BEGIN
   RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
 
   LOOP $L IN $Laps BEGIN
-    $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+    $D = FIND $Drivers BY DriverNumber = $L/DriverNumber;
     $Row = CREATE Formula1Backend.Stg_LiveTrace (
       TraceKey = $L/SessionKey + '-' + toString($L/DriverNumber)
                  + '-' + toString($L/LapNumber),
@@ -218,7 +219,7 @@ END;
 
 /* ------------------------------------------------------------ race control -- */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveMessages (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveMessages (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -253,7 +254,7 @@ END;
  * walking a driver's laps in order and starting a new stint whenever the
  * compound changes reconstructs it without another request.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveStints (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveStints (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -281,7 +282,7 @@ BEGIN
 
     IF trim($L/Compound) != $PrevCompound THEN
       SET $StintNo = $StintNo + 1;
-      $D = FIND($Drivers, DriverNumber = $L/DriverNumber);
+      $D = FIND $Drivers BY DriverNumber = $L/DriverNumber;
       $Row = CREATE Formula1Backend.Stg_LiveStint (
         StintKey = $L/SessionKey + '-' + toString($L/DriverNumber)
                    + '-' + toString($StintNo),
@@ -301,7 +302,7 @@ BEGIN
        * CE0117 "Error(s) in expression" pointing only at the activity. */
       SET $OpenKey = $L/SessionKey + '-' + toString($L/DriverNumber)
                      + '-' + toString($StintNo);
-      $Open = FIND($Rows, StintKey = $OpenKey);
+      $Open = FIND $Rows BY StintKey = $OpenKey;
       IF $Open != empty THEN
         CHANGE $Open (LapEnd = $L/LapNumber);
       END IF;
@@ -330,7 +331,7 @@ END;
  * LiveLocationNow is cleared and refilled every pass so it only ever holds the
  * current session, but it is filtered too rather than relying on that.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TrackOutline (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_TrackOutline (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -340,23 +341,46 @@ BEGIN
   RETRIEVE $Rows FROM Formula1Backend.LiveTrackOutline
     WHERE SessionKey = $Key SORT BY Seq ASC;
   IF $Response != empty THEN
-    $Total = COUNT($Rows);
+    $Total = COUNT $Rows;
     CHANGE $Response (Count = $Total);
   END IF;
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_CarPositions (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_CarPositions (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
   RETURNS List of Formula1Backend.LiveLocationNow AS $Rows
 BEGIN
+  /*
+   * One position per car, which is what the panel says it draws.
+   *
+   * OpenF1's location endpoint answers with a WINDOW of samples, not a
+   * snapshot: 3,916 rows across 22 cars over three minutes, 178 apiece.
+   * Returning all of them drew every sample as its own dot and its own number,
+   * so the circuit came back wearing a dashed trail instead of 22 cars. The
+   * window is right for the table -- the telemetry tier clears and refills it
+   * each pass -- and wrong for this read.
+   *
+   * Taken per driver rather than by filtering the whole list, so the work is 22
+   * indexed retrieves of one row instead of sorting four thousand.
+   */
   $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
-  RETRIEVE $Rows FROM Formula1Backend.LiveLocationNow
-    WHERE SessionKey = $Key SORT BY At ASC;
+  $Rows = CREATE LIST OF Formula1Backend.LiveLocationNow;
+
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+  LOOP $D IN $Drivers BEGIN
+    RETRIEVE $Latest FROM Formula1Backend.LiveLocationNow
+      WHERE SessionKey = $Key AND DriverNumber = $D/DriverNumber
+      SORT BY At DESC FIRST;
+    IF $Latest != empty THEN
+      ADD $Latest TO $Rows;
+    END IF;
+  END LOOP;
+
   IF $Response != empty THEN
-    $Total = COUNT($Rows);
+    $Total = COUNT $Rows;
     CHANGE $Response (Count = $Total);
   END IF;
   RETURN $Rows;

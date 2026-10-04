@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -6844,3 +6844,94 @@ Note also that §84 is unchanged on this build — `check` still cannot pass a
 `.test.mdl` file, because `MxTest` is still absent at rest. Two upgrades have
 gone by without it being reported upstream, which is this project's fault and
 not mxcli's.
+
+## 89. Two corrections to §87 and §88, and the shape they share
+
+Both were written on `5ccbd480` and both are wrong about the mechanism. The
+measurements in them hold; the diagnoses and the remedies do not. They were
+caught by the reader asking *"I thought the private issue may have been fixed in
+main?"* — one `git log --grep` away, and I had not looked.
+
+### §87: `PRIVATE` was never removed, because it was never there
+
+§87 says the token is "gone from the grammar, with no token in the lexer and no
+entry in the deprecation registry", and concludes the remedy is nine manual
+deletions. The real history, from `7b7547bf` (PR #868):
+
+> Up to v0.24.0 a trailing `private` parsed only because it began a help
+> statement of its own (the `helpStatement` catch-all, `;` optional), which
+> built nothing: the modifier was never stored. R7's `IsHelpWord` predicate
+> closed the catch-all and made it a parse error that `fmt --upgrade` could not
+> get past.
+
+So there was no modifier to remove. For as long as it sat in our scripts the
+parser was swallowing it as a stray help statement, and the parse error we hit
+was a known regression from closing that hole — not a deliberate grammar
+deletion. It is now restored as a `constantOption` matched by predicate on
+`IDENTIFIER`, registered as **MDL-DEPR138**: it warns that it was never stored,
+names `mxcli constant set`, is deleted by `fmt --upgrade`, and is refused under
+`mdl 1`.
+
+**The remedy in §87 is therefore wrong.** Nine manual deletions are not
+required; upgrading past `7b7547bf` and running `fmt --upgrade` removes them.
+Verified on `0cac3621`: all four previously-unparseable scripts report
+`✓ Syntax OK`, and the upgrade rewrites `MDL-DEPR138 x9` across the project.
+
+What §87 got right stands, and is the part worth keeping: `DESCRIBE` proved the
+model never stored the token, so four credential declarations carried a
+security-shaped no-op, and the real mechanism was always the separate
+`constant set`. The observation that `fmt --upgrade` cannot get past the error
+was also right — it is the same thing upstream names as the defect.
+
+### §88: the header is not the dangerous half, and the tool does the hard part
+
+§88 says: *"do not add the `mdl 1;` header until every `limit 1` has been read
+and rewritten as `first` or as an explicit list."* That is wrong twice.
+
+`fmt --upgrade` **rewrites them itself** — `LIMIT 1` becomes `FIRST`, which
+preserves "bind a single object" under `mdl 1`. Measured across all 40 model
+scripts: `MDL-V1-LIMIT1 x92`.
+
+And the header is added *after* those rewrites, with a guard:
+
+> It also adds the language header (`mdl 1;`), after rewriting every construct
+> whose meaning the header would change. A construct without such a rewrite
+> blocks the header, and **fmt fails rather than change the script's meaning.**
+
+So the fail-safe lives in the tool, and doing both in one pass is precisely what
+makes it safe. Splitting them, as §88 advised, removes the guard and hand-rolls
+the risky half — the riskier route, recommended as the cautious one.
+
+The dry run over all 40 scripts, to stdout, nothing written:
+
+| rule | rewrites | | rule | rewrites |
+|---|---|---|---|---|
+| `MDL-DEPR001` | 235 | | `MDL-DEPR007` | 51 |
+| `MDL-DEPR005` | 218 | | `MDL-DEPR021` | 27 |
+| `MDL-DEPR030` | 103 | | `MDL-DEPR552` | 23 |
+| `MDL-V1-LIMIT1` | 92 | | `MDL-V1-LIST` | 22 |
+| `MDL-DEPR004` | 55 | | `MDL-DEPR138` | 9 |
+
+**All 40 files took the header. Zero failures, zero blocked.** `MDL-V1-REBUILD`
+was the one I expected to fire — under `mdl 1` a `create or modify` whose change
+cannot be spliced is refused, where a headerless script rebuilt the flow, and
+this project re-execs whole scripts as a matter of course. It did not fire once.
+
+### What the two have in common
+
+Each inferred a mechanism from a symptom and stopped there. A parse error became
+"removed from the grammar"; a rule flagged as semantic became "must be done by
+hand". Neither inference was checked against the tool that would do the work or
+the history of the project that owns it, and both were wrong in the same
+direction — **assuming the tooling is less capable than it is, and writing that
+assumption down as advice.**
+
+The cost is not the error, which was free to fix. It is that §87 and §88 were
+written as guidance for the next session, and a cautious-sounding remedy is the
+kind that gets followed without being re-derived. The check that would have
+caught both — read the upstream commit, run the tool once in dry-run — costs a
+minute, and neither was done before writing the section.
+
+Where this leaves the migration: nothing is migrated, no script carries the
+header, and the whole thing is now one `fmt --upgrade -w` per file plus a
+re-exec and a verification pass. It is a windowed job, not a difficult one.
