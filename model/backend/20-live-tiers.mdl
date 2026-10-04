@@ -419,6 +419,18 @@ BEGIN
   $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
 
   /*
+   * Resolve 'latest' to the key OpenF1 means by it, before anything is fetched
+   * or stamped. The warehouse queries select {sessionKey} rather than the
+   * payload's own session_key, so asking for 'latest' stored every row under
+   * the literal string -- and the next session stored under the same string,
+   * so the supersede merged the two by (driver, lap). A weekend of practice,
+   * qualifying and the race ended up as one table labelled whichever ran last.
+   */
+  $Resolved = CALL MICROFLOW Formula1Backend.Sync_ResolveKey(
+    Key = $Key, Token = $Token);
+  SET $Key = $Resolved;
+
+  /*
    * How many passes fit in the minute depends on which tier we are on, and
    * getting that wrong is silent.
    *
