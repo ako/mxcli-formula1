@@ -353,9 +353,32 @@ CREATE OR MODIFY MICROFLOW Formula1Backend.Read_CarPositions (
 )
   RETURNS List of Formula1Backend.LiveLocationNow AS $Rows
 BEGIN
+  /*
+   * One position per car, which is what the panel says it draws.
+   *
+   * OpenF1's location endpoint answers with a WINDOW of samples, not a
+   * snapshot: 3,916 rows across 22 cars over three minutes, 178 apiece.
+   * Returning all of them drew every sample as its own dot and its own number,
+   * so the circuit came back wearing a dashed trail instead of 22 cars. The
+   * window is right for the table -- the telemetry tier clears and refills it
+   * each pass -- and wrong for this read.
+   *
+   * Taken per driver rather than by filtering the whole list, so the work is 22
+   * indexed retrieves of one row instead of sorting four thousand.
+   */
   $Key = CALL MICROFLOW Formula1Backend.Live_CurrentKey();
-  RETRIEVE $Rows FROM Formula1Backend.LiveLocationNow
-    WHERE SessionKey = $Key SORT BY At ASC;
+  $Rows = CREATE LIST OF Formula1Backend.LiveLocationNow;
+
+  RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
+  LOOP $D IN $Drivers BEGIN
+    RETRIEVE $Latest FROM Formula1Backend.LiveLocationNow
+      WHERE SessionKey = $Key AND DriverNumber = $D/DriverNumber
+      SORT BY At DESC FIRST;
+    IF $Latest != empty THEN
+      ADD $Latest TO $Rows;
+    END IF;
+  END LOOP;
+
   IF $Response != empty THEN
     $Total = COUNT $Rows;
     CHANGE $Response (Count = $Total);
