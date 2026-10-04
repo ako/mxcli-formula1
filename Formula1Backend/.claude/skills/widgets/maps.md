@@ -9,7 +9,7 @@
 ```sql
 PLUGGABLEWIDGET 'com.mendix.widget.custom.Maps.Maps' widget1 {
   marker item1   -- one entry of `markers`
-  dynamicmarker item1   -- one entry of `dynamicMarkers`
+  dynamicmarker item2   -- one entry of `dynamicMarkers`
 }
 ```
 
@@ -73,6 +73,7 @@ Item properties:
 | `title` | texttemplate |
 | `onClick` | action |
 | `markerStyle` | primitive |
+| `customMarker` | image |
 
 ### `dynamicmarker` → property `dynamicMarkers`
 
@@ -88,6 +89,7 @@ Item properties:
 | `title` | attribute |
 | `onClickAttribute` | action |
 | `markerStyleDynamic` | primitive |
+| `customMarkerDynamic` | image |
 
 ---
 
