@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 4 of 5 — Constructor.
  * ============================
@@ -13,12 +14,12 @@
  * that answers a question about the team rather than about the pairing.
  */
 
-create or replace page Formula1Frontend.Constructor
+create or modify page Formula1Frontend.Constructor
 (
   title: 'Constructor',
   layout: Atlas_Core.Atlas_Default,
   url: 'constructor/{Constructor}',
-  Params: { $Constructor: F1Cached.Constructors }
+  Params: ( $Constructor: F1Cached.Constructors )
 )
 {
   container pageBody {
@@ -29,11 +30,11 @@ create or replace page Formula1Frontend.Constructor
         container chipPeer (
           class: 'chip-pick',
           dynamicclasses:
-            'if $currentObject/constructorId = $Constructor/constructorId
-             then ''is-picked'' else ''''',
-          OnClick: SHOW_PAGE Formula1Frontend.Constructor(Constructor: $currentObject)
+            if $currentObject/constructorId = $Constructor/constructorId
+             then 'is-picked' else '',
+          OnClick: SHOW PAGE Formula1Frontend.Constructor(Constructor = $currentObject)
         ) {
-          dynamictext chipName (content: '{1}', contentparams: [{1} = name])
+          dynamictext chipName (content: '{1}', contentparams: ({1} = name))
         }
       }
     }
@@ -41,38 +42,38 @@ create or replace page Formula1Frontend.Constructor
     dataview dvTeam (datasource: $Constructor, class: 'hero') {
       container heroRow (class: 'hero-row') {
         container heroMark (class: 'hero-mark') {
-          dynamictext heroInit (content: '{1}', contentparams: [{1} = country])
+          dynamictext heroInit (content: '{1}', contentparams: ({1} = country))
         }
         container heroId (class: 'hero-id') {
-          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+          dynamictext heroName (content: '{1}', contentparams: ({1} = fullName),
                                 rendermode: H2, class: 'hero-name')
           dynamictext heroSub (content: '{1} · {2} starts since the championship began',
-            contentparams: [{1} = country, {2} = raceStarts], class: 'hero-sub')
+            contentparams: ({1} = country, {2} = raceStarts), class: 'hero-sub')
         }
         container heroStats (class: 'hero-stats') {
           container hsTitles (class: 'hero-stat') {
             dynamictext hsTitlesL (content: 'Titles', class: 'hero-stat-label')
-            dynamictext hsTitlesV (content: '{1}', contentparams: [{1} = championshipWins],
+            dynamictext hsTitlesV (content: '{1}', contentparams: ({1} = championshipWins),
                                    class: 'hero-stat-value')
           }
           container hsWins (class: 'hero-stat') {
             dynamictext hsWinsL (content: 'Wins', class: 'hero-stat-label')
-            dynamictext hsWinsV (content: '{1}', contentparams: [{1} = raceWins],
+            dynamictext hsWinsV (content: '{1}', contentparams: ({1} = raceWins),
                                  class: 'hero-stat-value')
           }
           container hsPodiums (class: 'hero-stat') {
             dynamictext hsPodiumsL (content: 'Podiums', class: 'hero-stat-label')
-            dynamictext hsPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+            dynamictext hsPodiumsV (content: '{1}', contentparams: ({1} = podiums),
                                     class: 'hero-stat-value')
           }
           container hsPoles (class: 'hero-stat') {
             dynamictext hsPolesL (content: 'Poles', class: 'hero-stat-label')
-            dynamictext hsPolesV (content: '{1}', contentparams: [{1} = polePositions],
+            dynamictext hsPolesV (content: '{1}', contentparams: ({1} = polePositions),
                                   class: 'hero-stat-value')
           }
           container hsPoints (class: 'hero-stat') {
             dynamictext hsPointsL (content: 'Points', class: 'hero-stat-label')
-            dynamictext hsPointsV (content: '{1}', contentparams: [{1} = points],
+            dynamictext hsPointsV (content: '{1}', contentparams: ({1} = points),
                                    class: 'hero-stat-value')
           }
         }
@@ -91,7 +92,7 @@ create or replace page Formula1Frontend.Constructor
                             class: 'panel-sub')
       }
       dataview dvPpr (
-        datasource: MICROFLOW Formula1Frontend.DSJ_TeamPoints(Constructor: $Constructor)
+        datasource: MICROFLOW Formula1Frontend.DSJ_TeamPoints(Constructor = $Constructor)
       ) {
         pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPpr (
           chartData: json,
@@ -116,71 +117,71 @@ create or replace page Formula1Frontend.Constructor
           dynamictext h2hSub (content: 'the most recent season on record', class: 'panel-sub')
         }
         dataview dvH2H (
-          datasource: MICROFLOW Formula1Frontend.DS_TeamH2H(Constructor: $Constructor)
+          datasource: MICROFLOW Formula1Frontend.DS_TeamH2H(Constructor = $Constructor)
         ) {
           container h2hNames (class: 'h2h-names') {
-            dynamictext h2hLeft (content: '{1}', contentparams: [{1} = leftName],
+            dynamictext h2hLeft (content: '{1}', contentparams: ({1} = leftName),
                                  class: 'h2h-name-left')
-            dynamictext h2hRight (content: '{1}', contentparams: [{1} = rightName],
+            dynamictext h2hRight (content: '{1}', contentparams: ({1} = rightName),
                                   class: 'h2h-name')
           }
           container h2hQual (class: 'h2h-row') {
-            dynamictext hqL (content: '{1}', contentparams: [{1} = qualLeft],
+            dynamictext hqL (content: '{1}', contentparams: ({1} = qualLeft),
                              class: 'h2h-value-left')
             container hqTrack (class: 'h2h-track') {
               container hqFill (
                 class: 'h2h-fill',
-                dynamicclasses: '''w-'' + toString($currentObject/qualLeftShare)'
+                dynamicclasses: 'w-' + toString($currentObject/qualLeftShare)
               ) {
-                dynamictext hqFillX (content: '{1}', contentparams: [{1} = qualLeftShare])
+                dynamictext hqFillX (content: '{1}', contentparams: ({1} = qualLeftShare))
               }
             }
-            dynamictext hqR (content: '{1}', contentparams: [{1} = qualRight],
+            dynamictext hqR (content: '{1}', contentparams: ({1} = qualRight),
                              class: 'h2h-value')
             dynamictext hqL2 (content: 'Out-qualified', class: 'h2h-label')
           }
           container h2hRace (class: 'h2h-row') {
-            dynamictext hrL (content: '{1}', contentparams: [{1} = raceLeft],
+            dynamictext hrL (content: '{1}', contentparams: ({1} = raceLeft),
                              class: 'h2h-value-left')
             container hrTrack (class: 'h2h-track') {
               container hrFill (
                 class: 'h2h-fill',
-                dynamicclasses: '''w-'' + toString($currentObject/raceLeftShare)'
+                dynamicclasses: 'w-' + toString($currentObject/raceLeftShare)
               ) {
-                dynamictext hrFillX (content: '{1}', contentparams: [{1} = raceLeftShare])
+                dynamictext hrFillX (content: '{1}', contentparams: ({1} = raceLeftShare))
               }
             }
-            dynamictext hrR (content: '{1}', contentparams: [{1} = raceRight],
+            dynamictext hrR (content: '{1}', contentparams: ({1} = raceRight),
                              class: 'h2h-value')
             dynamictext hrL2 (content: 'Finished ahead', class: 'h2h-label')
           }
           container h2hPts (class: 'h2h-row') {
-            dynamictext hpL (content: '{1}', contentparams: [{1} = pointsLeft],
+            dynamictext hpL (content: '{1}', contentparams: ({1} = pointsLeft),
                              class: 'h2h-value-left')
             container hpTrack (class: 'h2h-track') {
               container hpFill (
                 class: 'h2h-fill',
-                dynamicclasses: '''w-'' + toString($currentObject/pointsLeftShare)'
+                dynamicclasses: 'w-' + toString($currentObject/pointsLeftShare)
               ) {
-                dynamictext hpFillX (content: '{1}', contentparams: [{1} = pointsLeftShare])
+                dynamictext hpFillX (content: '{1}', contentparams: ({1} = pointsLeftShare))
               }
             }
-            dynamictext hpR (content: '{1}', contentparams: [{1} = pointsRight],
+            dynamictext hpR (content: '{1}', contentparams: ({1} = pointsRight),
                              class: 'h2h-value')
             dynamictext hpL2 (content: 'Points', class: 'h2h-label')
           }
           container h2hDnf (class: 'h2h-row') {
-            dynamictext hdL (content: '{1}', contentparams: [{1} = dnfLeft],
+            dynamictext hdL (content: '{1}', contentparams: ({1} = dnfLeft),
                              class: 'h2h-value-left')
             container hdTrack (class: 'h2h-track') {
               container hdFill (
                 class: 'h2h-fill',
-                dynamicclasses: '''w-'' + toString($currentObject/dnfLeftShare)'
+                dynamicclasses: 'w-' + toString($currentObject/dnfLeftShare)
               ) {
-                dynamictext hdFillX (content: '{1}', contentparams: [{1} = dnfLeftShare])
+                dynamictext hdFillX (content: '{1}', contentparams: ({1} = dnfLeftShare))
               }
             }
-            dynamictext hdR (content: '{1}', contentparams: [{1} = dnfRight],
+            dynamictext hdR (content: '{1}', contentparams: ({1} = dnfRight),
                              class: 'h2h-value')
             dynamictext hdL2 (content: 'Retirements', class: 'h2h-label')
           }
@@ -195,7 +196,7 @@ create or replace page Formula1Frontend.Constructor
                               class: 'panel-sub')
         }
         dataview dvTeamPos (
-          datasource: MICROFLOW Formula1Frontend.DSJ_TeamPosition(Constructor: $Constructor)
+          datasource: MICROFLOW Formula1Frontend.DSJ_TeamPosition(Constructor = $Constructor)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTeamPos (
             chartData: json,
@@ -214,4 +215,4 @@ create or replace page Formula1Frontend.Constructor
         content: 'Career totals and per-round results are f1db. The head-to-head counts and their shares are computed on the backend from the same rows, so the bars and the numbers beside them can never disagree. Both the round chart and the head-to-head describe the most recent season the team appears in, not its whole history.')
     }
   }
-}
+};

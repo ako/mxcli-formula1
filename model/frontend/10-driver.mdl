@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 5 of 5 — Driver.
  * =======================
@@ -15,12 +16,12 @@
  * round, the other a table of every season.
  */
 
-create or replace page Formula1Frontend.Driver
+create or modify page Formula1Frontend.Driver
 (
   title: 'Driver',
   layout: Atlas_Core.Atlas_Default,
   url: 'driver/{Driver}',
-  Params: { $Driver: F1Live.Drivers }
+  Params: ( $Driver: F1Live.Drivers )
 )
 {
   container pageBody {
@@ -36,11 +37,11 @@ create or replace page Formula1Frontend.Driver
                         PageSize: 40) {
         container chipPeer (
           class: 'chip-pick',
-          dynamicclasses: 'if $currentObject/driverId = $Driver/driverId
-                           then ''is-picked'' else ''''',
-          OnClick: SHOW_PAGE Formula1Frontend.Driver(Driver: $currentObject)
+          dynamicclasses: if $currentObject/driverId = $Driver/driverId
+                           then 'is-picked' else '',
+          OnClick: SHOW PAGE Formula1Frontend.Driver(Driver = $currentObject)
         ) {
-          dynamictext chipAbbr (content: '{1}', contentparams: [{1} = abbreviation])
+          dynamictext chipAbbr (content: '{1}', contentparams: ({1} = abbreviation))
         }
       }
     }
@@ -48,13 +49,13 @@ create or replace page Formula1Frontend.Driver
     dataview dvDriver (datasource: $Driver, class: 'hero') {
       container heroRow (class: 'hero-row') {
         container heroMark (class: 'hero-mark') {
-          dynamictext heroNum (content: '{1}', contentparams: [{1} = abbreviation])
+          dynamictext heroNum (content: '{1}', contentparams: ({1} = abbreviation))
         }
         container heroId (class: 'hero-id') {
-          dynamictext heroName (content: '{1}', contentparams: [{1} = fullName],
+          dynamictext heroName (content: '{1}', contentparams: ({1} = fullName),
                                 rendermode: H2, class: 'hero-name')
           dynamictext heroSub (content: '{1} · born {2} · {3} starts',
-            contentparams: [{1} = nationality, {2} = placeOfBirth, {3} = raceStarts],
+            contentparams: ({1} = nationality, {2} = placeOfBirth, {3} = raceStarts),
             class: 'hero-sub')
         }
       }
@@ -65,56 +66,56 @@ create or replace page Formula1Frontend.Driver
      * reads the driver's last season rather than their totals.
      */
     dataview dvLatest (
-      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver)
+      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver = $Driver)
     ) {
       container kpis (class: 'kpis') {
         container kYear (class: 'kpi kpi-accent') {
           dynamictext kYearL (content: 'Season', class: 'kpi-label')
-          dynamictext kYearV (content: '{1}', contentparams: [{1} = year],
+          dynamictext kYearV (content: '{1}', contentparams: ({1} = year),
                               class: 'kpi-value')
         }
         container kPoints (class: 'kpi') {
           dynamictext kPointsL (content: 'Points', class: 'kpi-label')
-          dynamictext kPointsV (content: '{1}', contentparams: [{1} = points],
+          dynamictext kPointsV (content: '{1}', contentparams: ({1} = points),
                                 class: 'kpi-value')
         }
         container kPos (class: 'kpi') {
           dynamictext kPosL (content: 'Position', class: 'kpi-label')
-          dynamictext kPosV (content: '{1}', contentparams: [{1} = standingPosition],
+          dynamictext kPosV (content: '{1}', contentparams: ({1} = standingPosition),
                              class: 'kpi-value')
         }
         container kWins (class: 'kpi') {
           dynamictext kWinsL (content: 'Wins', class: 'kpi-label')
-          dynamictext kWinsV (content: '{1}', contentparams: [{1} = wins],
+          dynamictext kWinsV (content: '{1}', contentparams: ({1} = wins),
                               class: 'kpi-value')
         }
         container kPodiums (class: 'kpi') {
           dynamictext kPodiumsL (content: 'Podiums', class: 'kpi-label')
-          dynamictext kPodiumsV (content: '{1}', contentparams: [{1} = podiums],
+          dynamictext kPodiumsV (content: '{1}', contentparams: ({1} = podiums),
                                  class: 'kpi-value')
         }
         container kAvg (class: 'kpi') {
           dynamictext kAvgL (content: 'Avg finish', class: 'kpi-label')
-          dynamictext kAvgV (content: '{1}', contentparams: [{1} = avgFinish],
+          dynamictext kAvgV (content: '{1}', contentparams: ({1} = avgFinish),
                              class: 'kpi-value')
         }
       }
     }
 
     dataview dvStrip (
-      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver: $Driver),
+      datasource: MICROFLOW Formula1Frontend.DS_DriverLatestSeason(Driver = $Driver),
       class: 'panel'
     ) {
       container stripHead (class: 'panel-head') {
         dynamictext stripTitle (content: '{1} season, round by round',
-                                contentparams: [{1} = year], class: 'panel-title')
+                                contentparams: ({1} = year), class: 'panel-title')
         dynamictext stripSub (
           content: 'finishing position per round · × is a retirement · a cell opens the weekend',
           class: 'panel-sub')
       }
       container stripGrid (class: 'strip-grid') {
         listview lvStrip (
-          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver: $Driver),
+          datasource: MICROFLOW Formula1Frontend.DS_DriverLatestRaces(Driver = $Driver),
           PageSize: 40
         ) {
           container stripCell (
@@ -128,20 +129,20 @@ create or replace page Formula1Frontend.Driver
              * scored nothing can have no points at all.
              */
             dynamicclasses:
-              'if $currentObject/finishPosition = empty then ''strip-dnf''
-               else if $currentObject/finishPosition = 1 then ''strip-win''
-               else if $currentObject/finishPosition <= 3 then ''strip-podium''
-               else if $currentObject/points = empty then ''strip-none''
-               else if $currentObject/points > 0 then ''strip-points''
-               else ''strip-none''',
-            OnClick: MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace(Race: $currentObject)
+              if $currentObject/finishPosition = empty then 'strip-dnf'
+               else if $currentObject/finishPosition = 1 then 'strip-win'
+               else if $currentObject/finishPosition <= 3 then 'strip-podium'
+               else if $currentObject/points = empty then 'strip-none'
+               else if $currentObject/points > 0 then 'strip-points'
+               else 'strip-none',
+            OnClick: CALL MICROFLOW Formula1Frontend.ACT_OpenRoundOfRace(Race = $currentObject)
           ) {
-            dynamictext stripRound (content: 'R{1}', contentparams: [{1} = round],
+            dynamictext stripRound (content: 'R{1}', contentparams: ({1} = round),
                                     class: 'cal-round')
             dynamictext stripPos (content: '{1}',
-              contentparams: [{1} = finishPosition],
-              visible: [finishPosition != empty])
-            dynamictext stripDnf (content: '×', visible: [finishPosition = empty])
+              contentparams: ({1} = finishPosition),
+              visible: $currentObject/finishPosition != empty)
+            dynamictext stripDnf (content: '×', visible: $currentObject/finishPosition = empty)
           }
         }
       }
@@ -164,7 +165,7 @@ create or replace page Formula1Frontend.Driver
             class: 'panel-sub')
         }
         dataview dvQualRace (
-          datasource: MICROFLOW Formula1Frontend.DSJ_QualRace(Driver: $Driver)
+          datasource: MICROFLOW Formula1Frontend.DSJ_QualRace(Driver = $Driver)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartQualRace (
             chartData: json,
@@ -184,7 +185,7 @@ create or replace page Formula1Frontend.Driver
             class: 'panel-sub')
         }
         dataview dvCareer (
-          datasource: MICROFLOW Formula1Frontend.DSJ_Career(Driver: $Driver)
+          datasource: MICROFLOW Formula1Frontend.DSJ_Career(Driver = $Driver)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCareer (
             chartData: json,
@@ -209,23 +210,23 @@ create or replace page Formula1Frontend.Driver
       }
       container seasonsGrid (class: 'grid-dense') {
         datagrid dgSeasons (
-          datasource: MICROFLOW Formula1Frontend.DS_DriverSeasons(Driver: $Driver),
+          datasource: MICROFLOW Formula1Frontend.DS_DriverSeasons(Driver = $Driver),
           PageSize: 25,
           PagingPosition: bottom,
-          OnClick: MICROFLOW Formula1Frontend.ACT_OpenSeasonOfDriver(Row: $currentObject)
+          OnClick: CALL MICROFLOW Formula1Frontend.ACT_OpenSeasonOfDriver(Row = $currentObject)
         ) {
-          column colYear (attribute: year, caption: 'Year', Alignment: right)
-          column colTeam (attribute: constructors, caption: 'Team')
-          column colPos (attribute: standingPosition, caption: 'Pos', Alignment: right)
-          column colPts (attribute: points, caption: 'Points', Alignment: right)
-          column colStarts (attribute: starts, caption: 'Starts', Alignment: right)
-          column colWins (attribute: wins, caption: 'W', Alignment: right)
-          column colPodiums (attribute: podiums, caption: 'Pod', Alignment: right)
-          column colPoles (attribute: poles, caption: 'Pol', Alignment: right)
-          column colBest (attribute: bestFinish, caption: 'Best', Alignment: right)
-          column colAvgQ (attribute: avgQualifying, caption: 'Avg Q', Alignment: right)
-          column colAvgF (attribute: avgFinish, caption: 'Avg F', Alignment: right)
-          column colRet (attribute: retirements, caption: 'Ret', Alignment: right)
+          column (attribute: year, caption: 'Year', Alignment: right)
+          column (attribute: constructors, caption: 'Team')
+          column (attribute: standingPosition, caption: 'Pos', Alignment: right)
+          column (attribute: points, caption: 'Points', Alignment: right)
+          column (attribute: starts, caption: 'Starts', Alignment: right)
+          column (attribute: wins, caption: 'W', Alignment: right)
+          column (attribute: podiums, caption: 'Pod', Alignment: right)
+          column (attribute: poles, caption: 'Pol', Alignment: right)
+          column (attribute: bestFinish, caption: 'Best', Alignment: right)
+          column (attribute: avgQualifying, caption: 'Avg Q', Alignment: right)
+          column (attribute: avgFinish, caption: 'Avg F', Alignment: right)
+          column (attribute: retirements, caption: 'Ret', Alignment: right)
         }
       }
     }
@@ -236,4 +237,4 @@ create or replace page Formula1Frontend.Driver
         content: 'Career and per-season records are f1db. Averages and retirement counts are computed on the backend from the same results, and a season the driver was not classified in carries no championship finish rather than a sentinel — plotting one would draw a career arc out of "no position".')
     }
   }
-}
+};

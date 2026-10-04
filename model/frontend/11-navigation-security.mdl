@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Navigation and security for the frontend.
  * =========================================
@@ -17,7 +18,7 @@
  * another screen, which is the whole navigation model of the comp.
  */
 
-alter project security level PROTOTYPE;
+alter app security ( SecurityLevel: prototype );
 
 create or modify module role Formula1Frontend.Enthusiast
   description 'Browse every season, driver, constructor and result. Read-only.';
@@ -36,51 +37,51 @@ create or modify module role Formula1Frontend.Administrator
     grids are evidence, not a console.';
 
 /* Live external entities */
-grant F1Live.Reader ON F1Live.Seasons (READ *);
-grant F1Live.Reader ON F1Live.Circuits (READ *);
-grant F1Live.Reader ON F1Live.Constructors (READ *);
-grant F1Live.Reader ON F1Live.Drivers (READ *);
-grant F1Live.Reader ON F1Live.Races (READ *);
-grant F1Live.Reader ON F1Live.RaceResults (READ *);
-grant F1Live.Reader ON F1Live.DriverStandings (READ *);
-grant F1Live.Reader ON F1Live.ConstructorStandings (READ *);
+grant READ * on entity F1Live.Seasons to F1Live.Reader;
+grant READ * on entity F1Live.Circuits to F1Live.Reader;
+grant READ * on entity F1Live.Constructors to F1Live.Reader;
+grant READ * on entity F1Live.Drivers to F1Live.Reader;
+grant READ * on entity F1Live.Races to F1Live.Reader;
+grant READ * on entity F1Live.RaceResults to F1Live.Reader;
+grant READ * on entity F1Live.DriverStandings to F1Live.Reader;
+grant READ * on entity F1Live.ConstructorStandings to F1Live.Reader;
 
 /* Cached external entities */
-grant F1Cached.Reader ON F1Cached.Seasons (READ *);
-grant F1Cached.Reader ON F1Cached.Circuits (READ *);
-grant F1Cached.Reader ON F1Cached.Constructors (READ *);
-grant F1Cached.Reader ON F1Cached.Drivers (READ *);
-grant F1Cached.Reader ON F1Cached.Races (READ *);
-grant F1Cached.Reader ON F1Cached.RaceResults (READ *);
-grant F1Cached.Reader ON F1Cached.DriverStandings (READ *);
-grant F1Cached.Reader ON F1Cached.ConstructorStandings (READ *);
+grant READ * on entity F1Cached.Seasons to F1Cached.Reader;
+grant READ * on entity F1Cached.Circuits to F1Cached.Reader;
+grant READ * on entity F1Cached.Constructors to F1Cached.Reader;
+grant READ * on entity F1Cached.Drivers to F1Cached.Reader;
+grant READ * on entity F1Cached.Races to F1Cached.Reader;
+grant READ * on entity F1Cached.RaceResults to F1Cached.Reader;
+grant READ * on entity F1Cached.DriverStandings to F1Cached.Reader;
+grant READ * on entity F1Cached.ConstructorStandings to F1Cached.Reader;
 
 /* Fan external entities — the derived views behind four of the five screens */
-grant F1Fan.Reader ON F1Fan.DriverSeasons (READ *);
-grant F1Fan.Reader ON F1Fan.DriverRaces (READ *);
-grant F1Fan.Reader ON F1Fan.SeasonProgress (READ *);
-grant F1Fan.Reader ON F1Fan.Retirements (READ *);
-grant F1Fan.Reader ON F1Fan.Facts (READ *);
-grant F1Fan.Reader ON F1Fan.RaceWeekend (READ *);
-grant F1Fan.Reader ON F1Fan.RaceSessions (READ *);
-grant F1Fan.Reader ON F1Fan.Calendar (READ *);
-grant F1Fan.Reader ON F1Fan.WeekendShape (READ *);
-grant F1Fan.Reader ON F1Fan.LapChart (READ *);
-grant F1Fan.Reader ON F1Fan.TeamSeason (READ *);
-grant F1Fan.Reader ON F1Fan.TeamH2H (READ *);
+grant READ * on entity F1Fan.DriverSeasons to F1Fan.Reader;
+grant READ * on entity F1Fan.DriverRaces to F1Fan.Reader;
+grant READ * on entity F1Fan.SeasonProgress to F1Fan.Reader;
+grant READ * on entity F1Fan.Retirements to F1Fan.Reader;
+grant READ * on entity F1Fan.Facts to F1Fan.Reader;
+grant READ * on entity F1Fan.RaceWeekend to F1Fan.Reader;
+grant READ * on entity F1Fan.RaceSessions to F1Fan.Reader;
+grant READ * on entity F1Fan.Calendar to F1Fan.Reader;
+grant READ * on entity F1Fan.WeekendShape to F1Fan.Reader;
+grant READ * on entity F1Fan.LapChart to F1Fan.Reader;
+grant READ * on entity F1Fan.TeamSeason to F1Fan.Reader;
+grant READ * on entity F1Fan.TeamH2H to F1Fan.Reader;
 
 /* Near-live timing. Trace and Stints are the history behind the snapshot. */
-grant F1Now.Reader ON F1Now.Order (READ *);
-grant F1Now.Reader ON F1Now.Messages (READ *);
-grant F1Now.Reader ON F1Now.Session (READ *);
-grant F1Now.Reader ON F1Now.Trace (READ *);
-grant F1Now.Reader ON F1Now.Stints (READ *);
+grant READ * on entity F1Now.Order to F1Now.Reader;
+grant READ * on entity F1Now.Messages to F1Now.Reader;
+grant READ * on entity F1Now.Session to F1Now.Reader;
+grant READ * on entity F1Now.Trace to F1Now.Reader;
+grant READ * on entity F1Now.Stints to F1Now.Reader;
 
 /* The forecast, and every forecast the race has produced. Read-only like the
  * rest -- these are the backend's opinion, and the frontend does not get to
  * revise it. */
-grant F1Now.Reader ON F1Now.Forecast (READ *);
-grant F1Now.Reader ON F1Now.ForecastTrace (READ *);
+grant READ * on entity F1Now.Forecast to F1Now.Reader;
+grant READ * on entity F1Now.ForecastTrace to F1Now.Reader;
 
 /* -------------------------------------------------------------- default -- */
 
@@ -93,53 +94,53 @@ grant F1Now.Reader ON F1Now.ForecastTrace (READ *);
  * nothing rather than an empty screen, which is a blank click rather than a
  * page that looks broken.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Season ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.NAV_Season ()
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC FIRST;
   IF $Season != empty THEN
-    SHOW PAGE Formula1Frontend.Season (Season: $Season);
+    SHOW PAGE Formula1Frontend.Season (Season = $Season);
   END IF;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Weekend ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.NAV_Weekend ()
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC FIRST;
   IF $Season != empty THEN
     RETRIEVE $Race FROM F1Fan.Calendar
-      WHERE year = $Season/year SORT BY round DESC LIMIT 1;
+      WHERE year = $Season/year SORT BY round DESC FIRST;
     IF $Race != empty THEN
-      SHOW PAGE Formula1Frontend.Weekend (Race: $Race);
+      SHOW PAGE Formula1Frontend.Weekend (Race = $Race);
     END IF;
   END IF;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Constructor ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.NAV_Constructor ()
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC FIRST;
   IF $Season != empty THEN
     RETRIEVE $Standing FROM F1Cached.ConstructorStandings
-      WHERE year = $Season/year SORT BY positionOrder ASC LIMIT 1;
+      WHERE year = $Season/year SORT BY positionOrder ASC FIRST;
     IF $Standing != empty THEN
       RETRIEVE $Constructor FROM F1Cached.Constructors
-        WHERE constructorId = $Standing/constructorId LIMIT 1;
+        WHERE constructorId = $Standing/constructorId FIRST;
       IF $Constructor != empty THEN
-        SHOW PAGE Formula1Frontend.Constructor (Constructor: $Constructor);
+        SHOW PAGE Formula1Frontend.Constructor (Constructor = $Constructor);
       END IF;
     END IF;
   END IF;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.NAV_Driver ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.NAV_Driver ()
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons SORT BY year DESC FIRST;
   IF $Season != empty THEN
     RETRIEVE $Standing FROM F1Cached.DriverStandings
-      WHERE year = $Season/year SORT BY positionOrder ASC LIMIT 1;
+      WHERE year = $Season/year SORT BY positionOrder ASC FIRST;
     IF $Standing != empty THEN
       RETRIEVE $Driver FROM F1Live.Drivers
-        WHERE driverId = $Standing/driverId LIMIT 1;
+        WHERE driverId = $Standing/driverId FIRST;
       IF $Driver != empty THEN
-        SHOW PAGE Formula1Frontend.Driver (Driver: $Driver);
+        SHOW PAGE Formula1Frontend.Driver (Driver = $Driver);
       END IF;
     END IF;
   END IF;
@@ -206,7 +207,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ForecastTrace TO Formula1Frontend
  * the same facts as a JSON string, so the grants come in pairs — the reader
  * still needs the underlying resource.
  */
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.Chart (READ *);
+GRANT READ * ON ENTITY Formula1Frontend.Chart TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_Career TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_QualRace TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SeasonProgress TO Formula1Frontend.Enthusiast;
@@ -224,25 +225,21 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveStints TO Formula1Frontend.E
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ForecastWin TO Formula1Frontend.Enthusiast;
 
 /* The view-model rows the season screen binds to. */
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonHeadline (READ *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonTeamRow (READ *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.SeasonDriverRow (READ *);
+GRANT READ * ON ENTITY Formula1Frontend.SeasonHeadline TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.SeasonTeamRow TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.SeasonDriverRow TO Formula1Frontend.Enthusiast;
 
-create or modify user role Enthusiast (
-  Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader,
-  F1Now.Reader, System.User
-);
+create or modify user role Enthusiast ( ModuleRoles: (Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader,
+  F1Now.Reader, System.User) );
 
 /*
  * An administrator is an enthusiast who can also see the plumbing, so the role
  * is additive rather than parallel -- signing in as admin should not cost you
  * the five screens the app is actually for.
  */
-create or modify user role Administrator (
-  Formula1Frontend.Administrator, Formula1Frontend.Enthusiast,
+create or modify user role Administrator ( ModuleRoles: (Formula1Frontend.Administrator, Formula1Frontend.Enthusiast,
   F1Live.Reader, F1Cached.Reader, F1Fan.Reader, F1Now.Reader,
-  F1Admin.Reader, System.User
-);
+  F1Admin.Reader, System.User) );
 
 /*
  * The rail. Five items, in the order the comp puts them: the race happening
@@ -255,27 +252,27 @@ create or modify user role Administrator (
  * Hyphenated Atlas names need quoting: ICON Atlas_Core.Atlas."map-location-pin".
  * Browse them with SHOW ICON COLLECTION / DESCRIBE ICON COLLECTION. FINDINGS §48.
  */
-create or replace navigation Responsive
+create or modify navigation Responsive
   HOME PAGE Formula1Frontend.Narrate
-  MENU (
-    MENU ITEM 'Narrate' PAGE Formula1Frontend.Narrate ICON Atlas_Core.Atlas."time-clock";
-    MENU ITEM 'Replay' PAGE Formula1Frontend.Replay ICON Atlas_Core.Atlas."time-clock";
-    MENU ITEM 'Narrative' PAGE Formula1Frontend.Narrative ICON Atlas_Core.Atlas.flag;
-    MENU ITEM 'Season' MICROFLOW Formula1Frontend.NAV_Season ICON Atlas_Core.Atlas.calendar;
-    MENU ITEM 'Race weekend' MICROFLOW Formula1Frontend.NAV_Weekend ICON Atlas_Core.Atlas.flag;
-    MENU ITEM 'Constructor' MICROFLOW Formula1Frontend.NAV_Constructor ICON Atlas_Core.Atlas."org-chart";
-    MENU ITEM 'Driver' MICROFLOW Formula1Frontend.NAV_Driver ICON Atlas_Core.Atlas."user-neutral-group";
+  {
+    MENU ITEM 'Narrate' ( OnClick: SHOW PAGE Formula1Frontend.Narrate, Icon: Atlas_Core.Atlas."time-clock" )
+    MENU ITEM 'Replay' ( OnClick: SHOW PAGE Formula1Frontend.Replay, Icon: Atlas_Core.Atlas."time-clock" )
+    MENU ITEM 'Narrative' ( OnClick: SHOW PAGE Formula1Frontend.Narrative, Icon: Atlas_Core.Atlas.flag )
+    MENU ITEM 'Season' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Season, Icon: Atlas_Core.Atlas.calendar )
+    MENU ITEM 'Race weekend' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Weekend, Icon: Atlas_Core.Atlas.flag )
+    MENU ITEM 'Constructor' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Constructor, Icon: Atlas_Core.Atlas."org-chart" )
+    MENU ITEM 'Driver' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Driver, Icon: Atlas_Core.Atlas."user-neutral-group" )
     /*
      * Admin sits last and below the fold of interest, because it is not part of
      * the comp. A menu item whose page the signed-in user cannot view is not
      * rendered, so a fan never sees this one.
      */
-    MENU ITEM 'Admin' PAGE Formula1Frontend.Admin ICON Atlas_Core.Atlas."layout-list";
-  );
+    MENU ITEM 'Admin' ( OnClick: SHOW PAGE Formula1Frontend.Admin, Icon: Atlas_Core.Atlas."layout-list" )
+  };
 
 /* The circuit outline: the shape, the points behind it, and the chart. */
-grant F1Fan.Reader ON F1Fan.CircuitOutlines (READ *);
-grant F1Fan.Reader ON F1Fan.CircuitPoints (READ *);
+grant READ * on entity F1Fan.CircuitOutlines to F1Fan.Reader;
+grant READ * on entity F1Fan.CircuitPoints to F1Fan.Reader;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CircuitOutline TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CircuitPoints TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_CircuitOutline TO Formula1Frontend.Enthusiast;
@@ -283,8 +280,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints TO Formula
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect TO Formula1Frontend.Enthusiast;
 
 /* The track map: the circuit outline, the live car positions, and the chart. */
-grant F1Now.Reader ON F1Now.TrackOutline (READ *);
-grant F1Now.Reader ON F1Now.CarPositions (READ *);
+grant READ * on entity F1Now.TrackOutline to F1Now.Reader;
+grant READ * on entity F1Now.CarPositions to F1Now.Reader;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TrackOutline TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_CarPositions TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TrackMap TO Formula1Frontend.Enthusiast;
@@ -301,29 +298,29 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.Test_TrackMapBuilds TO Formula1Front
  * not change anything. Turning the sync on or repointing it at a session stays
  * where it was, behind the backend's ops API and its shared key.
  */
-grant F1Admin.Reader ON F1Admin.SyncRuns (READ *);
-grant F1Admin.Reader ON F1Admin.SyncState (READ *);
-grant F1Admin.Reader ON F1Admin.Watermarks (READ *);
-grant F1Admin.Reader ON F1Admin.Laps (READ *);
-grant F1Admin.Reader ON F1Admin.LapTelemetry (READ *);
-grant F1Admin.Reader ON F1Admin.LapStage (READ *);
-grant F1Admin.Reader ON F1Admin.CarNow (READ *);
-grant F1Admin.Reader ON F1Admin.CarPositions (READ *);
-grant F1Admin.Reader ON F1Admin.TrackOutline (READ *);
-grant F1Admin.Reader ON F1Admin.Sessions (READ *);
-grant F1Admin.Reader ON F1Admin.Drivers (READ *);
-grant F1Admin.Reader ON F1Admin.Stints (READ *);
-grant F1Admin.Reader ON F1Admin.Weather (READ *);
-grant F1Admin.Reader ON F1Admin.Messages (READ *);
-grant F1Admin.Reader ON F1Admin.Overtakes (READ *);
-grant F1Admin.Reader ON F1Admin.Radio (READ *);
-grant F1Admin.Reader ON F1Admin.Forecast (READ *);
-grant F1Admin.Reader ON F1Admin.Narrative (READ *);
+grant READ * on entity F1Admin.SyncRuns to F1Admin.Reader;
+grant READ * on entity F1Admin.SyncState to F1Admin.Reader;
+grant READ * on entity F1Admin.Watermarks to F1Admin.Reader;
+grant READ * on entity F1Admin.Laps to F1Admin.Reader;
+grant READ * on entity F1Admin.LapTelemetry to F1Admin.Reader;
+grant READ * on entity F1Admin.LapStage to F1Admin.Reader;
+grant READ * on entity F1Admin.CarNow to F1Admin.Reader;
+grant READ * on entity F1Admin.CarPositions to F1Admin.Reader;
+grant READ * on entity F1Admin.TrackOutline to F1Admin.Reader;
+grant READ * on entity F1Admin.Sessions to F1Admin.Reader;
+grant READ * on entity F1Admin.Drivers to F1Admin.Reader;
+grant READ * on entity F1Admin.Stints to F1Admin.Reader;
+grant READ * on entity F1Admin.Weather to F1Admin.Reader;
+grant READ * on entity F1Admin.Messages to F1Admin.Reader;
+grant READ * on entity F1Admin.Overtakes to F1Admin.Reader;
+grant READ * on entity F1Admin.Radio to F1Admin.Reader;
+grant READ * on entity F1Admin.Forecast to F1Admin.Reader;
+grant READ * on entity F1Admin.Narrative to F1Admin.Reader;
 
 /* The narrative screen: where the reader is, and the three view rows it builds. */
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeState (READ *, WRITE *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeHead (READ *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.NarrativeEvent (READ *);
+GRANT READ *, WRITE * ON ENTITY Formula1Frontend.NarrativeState TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.NarrativeHead TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.NarrativeEvent TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeState TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_NarrativeEnsure TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_NarrativeSessions TO Formula1Frontend.Enthusiast;
@@ -341,9 +338,9 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeProb TO Formula1Fronten
 /* Replay: where the viewer is in a past race, and the two view rows the
  * screen builds. Writable, unlike everything else here -- the buttons change
  * it, and it is the only state this app owns. */
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayState (READ *, WRITE *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayEntry (READ *);
-GRANT Formula1Frontend.Enthusiast ON Formula1Frontend.ReplayCall (READ *);
+GRANT READ *, WRITE * ON ENTITY Formula1Frontend.ReplayState TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.ReplayEntry TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.ReplayCall TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayState TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_ReplayEnsure TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplaySessions TO Formula1Frontend.Enthusiast;
@@ -360,5 +357,5 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ReplayPositions TO Formula1Front
 GRANT VIEW ON PAGE Formula1Frontend.Admin TO Formula1Frontend.Administrator;
 
 /* The story rail on Narrate. */
-grant F1Now.Reader ON F1Now.Story (READ *);
+grant READ * on entity F1Now.Story to F1Now.Reader;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStory TO Formula1Frontend.Enthusiast;

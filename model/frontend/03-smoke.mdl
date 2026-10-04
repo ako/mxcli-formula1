@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Retrieval smoke tests over the external entities.
  *
@@ -6,27 +7,27 @@
  * through both clients.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Count_Live_Drivers ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Count_Live_Drivers ()
   RETURNS Long AS $N
 BEGIN
   RETRIEVE $Rows FROM F1Live.Drivers;
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Count_Cached_Drivers ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Count_Cached_Drivers ()
   RETURNS Long AS $N
 BEGIN
   RETRIEVE $Rows FROM F1Cached.Drivers;
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Live_SennaWins ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Live_SennaWins ()
   RETURNS Long AS $Wins
 BEGIN
   -- LIMIT 1 yields a single object, not a list, so there is no HEAD() here.
-  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   DECLARE $Wins Long = 0;
   IF $Row != empty THEN
     SET $Wins = $Row/raceWins;
@@ -34,11 +35,11 @@ BEGIN
   RETURN $Wins;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Cached_SennaWins ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Cached_SennaWins ()
   RETURNS Long AS $Wins
 BEGIN
   -- LIMIT 1 yields a single object, not a list, so there is no HEAD() here.
-  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   DECLARE $Wins Long = 0;
   IF $Row != empty THEN
     SET $Wins = $Row/raceWins;
@@ -56,10 +57,10 @@ END;
  * c76d4b7 stopped renaming it, so they now read `name` on both sides and are
  * recorded here, where a rebuild will recreate them. FINDINGS §28, §34.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Live_SennaName ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Live_SennaName ()
   RETURNS String AS $Name
 BEGIN
-  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Row FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   DECLARE $Name String = '';
   IF $Row != empty THEN
     SET $Name = $Row/name;
@@ -67,10 +68,10 @@ BEGIN
   RETURN $Name;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Cached_SennaName ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Cached_SennaName ()
   RETURNS String AS $Name
 BEGIN
-  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Row FROM F1Cached.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   DECLARE $Name String = '';
   IF $Row != empty THEN
     SET $Name = $Row/name;
@@ -90,46 +91,46 @@ END;
  * variable name". These ids exist; if one did not, the datasource would return
  * nothing and the count would be 0, which the assertion catches anyway.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaSeasons ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_SennaSeasons ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverSeasons (Driver = $Driver);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaRaces ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_SennaRaces ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_DriverRaces (Driver = $Driver);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988Rounds ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1988Rounds ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_FerrariReasons ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_FerrariReasons ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Team FROM F1Cached.Constructors WHERE constructorId = 'ferrari' LIMIT 1;
+  RETRIEVE $Team FROM F1Cached.Constructors WHERE constructorId = 'ferrari' FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_Retirements (Constructor = $Team);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_SennaFactTitle ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_SennaFactTitle ()
   RETURNS String AS $Title
 BEGIN
-  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' LIMIT 1;
+  RETRIEVE $Driver FROM F1Live.Drivers WHERE driverId = 'ayrton-senna' FIRST;
   $Fact = CALL MICROFLOW Formula1Frontend.DS_DriverFact (Driver = $Driver);
   DECLARE $Title String = $Fact/title;
   RETURN $Title;
@@ -140,21 +141,21 @@ END;
  * to the live service, whose read microflow ignores $filter, so every season
  * showed the newest rows. 22 is the number of drivers classified in 1957.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Standings ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1957Standings ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverStandings (Season = $Season);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1957Rounds ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1957Rounds ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1957 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
@@ -163,37 +164,37 @@ END;
  * round 1: 20 drivers classified, five sessions in the shape chart, 57 laps of
  * Jolpica traces.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendSessions ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_WeekendSessions ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendSessions (Race = $Race);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendShape ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_WeekendShape ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendShape (Race = $Race);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LapChart ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LapChart ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_LapChart (Race = $Race);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendWinner ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_WeekendWinner ()
   RETURNS String AS $Who
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE year = 2024 and round = 1 FIRST;
   $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
   DECLARE $Who String = $Weekend/winnerName;
   RETURN $Who;
@@ -204,20 +205,20 @@ END;
  * every time scripts/fetch-f1-live.sh runs, so pinning Norris on 70 laps would
  * be a test that fails on the next race.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveOrder ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LiveOrder ()
   RETURNS Long AS $N
 BEGIN
   -- Parens are required in a microflow CALL even with no arguments; a page
   -- datasource is the opposite and rejects them.
   $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveOrder();
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveHasLeader ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LiveHasLeader ()
   RETURNS Boolean AS $Ok
 BEGIN
-  RETRIEVE $Leader FROM F1Now.Order WHERE position = 1 LIMIT 1;
+  RETRIEVE $Leader FROM F1Now.Order WHERE position = 1 FIRST;
   DECLARE $Ok Boolean = $Leader != empty;
   RETURN $Ok;
 END;
@@ -234,10 +235,10 @@ END;
  * This is the read the client makes: by key, nothing else. `1036-c` is Bahrain
  * 2021, and 2021 is the assertion — before the fix it came back 2026.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CalendarByKey ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_CalendarByKey ()
   RETURNS Long AS $Year
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' FIRST;
   DECLARE $Year Long = $Race/year;
   RETURN $Year;
 END;
@@ -247,10 +248,10 @@ END;
  * season, hand it to the weekend datasource, and check the weekend that comes
  * back is the round that was asked for rather than the newest race.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_WeekendIsTheRaceClicked ()
   RETURNS String AS $Name
 BEGIN
-  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' LIMIT 1;
+  RETRIEVE $Race FROM F1Fan.Calendar WHERE calendarKey = '1036-c' FIRST;
   $Weekend = CALL MICROFLOW Formula1Frontend.DS_Weekend (Race = $Race);
   DECLARE $Name String = $Weekend/circuitName;
   RETURN $Name;
@@ -265,10 +266,10 @@ END;
  * took the first row. 1957 is the assertion because the wrong answer is the
  * newest season: before the fix this returned 2026.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveSeasonByKey ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LiveSeasonByKey ()
   RETURNS Long AS $Year
 BEGIN
-  RETRIEVE $Season FROM F1Live.Seasons WHERE year = 1957 LIMIT 1;
+  RETRIEVE $Season FROM F1Live.Seasons WHERE year = 1957 FIRST;
   DECLARE $Year Long = $Season/year;
   RETURN $Year;
 END;
@@ -279,11 +280,11 @@ END;
  * that reached the backend could only return the newest. The key is now
  * `<year>-<driverId>`.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveStandingByKey ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LiveStandingByKey ()
   RETURNS Long AS $Year
 BEGIN
   RETRIEVE $Standing FROM F1Live.DriverStandings
-    WHERE standingKey = '1957-juan-manuel-fangio' LIMIT 1;
+    WHERE standingKey = '1957-juan-manuel-fangio' FIRST;
   DECLARE $Year Long = $Standing/year;
   RETURN $Year;
 END;
@@ -297,20 +298,20 @@ END;
  * standings, and the champion's win count only exists if the other side
  * matched.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988DriverRows ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1988DriverRows ()
   RETURNS Long AS $N
 BEGIN
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverRows (Season = $Season);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988ChampionWins ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1988ChampionWins ()
   RETURNS Long AS $N
 BEGIN
   DECLARE $N Long = -1;
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 FIRST;
   $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonDriverRows (Season = $Season);
   LOOP $R IN $Rows BEGIN
     IF $R/PositionOrder = 1 AND $R/Wins != empty THEN
@@ -326,11 +327,11 @@ END;
  * number of points on the grid — minus nobody, because a retirement still
  * travels as a row so the panel can mark it.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_1988Multiples ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_1988Multiples ()
   RETURNS Long AS $N
 BEGIN
   DECLARE $N Long = 0;
-  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 LIMIT 1;
+  RETRIEVE $Season FROM F1Cached.Seasons WHERE year = 1988 FIRST;
   $Chart = CALL MICROFLOW Formula1Frontend.DSJ_SeasonMultiples (Season = $Season);
   IF $Chart != empty THEN
     SET $N = length($Chart/json);
@@ -348,7 +349,7 @@ END;
  * and still valid JSON — what these catch is a microflow that threw or built a
  * string the widget cannot parse.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_LiveChartsBuild ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_LiveChartsBuild ()
   RETURNS Long AS $N
 BEGIN
   DECLARE $N Long = 0;
@@ -373,7 +374,7 @@ END;
  * trace did not measure up is absent from the resource by design, which is what
  * the second of these checks.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_CircuitOutlinePoints ()
   RETURNS Long AS $N
 BEGIN
   /*
@@ -383,7 +384,7 @@ BEGIN
    * of them would mean the term was dropped on the way to the scan.
    */
   RETRIEVE $Rows FROM F1Fan.CircuitPoints WHERE circuitId = 'austin';
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
@@ -396,7 +397,7 @@ END;
  * a count would fail the next time somebody widened the calendar, which teaches
  * people to edit the number rather than read the failure.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_CircuitOutlinesSuspect ()
   RETURNS Long AS $N
 BEGIN
   DECLARE $N Long = 0;
@@ -415,15 +416,15 @@ END;
  * differently: an outline of nothing means the capture never ran, and cars
  * without an outline means the map draws dots in a void.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_TrackOutlinePoints ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_TrackOutlinePoints ()
   RETURNS Long AS $N
 BEGIN
   RETRIEVE $Rows FROM F1Now.TrackOutline;
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.Test_TrackMapBuilds ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Test_TrackMapBuilds ()
   RETURNS Long AS $N
 BEGIN
   DECLARE $N Long = 0;

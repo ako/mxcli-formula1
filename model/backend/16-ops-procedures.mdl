@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Service 5 of 5 — F1OpsApi: an existing database's stored procedures, over OData.
  *
@@ -69,10 +70,9 @@
  */
 -- Override per environment with MX_Formula1Backend_ApiKey; never a real secret
 -- in source.
-create or modify constant Formula1Backend.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant Formula1Backend.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.AuthenticateApiClient (
+CREATE OR MODIFY MICROFLOW Formula1Backend.AuthenticateApiClient (
   $Headers: List of System.HttpHeader
 )
   RETURNS System.User AS $User
@@ -88,18 +88,17 @@ BEGIN
     RETURN empty;
   END IF;
 
-  RETRIEVE $User FROM System.User WHERE Name = 'f1api' LIMIT 1;
+  RETRIEVE $User FROM System.User WHERE Name = 'f1api' FIRST;
   RETURN $User;
 END;
 
 -- ---------------------------------------------------------------- the database
 
-create or modify constant Formula1Backend.OpsDbUrl type string
-  default 'jdbc:postgresql://127.0.0.1:5432/f1ops'
-  comment 'The existing RDBMS this app does not own. scripts/create-f1ops-db.sh builds it.';
+/** The existing RDBMS this app does not own. scripts/create-f1ops-db.sh builds it. */
+create or modify constant Formula1Backend.OpsDbUrl ( Type: string, DefaultValue: 'jdbc:postgresql://127.0.0.1:5432/f1ops' );
 
-create or modify constant Formula1Backend.OpsDbUser type string default 'mendix';
-create or modify constant Formula1Backend.OpsDbPassword type string default 'mendix' PRIVATE;
+create or modify constant Formula1Backend.OpsDbUser ( Type: string, DefaultValue: 'mendix' );
+create or modify constant Formula1Backend.OpsDbPassword ( Type: string, DefaultValue: 'mendix' );
 
 /*
  * Type PostgreSQL rather than BYOD: Mendix ships the Postgres driver, so unlike
@@ -114,12 +113,12 @@ create or modify constant Formula1Backend.OpsDbPassword type string default 'men
  * tests/pushdown.test.mdl; here they are written out so the mapping can be read
  * next to them.
  */
-create or modify database connection Formula1Backend.F1Ops
-type 'PostgreSQL'
-connection string @Formula1Backend.OpsDbUrl
-username @Formula1Backend.OpsDbUser
-password @Formula1Backend.OpsDbPassword
-begin
+create or modify database connection Formula1Backend.F1Ops (
+Type: 'PostgreSQL',
+ConnectionString: @Formula1Backend.OpsDbUrl,
+Username: @Formula1Backend.OpsDbUser,
+Password: @Formula1Backend.OpsDbPassword )
+{
   /*
    * The table function. Both arguments bound; the cast is there because every
    * Mendix query parameter is a string and the routine's second argument is an
@@ -130,18 +129,18 @@ begin
    * the same question twice. That is a real difference from the CSV resources,
    * and it is why this resource declares its own contract below.
    */
-  query CallDriverForm
-    sql 'SELECT f.*, {driverId} AS driver_id, CAST({lastN} AS INTEGER) AS last_n
-         FROM f1ops.driver_form({driverId}, CAST({lastN} AS INTEGER)) f'
-    parameter driverId: string
-    parameter lastN: string
-    returns Formula1Backend.Stg_DriverForm
-    map ( form_key as FormKey, driver_id as DriverId, last_n as LastN,
-          race_id as RaceId, year as Year, round as Round,
-          race_name as RaceName, finish_position as FinishPosition,
-          position_text as PositionText, grid_position as GridPosition,
-          points as Points, places_gained as PlacesGained,
-          rolling_avg as RollingAvg );
+  query CallDriverForm (
+    Sql: 'SELECT f.*, {driverId} AS driver_id, CAST({lastN} AS INTEGER) AS last_n
+         FROM f1ops.driver_form({driverId}, CAST({lastN} AS INTEGER)) f',
+    Parameters: ( driverId: string,
+    lastN: string ),
+    Returns: Formula1Backend.Stg_DriverForm,
+    Map: ( FormKey = form_key, DriverId = driver_id, LastN = last_n,
+          RaceId = race_id, Year = year, Round = round,
+          RaceName = race_name, FinishPosition = finish_position,
+          PositionText = position_text, GridPosition = grid_position,
+          Points = points, PlacesGained = places_gained,
+          RollingAvg = rolling_avg ) )
 
   /*
    * The procedure — reached through a one-line wrapper function, and that
@@ -166,18 +165,18 @@ begin
    * still what runs; the wrapper only makes the invocation start with SELECT.
    * FINDINGS §47.
    */
-  query CallRecordPrediction
-    sql 'SELECT * FROM f1ops.record_prediction_fn({driverId},
+  query CallRecordPrediction (
+    Sql: 'SELECT * FROM f1ops.record_prediction_fn({driverId},
                                                   CAST({raceId} AS INTEGER),
                                                   CAST({position} AS INTEGER),
-                                                  {submittedBy})'
-    parameter driverId: string
-    parameter raceId: string
-    parameter position: string
-    parameter submittedBy: string
-    returns Formula1Backend.Stg_ProcedureResult
-    map ( prediction_id as PredictionId, accepted as Accepted,
-          message as Message );
+                                                  {submittedBy})',
+    Parameters: ( driverId: string,
+    raceId: string,
+    position: string,
+    submittedBy: string ),
+    Returns: Formula1Backend.Stg_ProcedureResult,
+    Map: ( PredictionId = prediction_id, Accepted = accepted,
+          Message = message ) )
 
   /*
    * Reading back what the procedure wrote.
@@ -188,8 +187,8 @@ begin
    * in a table, so the lookup is answerable; the empty key means "the whole
    * list", which for this resource is the caller's own submissions.
    */
-  query GetPredictions
-    sql 'SELECT CAST(p.id AS VARCHAR)    AS prediction_key,
+  query GetPredictions (
+    Sql: 'SELECT CAST(p.id AS VARCHAR)    AS prediction_key,
                 p.driver_id              AS driver_id,
                 p.race_id                AS race_id,
                 p.finish_position        AS finish_position,
@@ -199,14 +198,14 @@ begin
          FROM   f1ops.prediction p
          WHERE  ({keyFilter} = '''' OR CAST(p.id AS VARCHAR) = {keyFilter})
          ORDER  BY p.id DESC
-         LIMIT  200'
-    parameter keyFilter: string
-    returns Formula1Backend.Ops_Prediction
-    map ( prediction_key as PredictionKey, driver_id as DriverId,
-          race_id as RaceId, finish_position as Position,
-          submitted_by as SubmittedBy, accepted as Accepted,
-          message as Message );
-end;
+         LIMIT  200',
+    Parameters: ( keyFilter: string ),
+    Returns: Formula1Backend.Ops_Prediction,
+    Map: ( PredictionKey = prediction_key, DriverId = driver_id,
+          RaceId = race_id, Position = finish_position,
+          SubmittedBy = submitted_by, Accepted = accepted,
+          Message = message ) )
+};
 
 -- ---------------------------------------------------------------- row shapes
 
@@ -288,7 +287,7 @@ create or modify non-persistent entity Formula1Backend.Ops_Prediction (
  * readers the fan resources use. No driver, no rows: a form chart with no
  * driver is a bug, not a request for all 917.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverForm (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_DriverForm (
   $Request: System.HttpRequest
 )
   RETURNS List of Formula1Backend.Stg_DriverForm AS $Rows
@@ -323,7 +322,7 @@ END;
  * rather than as an exception, because they are answers and not failures: the
  * routine validated the request and said no. A 500 would lose the reason.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.RecordPrediction (
+CREATE OR MODIFY MICROFLOW Formula1Backend.RecordPrediction (
   $DriverId: String,
   $RaceId: Long,
   $Position: Long,
@@ -351,7 +350,7 @@ BEGIN
      position = toString($Position),
      submittedBy = $SubmittedBy);
 
-  $Found = HEAD($Result);
+  $Found = HEAD $Result;
   IF $Found != empty THEN
     CHANGE $Answer (
       PredictionKey = toString($Found/PredictionId),
@@ -383,7 +382,7 @@ END;
  * exactly this shape (MDL-ODATA02), correctly, and the fix is to answer it
  * rather than to drop the KEY, which Mendix requires anyway (CE6585).
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Predictions (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Predictions (
   $Request: System.HttpRequest
 )
   RETURNS List of Formula1Backend.Ops_Prediction AS $Rows
@@ -448,7 +447,7 @@ END;
  * that looks like "OQL DML is not supported here" and is really a column called
  * Year.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_OqlDmlProbe ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_OqlDmlProbe ()
   RETURNS String AS $Result
 BEGIN
   DECLARE $Result String = '';
@@ -481,7 +480,7 @@ END;
  * session OpenF1 calls "latest", which is what a race Sunday wants; a specific
  * key is what replaying a finished race wants.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveSyncSet (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_LiveSyncSet (
   $Enabled: Boolean,
   $SessionKey: String,
   $TelemetryFrom: String
@@ -520,7 +519,7 @@ END;
  * Run a full cycle now -- three passes, twenty seconds apart, the same work the
  * scheduled event does. Takes about a minute to return, which is the point.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveCycleNow ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_LiveCycleNow ()
   RETURNS String AS $Result
 BEGIN
   $Result = CALL MICROFLOW Formula1Backend.Sync_Cycle();
@@ -528,14 +527,14 @@ BEGIN
 END;
 
 /* Run one sync now rather than waiting for the minute. */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Ops_LiveSyncNow ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_LiveSyncNow ()
   RETURNS String AS $Result
 BEGIN
   $Result = CALL MICROFLOW Formula1Backend.Sync_Live();
   RETURN $Result;
 END;
 
-create or modify odata service Formula1Backend.F1OpsApi (
+create or modify published odata service Formula1Backend.F1OpsApi (
   path: 'odata/f1-ops/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -611,14 +610,14 @@ authentication microflow Formula1Backend.AuthenticateApiClient
  * the modelsdk writer dropped AllowedModuleRoles — `28ce821` fixed the .mpr
  * writer and missed this one. `715bac5` fixed it. FINDINGS §41, §48.
  */
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1OpsApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1OpsApi TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_DriverForm  TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Predictions TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.RecordPrediction TO Formula1Backend.ApiUser;
 
-GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_DriverForm      (read *);
-GRANT Formula1Backend.ApiUser ON Formula1Backend.Stg_ProcedureResult (read *);
-GRANT Formula1Backend.ApiUser ON Formula1Backend.Ops_Prediction      (create, read *, write *);
+GRANT read * ON ENTITY Formula1Backend.Stg_DriverForm TO Formula1Backend.ApiUser;
+GRANT read * ON ENTITY Formula1Backend.Stg_ProcedureResult TO Formula1Backend.ApiUser;
+GRANT create, read *, write * ON ENTITY Formula1Backend.Ops_Prediction TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_OqlDmlProbe TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_OqlDmlProbe TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncSet TO Formula1Backend.ApiUser;

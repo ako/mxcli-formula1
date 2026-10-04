@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The race-result forecaster.
  * ===========================
@@ -52,7 +53,7 @@
  * is nothing, and it is what the win-probability chart is drawn from.
  */
 create or modify persistent entity Formula1Backend.LiveForecast (
-  RowId: autonumber default 1 unique error 'LiveForecast row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveForecast row id must be unique',
   SessionKey: string(20),
   AtLap: long,
   DriverNumber: long,
@@ -139,7 +140,7 @@ create or modify non-persistent entity Formula1Backend.Stg_ForecastTrace (
  * Returns 0 when there is nothing to forecast -- a session that is not a race,
  * or a circuit f1db does not know -- and the caller stops there.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Fcst_RaceLength (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Fcst_RaceLength (
   $Session: Formula1Backend.LiveSessionRow
 )
   RETURNS Integer AS $Laps
@@ -156,7 +157,7 @@ BEGIN
   END IF;
 
   RETRIEVE $Race FROM Formula1Backend.Race
-    WHERE CircuitName = $Session/CircuitName and Year = $Session/Year LIMIT 1;
+    WHERE CircuitName = $Session/CircuitName and Year = $Session/Year FIRST;
   IF $Race = empty OR $Race/Laps = empty OR $Race/Laps < 1 THEN
     RETURN $Laps;
   END IF;
@@ -179,7 +180,7 @@ END;
  * race. On a Sunday morning those differ: the sync is parked on a race that
  * has not started and the screen is still showing yesterday's session.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Forecast ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Forecast ()
   RETURNS String AS $Result
 BEGIN
   DECLARE $Result String = '';
@@ -201,7 +202,7 @@ BEGIN
   END IF;
 
   RETRIEVE $Session FROM Formula1Backend.LiveSessionRow
-    WHERE SessionKey = $Key LIMIT 1;
+    WHERE SessionKey = $Key FIRST;
   $Total = CALL MICROFLOW Formula1Backend.Fcst_RaceLength(Session = $Session);
   IF $Total < 1 THEN
     SET $Result = 'session ' + $Key + ': not a race, nothing to forecast';
@@ -215,7 +216,7 @@ BEGIN
    * and a simulation of it would only be a worse copy.
    */
   RETRIEVE $Latest FROM Formula1Backend.LiveLap
-    WHERE SessionKey = $Key SORT BY LapNumber DESC LIMIT 1;
+    WHERE SessionKey = $Key SORT BY LapNumber DESC FIRST;
   IF $Latest = empty THEN
     SET $Result = 'session ' + $Key + ': no laps yet';
     LOG DEBUG NODE 'F1Forecast' $Result;
@@ -307,7 +308,7 @@ CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_LiveForecast (
 /*
  * The current forecast, one row per car, in predicted finishing order.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveForecast (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveForecast (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -320,7 +321,7 @@ BEGIN
   END IF;
 
   RETRIEVE $Newest FROM Formula1Backend.LiveForecast
-    WHERE SessionKey = $Key SORT BY AtLap DESC LIMIT 1;
+    WHERE SessionKey = $Key SORT BY AtLap DESC FIRST;
   IF $Newest = empty THEN
     RETURN $Rows;
   END IF;
@@ -330,7 +331,7 @@ BEGIN
   RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
 
   LOOP $F IN $Fcst BEGIN
-    $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+    $D = FIND $Drivers BY DriverNumber = $F/DriverNumber;
     $Row = CREATE Formula1Backend.Stg_LiveForecast (
       ForecastKey = $F/SessionKey + '-' + toString($F/AtLap) + '-'
                     + toString($F/DriverNumber),
@@ -354,14 +355,14 @@ BEGIN
   END LOOP;
 
   /* SORT takes no direction; ascending is the default. §69. */
-  $Ordered = SORT($Rows, MeanPosition);
+  $Ordered = SORT $Rows BY MeanPosition;
   RETURN $Ordered;
 END;
 
 /*
  * Every forecast the race has produced, for the chart that shows them moving.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ForecastTrace (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_ForecastTrace (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -378,7 +379,7 @@ BEGIN
   RETRIEVE $Drivers FROM Formula1Backend.LiveDriver WHERE SessionKey = $Key;
 
   LOOP $F IN $Fcst BEGIN
-    $D = FIND($Drivers, DriverNumber = $F/DriverNumber);
+    $D = FIND $Drivers BY DriverNumber = $F/DriverNumber;
     $Row = CREATE Formula1Backend.Stg_ForecastTrace (
       TraceKey = $F/SessionKey + '-' + toString($F/AtLap) + '-'
                  + toString($F/DriverNumber),

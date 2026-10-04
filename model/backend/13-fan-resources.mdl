@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Service 3 of 3 — F1FanApi: the questions a fan asks, not the tables.
  *
@@ -34,7 +35,7 @@
  * A driver's career, one row per season: who they drove for, where they
  * finished, and the averages that say how the year actually went.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverSeasons (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_DriverSeasons (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -102,7 +103,7 @@ BEGIN
 
   -- A career is tens of rows, so the count is what was just fetched. No second
   -- scan, unlike the paged resources in 10.
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -115,7 +116,7 @@ END;
  * practice results only exist from the era they were recorded — that gap is
  * data, not a fault, and the page says so.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverRaces (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_DriverRaces (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -171,7 +172,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -189,7 +190,7 @@ END;
  * attribute when the page is authored, so the columns have to mean the same
  * thing in every season. The names travel as data and the page shows them.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_SeasonProgress (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_SeasonProgress (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -259,7 +260,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -272,7 +273,7 @@ END;
  * question ("who breaks most, and how?"), so it is allowed — capped at 500 rows
  * so an unfiltered call cannot become the expensive one.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Retirements (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Retirements (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -313,7 +314,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -322,7 +323,7 @@ END;
  * The prose. Filtered by scope and id from the page that shows it; unfiltered it
  * is the whole set, which is 224 rows and useful for checking coverage.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Facts (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Facts (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -360,7 +361,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -382,7 +383,7 @@ END;
  * honest total; they are just not in the two-car comparison, because there is
  * no third bar to put them in.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TeamSeason (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_TeamSeason (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -474,7 +475,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -490,7 +491,7 @@ END;
  * The shares are computed here because the page draws bars and a bar needs a
  * percentage; 19 against 5 is a rout, 19px against 5px is nothing.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_TeamH2H (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_TeamH2H (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -574,7 +575,7 @@ BEGIN
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
 
-  $Total = COUNT($Rows);
+  $Total = COUNT $Rows;
   CHANGE $Response (Count = $Total);
   RETURN $Rows;
 END;
@@ -602,5 +603,5 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamSeason TO Formula1Backend.Da
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TeamH2H TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_Facts TO Formula1Backend.DataAdmin;
 
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1FanApi TO Formula1Backend.DataAdmin;

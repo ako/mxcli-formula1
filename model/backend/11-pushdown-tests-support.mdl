@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Thin microflow wrappers so ODataPushdown can be unit-tested.
  *
@@ -18,7 +19,7 @@
 /* The whitelist under test. Two columns, one of each type, because the type is
  * what decides whether `raceWins gt 40` and `raceWins gt '40'` agree. */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_OrderLimit ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_OrderLimit ($Uri: String)
   RETURNS String AS $Sql
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -30,7 +31,7 @@ BEGIN
   RETURN $Sql;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Where ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_Where ($Uri: String)
   RETURNS String AS $Sql
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -42,7 +43,7 @@ BEGIN
   RETURN $Sql;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_WhereIsRejected ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_WhereIsRejected ($Uri: String)
   RETURNS Boolean AS $Rejected
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -62,7 +63,7 @@ END;
  * `dynamic $Sql`, the form mxcli c76d4b7 fixed: this asserting 7 is the proof
  * the expression reaches DuckDB instead of the four characters "$Sql".
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Probe_DynamicSql ($Limit: Integer)
+CREATE OR MODIFY MICROFLOW Formula1Backend.Probe_DynamicSql ($Limit: Integer)
   RETURNS Long AS $N
 BEGIN
   DECLARE $Sql String = 'SELECT id, name, totalRaceWins FROM read_csv('''
@@ -71,7 +72,7 @@ BEGIN
   $Rows = execute database query Formula1Backend.F1Warehouse.GetDrivers
     dynamic $Sql
     (dataDir = @Formula1Backend.DataDir);
-  $N = COUNT($Rows);
+  $N = COUNT $Rows;
   RETURN $N;
 END;
 
@@ -84,7 +85,7 @@ END;
  * existed, so a caller that asks for no page must keep getting one — but a
  * caller that asks for a page cannot use it to ask for everything.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Top ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_Top ($Uri: String)
   RETURNS Long AS $Top
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -95,7 +96,7 @@ BEGIN
   RETURN $Top;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Skip ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_Skip ($Uri: String)
   RETURNS Long AS $Skip
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -111,7 +112,7 @@ END;
  * a bound CASE. Two terms, because Mendix emits two: a grid whose default sort
  * is composite sends `round asc,calendarKey asc`. FINDINGS §44, §45.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortColumn ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_SortColumn ($Uri: String)
   RETURNS String AS $Col
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -122,7 +123,7 @@ BEGIN
   RETURN $Col;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortColumn2 ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_SortColumn2 ($Uri: String)
   RETURNS String AS $Col
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -133,7 +134,7 @@ BEGIN
   RETURN $Col;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_SortDirection ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_SortDirection ($Uri: String)
   RETURNS String AS $Dir
 BEGIN
   $Q = CALL JAVA ACTION ODataPushdown.Parse(
@@ -149,14 +150,14 @@ END;
  * shipped a bug (FINDINGS §37) and the reason every read microflow in this app
  * now takes System.HttpRequest.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Key ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_Key ($Uri: String)
   RETURNS String AS $Key
 BEGIN
   $Key = CALL JAVA ACTION ODataPushdown.Key(Uri = $Uri, KeyField = 'driverId');
   RETURN $Key;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_FilterNumber ($Uri: String)
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_FilterNumber ($Uri: String)
   RETURNS Long AS $N
 BEGIN
   $N = CALL JAVA ACTION ODataPushdown.FilterNumber(
@@ -170,7 +171,7 @@ END;
  * the point is that the module is not DuckDB-shaped, which is only provable
  * from outside DuckDB.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_Dialect (
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_Dialect (
   $Uri: String,
   $Dialect: String
 )
@@ -205,7 +206,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.TestSupport_Dialect          TO Formu
  * nothing here about escaping — only about which of the five spellings each
  * engine wants, which is the part that costs an afternoon per engine.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallStatement (
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_CallStatement (
   $Routine: String,
   $Kind: String,
   $Parameters: String,
@@ -218,7 +219,7 @@ BEGIN
   RETURN $Sql;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.TestSupport_CallIsRejected (
+CREATE OR MODIFY MICROFLOW Formula1Backend.TestSupport_CallIsRejected (
   $Routine: String,
   $Kind: String,
   $Parameters: String,
@@ -229,9 +230,9 @@ BEGIN
   DECLARE $Rejected Boolean = false;
   $Sql = CALL JAVA ACTION ODataPushdown.CallStatement(
     Routine = $Routine, Kind = $Kind, Parameters = $Parameters, Dialect = $Dialect)
-  ON ERROR {
+  ON ERROR BEGIN
     SET $Rejected = true;
-  };
+  END ERROR;
   RETURN $Rejected;
 END;
 

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 3 of 5 — Weekend.
  * ========================
@@ -17,12 +18,12 @@
  * the table is where the reader checks either of them.
  */
 
-create or replace page Formula1Frontend.Weekend
+create or modify page Formula1Frontend.Weekend
 (
   title: 'Race weekend',
   layout: Atlas_Core.Atlas_Default,
   url: 'weekend/{Race}',
-  Params: { $Race: F1Fan.Calendar }
+  Params: ( $Race: F1Fan.Calendar )
 )
 {
   container pageBody {
@@ -33,31 +34,31 @@ create or replace page Formula1Frontend.Weekend
      * one is marked rather than described.
      */
     container chipsRow (class: 'chips-row') {
-      listview lvRounds (datasource: MICROFLOW Formula1Frontend.DS_WeekendRounds(Race: $Race),
+      listview lvRounds (datasource: MICROFLOW Formula1Frontend.DS_WeekendRounds(Race = $Race),
                          PageSize: 30) {
         container chipRound (
           class: 'chip-pick',
-          dynamicclasses: 'if $currentObject/round = $Race/round then ''is-picked'' else ''''',
-          OnClick: SHOW_PAGE Formula1Frontend.Weekend(Race: $currentObject)
+          dynamicclasses: if $currentObject/round = $Race/round then 'is-picked' else '',
+          OnClick: SHOW PAGE Formula1Frontend.Weekend(Race = $currentObject)
         ) {
-          dynamictext chipCode (content: '{1}', contentparams: [{1} = code])
+          dynamictext chipCode (content: '{1}', contentparams: ({1} = code))
         }
       }
     }
 
-    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race: $Race)) {
+    dataview dvWeekend (datasource: MICROFLOW Formula1Frontend.DS_Weekend(Race = $Race)) {
       container head (class: 'pagehead') {
         container headMain (class: 'pagehead-main') {
-          dynamictext eyebrow (content: '{1}', contentparams: [{1} = roundLabel],
+          dynamictext eyebrow (content: '{1}', contentparams: ({1} = roundLabel),
                                class: 'pagehead-eyebrow')
-          dynamictext title (content: '{1}', contentparams: [{1} = name],
+          dynamictext title (content: '{1}', contentparams: ({1} = name),
                              rendermode: H2, class: 'pagehead-title')
           dynamictext sub (content: '{1} · {2} laps · {3} km',
-            contentparams: [{1} = circuitName, {2} = laps, {3} = distance],
+            contentparams: ({1} = circuitName, {2} = laps, {3} = distance),
             class: 'pagehead-sub')
         }
         container headBadge (class: 'pagehead-badge') {
-          dynamictext rnd (content: 'R{1}', contentparams: [{1} = round])
+          dynamictext rnd (content: 'R{1}', contentparams: ({1} = round))
         }
       }
 
@@ -68,30 +69,30 @@ create or replace page Formula1Frontend.Weekend
       container hlCards (class: 'hl-cards') {
         container hcWin (class: 'hl-card hl-card-win') {
           dynamictext hcWinL (content: 'Winner', class: 'hl-label')
-          dynamictext hcWinV (content: '{1}', contentparams: [{1} = winnerName],
+          dynamictext hcWinV (content: '{1}', contentparams: ({1} = winnerName),
                               class: 'hl-value hl-value-name')
-          dynamictext hcWinS (content: '{1}', contentparams: [{1} = winnerTeam],
+          dynamictext hcWinS (content: '{1}', contentparams: ({1} = winnerTeam),
                               class: 'hl-sub')
         }
         container hcPole (class: 'hl-card hl-card-pole') {
           dynamictext hcPoleL (content: 'Pole', class: 'hl-label')
-          dynamictext hcPoleV (content: '{1}', contentparams: [{1} = poleName],
+          dynamictext hcPoleV (content: '{1}', contentparams: ({1} = poleName),
                                class: 'hl-value hl-value-name')
-          dynamictext hcPoleS (content: '{1}', contentparams: [{1} = poleTime],
+          dynamictext hcPoleS (content: '{1}', contentparams: ({1} = poleTime),
                                class: 'hl-sub')
         }
         container hcFast (class: 'hl-card') {
           dynamictext hcFastL (content: 'Fastest lap', class: 'hl-label')
-          dynamictext hcFastV (content: '{1}', contentparams: [{1} = fastestLapName],
+          dynamictext hcFastV (content: '{1}', contentparams: ({1} = fastestLapName),
                                class: 'hl-value hl-value-name')
-          dynamictext hcFastS (content: '{1}', contentparams: [{1} = fastestLapTime],
+          dynamictext hcFastS (content: '{1}', contentparams: ({1} = fastestLapTime),
                                class: 'hl-sub')
         }
         container hcFp (class: 'hl-card') {
           dynamictext hcFpL (content: 'Quickest in practice', class: 'hl-label')
-          dynamictext hcFpV (content: '{1}', contentparams: [{1} = fp3LeaderName],
+          dynamictext hcFpV (content: '{1}', contentparams: ({1} = fp3LeaderName),
                              class: 'hl-value hl-value-name')
-          dynamictext hcFpS (content: 'FP3 · {1}', contentparams: [{1} = fp3LeaderTime],
+          dynamictext hcFpS (content: 'FP3 · {1}', contentparams: ({1} = fp3LeaderTime),
                              class: 'hl-sub')
         }
       }
@@ -109,21 +110,21 @@ create or replace page Formula1Frontend.Weekend
        * stitched into a closed loop are absent rather than approximated.
        */
       dataview dvCircuit (
-        datasource: MICROFLOW Formula1Frontend.DS_CircuitOutline(Weekend: $currentObject),
+        datasource: MICROFLOW Formula1Frontend.DS_CircuitOutline(Weekend = $currentObject),
         class: 'panel'
       ) {
         container circuitHead (class: 'panel-head') {
-          dynamictext circuitTitle (content: '{1}', contentparams: [{1} = fullName],
+          dynamictext circuitTitle (content: '{1}', contentparams: ({1} = fullName),
                                     class: 'panel-title')
           dynamictext circuitSub (
             content: 'traced {1} km against the {2} km on record · {3} · {4}',
-            contentparams: [{1} = tracedKm, {2} = officialKm, {3} = attribution,
-                            {4} = license],
+            contentparams: ({1} = tracedKm, {2} = officialKm, {3} = attribution,
+                            {4} = license),
             class: 'panel-sub')
         }
         container circuitBody (class: 'circuit-figure') {
           dataview dvCircuitChart (
-            datasource: MICROFLOW Formula1Frontend.DSJ_CircuitOutline(Outline: $currentObject)
+            datasource: MICROFLOW Formula1Frontend.DSJ_CircuitOutline(Outline = $currentObject)
           ) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartCircuit (
               chartData: json,
@@ -148,7 +149,7 @@ create or replace page Formula1Frontend.Weekend
             class: 'panel-sub')
         }
         dataview dvShape (
-          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendShape(Race: $Race)
+          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendShape(Race = $Race)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartShape (
             chartData: json,
@@ -168,7 +169,7 @@ create or replace page Formula1Frontend.Weekend
             class: 'panel-sub')
         }
         dataview dvPace (
-          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendPace(Race: $Race)
+          datasource: MICROFLOW Formula1Frontend.DSJ_WeekendPace(Race = $Race)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPace (
             chartData: json,
@@ -193,30 +194,30 @@ create or replace page Formula1Frontend.Weekend
       }
       container sessGrid (class: 'grid-dense') {
         datagrid dgSessions (
-          datasource: MICROFLOW Formula1Frontend.DS_WeekendSessions(Race: $Race),
+          datasource: MICROFLOW Formula1Frontend.DS_WeekendSessions(Race = $Race),
           PageSize: 24,
           PagingPosition: bottom,
-          OnClick: MICROFLOW Formula1Frontend.ACT_OpenDriverSession(Row: $currentObject)
+          OnClick: CALL MICROFLOW Formula1Frontend.ACT_OpenDriverSession(Row = $currentObject)
         ) {
-          column colPos (attribute: positionText, caption: 'P', Alignment: right)
-          column colAbbr (attribute: abbreviation, caption: 'Code')
-          column colDriver (attribute: driverName, caption: 'Driver')
-          column colTeam (attribute: constructorName, caption: 'Team')
-          column colFp1 (attribute: fp1Position, caption: 'FP1', Alignment: right)
-          column colFp2 (attribute: fp2Position, caption: 'FP2', Alignment: right)
-          column colFp3 (attribute: fp3Position, caption: 'FP3', Alignment: right)
-          column colQual (attribute: qualPosition, caption: 'Q', Alignment: right)
-          column colGrid (attribute: gridPosition, caption: 'Grid', Alignment: right)
-          column colFinish (attribute: finishPosition, caption: 'Race', Alignment: right)
-          column colDelta (attribute: positionsGained, caption: 'Δ', Alignment: right,
+          column (attribute: positionText, caption: 'P', Alignment: right)
+          column (attribute: abbreviation, caption: 'Code')
+          column (attribute: driverName, caption: 'Driver')
+          column (attribute: constructorName, caption: 'Team')
+          column (attribute: fp1Position, caption: 'FP1', Alignment: right)
+          column (attribute: fp2Position, caption: 'FP2', Alignment: right)
+          column (attribute: fp3Position, caption: 'FP3', Alignment: right)
+          column (attribute: qualPosition, caption: 'Q', Alignment: right)
+          column (attribute: gridPosition, caption: 'Grid', Alignment: right)
+          column (attribute: finishPosition, caption: 'Race', Alignment: right)
+          column (attribute: positionsGained, caption: 'Δ', Alignment: right,
             DynamicCellClass:
-              'if $currentObject/positionsGained = empty then ''delta-flat''
-               else if $currentObject/positionsGained > 0 then ''delta-up''
-               else if $currentObject/positionsGained < 0 then ''delta-down''
-               else ''delta-flat''')
-          column colBest (attribute: bestLapTime, caption: 'Best', Alignment: right)
-          column colStops (attribute: pitStops, caption: 'St', Alignment: right)
-          column colPts (attribute: points, caption: 'Pts', Alignment: right)
+              if $currentObject/positionsGained = empty then 'delta-flat'
+               else if $currentObject/positionsGained > 0 then 'delta-up'
+               else if $currentObject/positionsGained < 0 then 'delta-down'
+               else 'delta-flat')
+          column (attribute: bestLapTime, caption: 'Best', Alignment: right)
+          column (attribute: pitStops, caption: 'St', Alignment: right)
+          column (attribute: points, caption: 'Pts', Alignment: right)
         }
       }
     }
@@ -233,7 +234,7 @@ create or replace page Formula1Frontend.Weekend
                             class: 'panel-sub')
       }
       dataview dvLapChart (
-        datasource: MICROFLOW Formula1Frontend.DSJ_LapChart(Race: $Race)
+        datasource: MICROFLOW Formula1Frontend.DSJ_LapChart(Race = $Race)
       ) {
         pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartLaps (
           chartData: json,
@@ -251,4 +252,4 @@ create or replace page Formula1Frontend.Weekend
         content: 'Classifications, grids and lap times are f1db. The lap traces behind the position chart are Jolpica-F1, the successor to Ergast; a race with no trace draws an empty chart rather than a guessed one. Gaps are computed against the quickest lap of each session, not carried in the source.')
     }
   }
-}
+};

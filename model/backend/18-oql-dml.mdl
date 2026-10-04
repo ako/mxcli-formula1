@@ -1,3 +1,4 @@
+mdl 1;
 -- ============================================================================
 -- OQL DML through Java actions
 -- ============================================================================
@@ -55,7 +56,7 @@
  * @param Statement An OQL insert, update or delete statement
  * @returns Rows affected
  */
-create or replace java action Formula1Backend.OQL_Execute (
+create or modify java action Formula1Backend.OQL_Execute (
   Statement: string
 )
 returns integer
@@ -68,7 +69,6 @@ int affected = stmt.execute(getContext());
 com.mendix.core.Core.getLogger("OQL").debug("OQL_Execute affected " + affected + " row(s): " + Statement);
 return (long) affected;
 $$;
-/
 
 /**
  * Execute one OQL DML statement carrying up to four bound variables.
@@ -89,7 +89,7 @@ $$;
  * @param Type1 'string', 'integer', 'decimal', 'boolean', 'datetime' or 'id'
  * @returns Rows affected
  */
-create or replace java action Formula1Backend.OQL_ExecuteWith (
+create or modify java action Formula1Backend.OQL_ExecuteWith (
   Statement: string,
   Name1: string,
   Value1: string,
@@ -152,7 +152,6 @@ int affected = stmt.execute(getContext());
 com.mendix.core.Core.getLogger("OQL").debug("OQL_ExecuteWith affected " + affected + " row(s): " + Statement);
 return (long) affected;
 $$;
-/
 
 /**
  * Run a statement and report what happened instead of throwing.
@@ -168,7 +167,7 @@ $$;
  * @param Statement An OQL statement to try
  * @returns 'OK rows=N' or 'ERR ...'
  */
-create or replace java action Formula1Backend.OQL_Try (
+create or modify java action Formula1Backend.OQL_Try (
   Statement: string
 )
 returns string
@@ -185,7 +184,6 @@ try {
     return "ERR " + t.getClass().getSimpleName() + ": " + message;
 }
 $$;
-/
 
 -- No grants here. A Java action has no security roles of its own in Mendix — it
 -- is reachable only through a microflow, and the microflow carries the access.

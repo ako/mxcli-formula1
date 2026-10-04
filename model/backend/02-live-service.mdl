@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Service 1 of 2 — F1LiveApi: the CSVs, served straight through.
  *
@@ -72,7 +73,7 @@
  * DriverForm does declare both No. FINDINGS §42, §48.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Seasons (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Seasons (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -102,14 +103,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Circuits (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Circuits (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -141,14 +142,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Constructors (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Constructors (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -181,14 +182,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Races (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Races (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -220,14 +221,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_DriverStandings (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_DriverStandings (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -259,14 +260,14 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
   RETURN $Rows;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_ConstructorStandings (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_ConstructorStandings (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -299,7 +300,7 @@ BEGIN
       (dataDir = @Formula1Backend.DataDir, keyFilter = $Q/Key,
        topN = '1000000', skipN = '0',
        sortCol = '', sortDir = 'A');
-    $Total = COUNT($AllRows);
+    $Total = COUNT $AllRows;
     CHANGE $Response (Count = $Total);
   END IF;
 
@@ -308,7 +309,7 @@ END;
 
 /* ------------------------------------------------------------------------- */
 
-create or modify odata service Formula1Backend.F1LiveApi (
+create or modify published odata service Formula1Backend.F1LiveApi (
   path: 'odata/f1-live/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -485,4 +486,4 @@ authentication microflow Formula1Backend.AuthenticateApiClient
  * writer and a bare modify now keeps them — verified against this service.
  * They stay because a service still needs granting the first time. FINDINGS §48.
  */
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1LiveApi TO Formula1Backend.ApiUser;

@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The live service's Drivers resource, rewritten to push the query down.
  *
@@ -13,7 +14,7 @@
  * microflow may only take System.ODataResponse when the entity is countable.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_Drivers (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_Drivers (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -75,7 +76,7 @@ BEGIN
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetDriverCount
       dynamic $CountSql
       (dataDir = @Formula1Backend.DataDir);
-    $CountRow = HEAD($CountRows);
+    $CountRow = HEAD $CountRows;
     IF $CountRow != empty THEN
       CHANGE $Response (Count = $CountRow/Total);
     END IF;
@@ -94,7 +95,7 @@ END;
  * from the CSVs with nothing materialised. The resource is renamed `RaceResults`
  * to match the cached service, and the two are now directly comparable.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_RaceResults (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_RaceResults (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -142,7 +143,7 @@ BEGIN
     $CountRows = execute database query Formula1Backend.F1Warehouse.GetRaceResultCount
       dynamic $CountSql
       (dataDir = @Formula1Backend.DataDir);
-    $CountRow = HEAD($CountRows);
+    $CountRow = HEAD $CountRows;
     IF $CountRow != empty THEN
       CHANGE $Response (Count = $CountRow/Total);
     END IF;

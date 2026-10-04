@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 2 of 5 — Season.
  * =======================
@@ -15,12 +16,12 @@
  * are no overview pages, because every screen is an overview of the next one.
  */
 
-create or replace page Formula1Frontend.Season
+create or modify page Formula1Frontend.Season
 (
   title: 'Season',
   layout: Atlas_Core.Atlas_Default,
   url: 'season/{Season}',
-  Params: { $Season: F1Cached.Seasons }
+  Params: ( $Season: F1Cached.Seasons )
 )
 {
   container pageBody {
@@ -29,13 +30,13 @@ create or replace page Formula1Frontend.Season
       container head (class: 'pagehead') {
         container headMain (class: 'pagehead-main') {
           dynamictext eyebrow (content: 'Season', class: 'pagehead-eyebrow')
-          dynamictext title (content: 'Formula One {1}', contentparams: [{1} = year],
+          dynamictext title (content: 'Formula One {1}', contentparams: ({1} = year),
                              rendermode: H2, class: 'pagehead-title')
           dynamictext sub (content: '{1} rounds · official final standings',
-                           contentparams: [{1} = raceCount], class: 'pagehead-sub')
+                           contentparams: ({1} = raceCount), class: 'pagehead-sub')
         }
         container headBadge (class: 'pagehead-badge') {
-          dynamictext yr (content: '{1}', contentparams: [{1} = year])
+          dynamictext yr (content: '{1}', contentparams: ({1} = year))
         }
       }
     }
@@ -46,37 +47,37 @@ create or replace page Formula1Frontend.Season
      * and a row cannot see its siblings.
      */
     dataview dvHeadline (
-      datasource: MICROFLOW Formula1Frontend.DS_SeasonHeadline(Season: $Season),
+      datasource: MICROFLOW Formula1Frontend.DS_SeasonHeadline(Season = $Season),
       class: 'hero'
     ) {
       container hlCards (class: 'hl-cards') {
         container hcDriver (class: 'hl-card hl-card-win') {
           dynamictext hcDriverL (content: 'Champion', class: 'hl-label')
-          dynamictext hcDriverV (content: '{1}', contentparams: [{1} = ChampionDriver],
+          dynamictext hcDriverV (content: '{1}', contentparams: ({1} = ChampionDriver),
                                  class: 'hl-value hl-value-name')
           dynamictext hcDriverS (content: '{1} points · {2} clear',
-            contentparams: [{1} = ChampionPoints, {2} = Margin], class: 'hl-sub')
+            contentparams: ({1} = ChampionPoints, {2} = Margin), class: 'hl-sub')
         }
         container hcTeam (class: 'hl-card') {
           dynamictext hcTeamL (content: 'Constructor', class: 'hl-label')
-          dynamictext hcTeamV (content: '{1}', contentparams: [{1} = ChampionTeam],
+          dynamictext hcTeamV (content: '{1}', contentparams: ({1} = ChampionTeam),
                                class: 'hl-value hl-value-name')
           dynamictext hcTeamS (content: '{1} points · {2} clear',
-            contentparams: [{1} = ChampionTeamPoints, {2} = TeamMargin], class: 'hl-sub')
+            contentparams: ({1} = ChampionTeamPoints, {2} = TeamMargin), class: 'hl-sub')
         }
         container hcRunner (class: 'hl-card') {
           dynamictext hcRunnerL (content: 'Runner-up', class: 'hl-label')
-          dynamictext hcRunnerV (content: '{1}', contentparams: [{1} = RunnerUp],
+          dynamictext hcRunnerV (content: '{1}', contentparams: ({1} = RunnerUp),
                                  class: 'hl-value hl-value-name')
-          dynamictext hcRunnerS (content: 'beaten by {1}', contentparams: [{1} = Margin],
+          dynamictext hcRunnerS (content: 'beaten by {1}', contentparams: ({1} = Margin),
                                  class: 'hl-sub')
         }
         container hcWinners (class: 'hl-card') {
           dynamictext hcWinnersL (content: 'Race winners', class: 'hl-label')
-          dynamictext hcWinnersV (content: '{1}', contentparams: [{1} = RaceWinners],
+          dynamictext hcWinnersV (content: '{1}', contentparams: ({1} = RaceWinners),
                                   class: 'hl-value')
           dynamictext hcWinnersS (content: 'over {1} rounds, {2} to {3}',
-            contentparams: [{1} = Rounds, {2} = FirstCode, {3} = LastCode],
+            contentparams: ({1} = Rounds, {2} = FirstCode, {3} = LastCode),
             class: 'hl-sub')
         }
       }
@@ -92,7 +93,7 @@ create or replace page Formula1Frontend.Season
                                class: 'panel-sub')
         }
         dataview dvProgress (
-          datasource: MICROFLOW Formula1Frontend.DSJ_SeasonProgress(Season: $Season)
+          datasource: MICROFLOW Formula1Frontend.DSJ_SeasonProgress(Season = $Season)
         ) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartProgress (
             chartData: json,
@@ -115,30 +116,30 @@ create or replace page Formula1Frontend.Season
           dynamictext consSub (content: 'row opens the constructor', class: 'panel-sub')
         }
         listview lvCons (
-          datasource: MICROFLOW Formula1Frontend.DS_SeasonTeamRows(Season: $Season),
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonTeamRows(Season = $Season),
           PageSize: 12
         ) {
           container consRow (
             class: 'bar-row',
-            OnClick: MICROFLOW Formula1Frontend.ACT_OpenConstructorRow(Row: $currentObject)
+            OnClick: CALL MICROFLOW Formula1Frontend.ACT_OpenConstructorRow(Row = $currentObject)
           ) {
-            dynamictext consPos (content: '{1}', contentparams: [{1} = PositionText],
+            dynamictext consPos (content: '{1}', contentparams: ({1} = PositionText),
                                  class: 'series-rank')
-            dynamictext consName (content: '{1}', contentparams: [{1} = ConstructorName],
+            dynamictext consName (content: '{1}', contentparams: ({1} = ConstructorName),
                                   class: 'h2h-name')
             container consTrack (class: 'bar-track') {
               container consFill (
                 class: 'bar-fill',
-                dynamicclasses: '''w-'' + toString($currentObject/Share)'
+                dynamicclasses: 'w-' + toString($currentObject/Share)
               ) {
                 /* The fill is styled font-size:0 / color:transparent, so the
                  * text is the child a container needs to exist at all rather
                  * than something a reader sees. An empty container crashes at
                  * render. */
-                dynamictext consFillX (content: '{1}', contentparams: [{1} = Share])
+                dynamictext consFillX (content: '{1}', contentparams: ({1} = Share))
               }
             }
-            dynamictext consPts (content: '{1}', contentparams: [{1} = Points],
+            dynamictext consPts (content: '{1}', contentparams: ({1} = Points),
                                  class: 'h2h-value')
           }
         }
@@ -159,7 +160,7 @@ create or replace page Formula1Frontend.Season
           class: 'panel-sub')
       }
       dataview dvMultiples (
-        datasource: MICROFLOW Formula1Frontend.DSJ_SeasonMultiples(Season: $Season)
+        datasource: MICROFLOW Formula1Frontend.DSJ_SeasonMultiples(Season = $Season)
       ) {
         pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartMultiples (
           chartData: json,
@@ -189,20 +190,20 @@ create or replace page Formula1Frontend.Season
       }
       container standGrid (class: 'grid-dense') {
         datagrid dgStandings (
-          datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverRows(Season: $Season),
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonDriverRows(Season = $Season),
           PageSize: 25,
           PagingPosition: bottom,
-          OnClick: MICROFLOW Formula1Frontend.ACT_OpenDriverRow(Row: $currentObject)
+          OnClick: CALL MICROFLOW Formula1Frontend.ACT_OpenDriverRow(Row = $currentObject)
         ) {
-          column colPos (attribute: PositionText, caption: 'P', Alignment: right)
-          column colDriver (attribute: DriverName, caption: 'Driver')
-          column colTeam (attribute: Team, caption: 'Team')
-          column colPts (attribute: Points, caption: 'Points', Alignment: right)
-          column colWins (attribute: Wins, caption: 'W', Alignment: right)
-          column colPodiums (attribute: Podiums, caption: 'Pod', Alignment: right)
-          column colPoles (attribute: Poles, caption: 'Pol', Alignment: right)
-          column colAvg (attribute: AvgFinish, caption: 'Avg', Alignment: right)
-          column colShare (attribute: PointsShare, caption: 'Team share %', Alignment: right)
+          column (attribute: PositionText, caption: 'P', Alignment: right)
+          column (attribute: DriverName, caption: 'Driver')
+          column (attribute: Team, caption: 'Team')
+          column (attribute: Points, caption: 'Points', Alignment: right)
+          column (attribute: Wins, caption: 'W', Alignment: right)
+          column (attribute: Podiums, caption: 'Pod', Alignment: right)
+          column (attribute: Poles, caption: 'Pol', Alignment: right)
+          column (attribute: AvgFinish, caption: 'Avg', Alignment: right)
+          column (attribute: PointsShare, caption: 'Team share %', Alignment: right)
         }
       }
     }
@@ -220,20 +221,20 @@ create or replace page Formula1Frontend.Season
       }
       container calGrid (class: 'card-grid') {
         listview lvCal (
-          datasource: MICROFLOW Formula1Frontend.DS_SeasonCalendar(Season: $Season),
+          datasource: MICROFLOW Formula1Frontend.DS_SeasonCalendar(Season = $Season),
           PageSize: 30
         ) {
           container calCard (
             class: 'cal-card',
-            OnClick: SHOW_PAGE Formula1Frontend.Weekend(Race: $currentObject)
+            OnClick: SHOW PAGE Formula1Frontend.Weekend(Race = $currentObject)
           ) {
             container calTop (class: 'cal-card-top') {
-              dynamictext calRound (content: 'R{1}', contentparams: [{1} = round],
+              dynamictext calRound (content: 'R{1}', contentparams: ({1} = round),
                                     class: 'cal-round')
-              dynamictext calCode (content: '{1}', contentparams: [{1} = code],
+              dynamictext calCode (content: '{1}', contentparams: ({1} = code),
                                    class: 'cal-code')
             }
-            dynamictext calWinner (content: '{1}', contentparams: [{1} = winnerName],
+            dynamictext calWinner (content: '{1}', contentparams: ({1} = winnerName),
                                    class: 'cal-winner')
           }
         }
@@ -246,4 +247,4 @@ create or replace page Formula1Frontend.Season
         content: 'Final standings, race results and the calendar are f1db, which carries the official record from 1950. The champion''s margin, the number of different race winners and each driver''s share of the champion''s points are computed here from those rows — they are arithmetic on the record, not a second source.')
     }
   }
-}
+};

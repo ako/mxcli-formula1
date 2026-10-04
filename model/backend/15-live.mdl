@@ -1,3 +1,4 @@
+mdl 1;
 
 
 /*
@@ -16,7 +17,7 @@
  * lives in two files belongs to whichever ran last.
  */
 
-create or modify odata service Formula1Backend.F1LiveNowApi (
+create or modify published odata service Formula1Backend.F1LiveNowApi (
   path: 'odata/f1-now/',
   version: '1.0.0',
   ODataVersion: OData4,
@@ -252,8 +253,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveTrace TO Formula1Backend.Api
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveTrace TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStints TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_LiveStints TO Formula1Backend.DataAdmin;
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.ApiUser;
-GRANT ACCESS ON ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.DataAdmin;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.ApiUser;
+GRANT ACCESS ON PUBLISHED ODATA SERVICE Formula1Backend.F1LiveNowApi TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_TrackOutline TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Read_CarPositions TO Formula1Backend.ApiUser;

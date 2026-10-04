@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Formula1Frontend — the two OData clients.
  *
@@ -47,14 +48,12 @@
 
 create module F1Live;
 
-create or modify constant F1Live.ServiceUrl type string
-  default 'http://backend.local:8080/odata/f1-live/'
-  comment 'Base URL of the backend live service. Override per environment.';
+/** Base URL of the backend live service. Override per environment. */
+create or modify constant F1Live.ServiceUrl ( Type: string, DefaultValue: 'http://backend.local:8080/odata/f1-live/' );
 
-create or modify constant F1Live.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant F1Live.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-create or modify odata client F1Live.LiveApi (
+create or modify consumed odata service F1Live.LiveApi (
   Version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: './contracts/f1-live-metadata.xml',
@@ -67,14 +66,12 @@ HEADERS ('X-Api-Key': @F1Live.ApiKey);
 
 create module F1Cached;
 
-create or modify constant F1Cached.ServiceUrl type string
-  default 'http://backend.local:8080/odata/f1/'
-  comment 'Base URL of the backend cached service. Override per environment.';
+/** Base URL of the backend cached service. Override per environment. */
+create or modify constant F1Cached.ServiceUrl ( Type: string, DefaultValue: 'http://backend.local:8080/odata/f1/' );
 
-create or modify constant F1Cached.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant F1Cached.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-create or modify odata client F1Cached.CachedApi (
+create or modify consumed odata service F1Cached.CachedApi (
   Version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: './contracts/f1-metadata.xml',
@@ -94,14 +91,12 @@ HEADERS ('X-Api-Key': @F1Cached.ApiKey);
 
 create module F1Fan;
 
-create or modify constant F1Fan.ServiceUrl type string
-  default 'http://backend.local:8080/odata/f1-fan/'
-  comment 'Base URL of the backend fan service. Override per environment.';
+/** Base URL of the backend fan service. Override per environment. */
+create or modify constant F1Fan.ServiceUrl ( Type: string, DefaultValue: 'http://backend.local:8080/odata/f1-fan/' );
 
-create or modify constant F1Fan.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant F1Fan.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-create or modify odata client F1Fan.FanApi (
+create or modify consumed odata service F1Fan.FanApi (
   Version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: './contracts/f1-fan-metadata.xml',
@@ -119,14 +114,12 @@ HEADERS ('X-Api-Key': @F1Fan.ApiKey);
 
 create module F1Now;
 
-create or modify constant F1Now.ServiceUrl type string
-  default 'http://backend.local:8080/odata/f1-now/'
-  comment 'Base URL of the backend near-live service. Override per environment.';
+/** Base URL of the backend near-live service. Override per environment. */
+create or modify constant F1Now.ServiceUrl ( Type: string, DefaultValue: 'http://backend.local:8080/odata/f1-now/' );
 
-create or modify constant F1Now.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant F1Now.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-create or modify odata client F1Now.NowApi (
+create or modify consumed odata service F1Now.NowApi (
   Version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: './contracts/f1-now-metadata.xml',
@@ -152,14 +145,12 @@ HEADERS ('X-Api-Key': @F1Now.ApiKey);
 
 create module F1Admin;
 
-create or modify constant F1Admin.ServiceUrl type string
-  default 'http://backend.local:8080/odata/f1-admin/'
-  comment 'Base URL of the backend admin service. Override per environment.';
+/** Base URL of the backend admin service. Override per environment. */
+create or modify constant F1Admin.ServiceUrl ( Type: string, DefaultValue: 'http://backend.local:8080/odata/f1-admin/' );
 
-create or modify constant F1Admin.ApiKey type string
-  default 'f1-ops-key-2f8a1c' PRIVATE;
+create or modify constant F1Admin.ApiKey ( Type: string, DefaultValue: 'f1-ops-key-2f8a1c' );
 
-create or modify odata client F1Admin.AdminApi (
+create or modify consumed odata service F1Admin.AdminApi (
   Version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: './contracts/f1-admin-metadata.xml',

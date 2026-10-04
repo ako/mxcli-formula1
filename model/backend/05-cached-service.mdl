@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Service 2 of 2 — F1CachedApi: the same data, materialised.
  *
@@ -18,7 +19,7 @@
  * latest season on the live side.
  */
 
-create or modify odata service Formula1Backend.F1CachedApi (
+create or modify published odata service Formula1Backend.F1CachedApi (
   path: 'odata/f1/',
   version: '1.0.0',
   ODataVersion: OData4,

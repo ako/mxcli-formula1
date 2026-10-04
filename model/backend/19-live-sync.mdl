@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The live sync, in the app.
  * =========================
@@ -56,7 +57,7 @@ create or modify persistent entity Formula1Backend.LiveLap (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveLap row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveLap row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -82,7 +83,7 @@ create or modify persistent entity Formula1Backend.LiveDriver (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveDriver row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveDriver row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   Code: string(10),
@@ -96,7 +97,7 @@ create or modify persistent entity Formula1Backend.LiveStintRow (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveStintRow row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveStintRow row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   StintNumber: long,
@@ -111,7 +112,7 @@ create or modify persistent entity Formula1Backend.LiveMessageRow (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveMessageRow row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveMessageRow row id must be unique',
   SessionKey: string(20),
   At: string(20),
   Category: string(40),
@@ -129,7 +130,7 @@ create or modify persistent entity Formula1Backend.LiveWeatherRow (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveWeatherRow row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveWeatherRow row id must be unique',
   SessionKey: string(20),
   At: string(20),
   AirTemperature: decimal,
@@ -144,7 +145,7 @@ create or modify persistent entity Formula1Backend.LiveSessionRow (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveSessionRow row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveSessionRow row id must be unique',
   SessionKey: string(20),
   SessionName: string(60),
   SessionType: string(40),
@@ -186,7 +187,7 @@ create or modify persistent entity Formula1Backend.LiveSyncState (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveSyncState row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveSyncState row id must be unique',
   Enabled: boolean,
   SessionKey: string(20),
   /*
@@ -220,7 +221,7 @@ create or modify persistent entity Formula1Backend.LiveSyncState (
  * wants the state calls this, and the surplus rows are cleared on the way past
  * so an app that already has two converges on one.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_State ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_State ()
   RETURNS Formula1Backend.LiveSyncState AS $State
 BEGIN
   RETRIEVE $Rows FROM Formula1Backend.LiveSyncState;
@@ -234,7 +235,7 @@ BEGIN
 
   /* The retrieve binds $State and the create binds $Created: a microflow's
    * variable names are unique flow-wide, so one name cannot be filled by both. */
-  RETRIEVE $State FROM Formula1Backend.LiveSyncState LIMIT 1;
+  RETRIEVE $State FROM Formula1Backend.LiveSyncState FIRST;
   IF $State = empty THEN
     $Created = CREATE Formula1Backend.LiveSyncState (
       Enabled = false, SessionKey = '', LapsWritten = 0, RunCount = 0) COMMIT;
@@ -255,18 +256,16 @@ END;
  * default, and empty is a working configuration -- OpenF1 serves historical
  * sessions unauthenticated and only closes the door while a session is running.
  */
-create or modify constant Formula1Backend.OpenF1BaseUrl type string
-  default 'https://api.openf1.org/v1'
-  comment 'OpenF1 REST base. Override to point at a mirror or a recording.';
+/** OpenF1 REST base. Override to point at a mirror or a recording. */
+create or modify constant Formula1Backend.OpenF1BaseUrl ( Type: string, DefaultValue: 'https://api.openf1.org/v1' );
 
-create or modify constant Formula1Backend.OpenF1TokenUrl type string
-  default 'https://api.openf1.org/token'
-  comment 'OpenF1 OAuth2 token endpoint (password grant).';
+/** OpenF1 OAuth2 token endpoint (password grant). */
+create or modify constant Formula1Backend.OpenF1TokenUrl ( Type: string, DefaultValue: 'https://api.openf1.org/token' );
 
-create or modify constant Formula1Backend.OpenF1Username type string default ''
-  comment 'OpenF1 account. Leave empty to run unauthenticated (historical only).';
+/** OpenF1 account. Leave empty to run unauthenticated (historical only). */
+create or modify constant Formula1Backend.OpenF1Username ( Type: string, DefaultValue: '' );
 
-create or modify constant Formula1Backend.OpenF1Password type string default '' PRIVATE;
+create or modify constant Formula1Backend.OpenF1Password ( Type: string, DefaultValue: '' );
 
 /*
  * The token response is parsed by the warehouse, not by an import mapping.
@@ -287,12 +286,12 @@ create or modify constant Formula1Backend.OpenF1Password type string default '' 
  * OpenF1 response in this app is already parsed.
  */
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_EnsureToken ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_EnsureToken ()
   RETURNS String AS $Token
 BEGIN
   DECLARE $Token String = '';
 
-  RETRIEVE $Stored FROM Formula1Backend.LiveToken LIMIT 1;
+  RETRIEVE $Stored FROM Formula1Backend.LiveToken FIRST;
   IF $Stored != empty AND $Stored/ExpiresAt != empty
      AND $Stored/ExpiresAt > addMinutes([%CurrentDateTime%], 5) THEN
     SET $Token = $Stored/AccessToken;
@@ -304,7 +303,7 @@ BEGIN
     RETURN $Token;
   END IF;
 
-  $Raw = REST CALL POST '{1}'
+  $Raw = CALL REST SERVICE POST '{1}'
     WITH ({1} = @Formula1Backend.OpenF1TokenUrl)
     HEADER 'Content-Type' = 'application/x-www-form-urlencoded'
     BODY 'username={1}&password={2}'
@@ -385,7 +384,7 @@ create or modify persistent entity Formula1Backend.LiveLapStage (
   /* An OData key. Composite natural keys are what these tables actually have,
    * and Mendix will not publish one, so the runtime supplies a surrogate.
    * `default 1` is the seed; without it the build fails CE7247. */
-  RowId: autonumber default 1 unique error 'LiveLapStage row id must be unique',
+  RowId: autonumber default 1 unique error message 'LiveLapStage row id must be unique',
   SessionKey: string(20),
   DriverNumber: long,
   LapNumber: long,
@@ -417,7 +416,7 @@ create or modify persistent entity Formula1Backend.LiveLapStage (
  * to occupy a runtime thread indefinitely, and the cap makes that a typo rather
  * than an outage.
  */
-create or replace java action Formula1Backend.Sync_Sleep (
+create or modify java action Formula1Backend.Sync_Sleep (
   Millis: Integer NOT NULL
 ) RETURNS Boolean
 AS $$
@@ -455,7 +454,7 @@ $$;
  * Returns the body as text. Nothing parses it here -- it goes to DuckDB as a
  * bound parameter and is taken apart there.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Fetch (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Fetch (
   $Path: String,
   $Token: String
 )
@@ -471,7 +470,7 @@ BEGIN
   $Paced = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = $Gap);
 
   IF trim($Token) != '' THEN
-    $Authed = REST CALL GET '{1}'
+    $Authed = CALL REST SERVICE GET '{1}'
       WITH ({1} = $Url)
       HEADER 'Accept' = 'application/json'
       HEADER 'Authorization' = 'Bearer ' + $Token
@@ -480,7 +479,7 @@ BEGIN
       ON ERROR CONTINUE;
     SET $Body = $Authed;
   ELSE
-    $Plain = REST CALL GET '{1}'
+    $Plain = CALL REST SERVICE GET '{1}'
       WITH ({1} = $Url)
       HEADER 'Accept' = 'application/json'
       TIMEOUT 120
@@ -500,7 +499,7 @@ BEGIN
   IF trim($Body) = '' THEN
     $Backoff = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = 1500);
     IF trim($Token) != '' THEN
-      $Retry = REST CALL GET '{1}'
+      $Retry = CALL REST SERVICE GET '{1}'
         WITH ({1} = $Url)
         HEADER 'Accept' = 'application/json'
         HEADER 'Authorization' = 'Bearer ' + $Token
@@ -509,7 +508,7 @@ BEGIN
         ON ERROR CONTINUE;
       SET $Body = $Retry;
     ELSE
-      $RetryPlain = REST CALL GET '{1}'
+      $RetryPlain = CALL REST SERVICE GET '{1}'
         WITH ({1} = $Url)
         HEADER 'Accept' = 'application/json'
         TIMEOUT 120
@@ -605,7 +604,7 @@ begin
   return $Result;
 end;
 
-CREATE OR REPLACE MICROFLOW Formula1Backend.Sync_Live ()
+CREATE OR MODIFY MICROFLOW Formula1Backend.Sync_Live ()
   RETURNS String AS $Result
 BEGIN
   DECLARE $Result String = '';
@@ -732,7 +731,7 @@ BEGIN
   $Emptied = CALL JAVA ACTION Formula1Backend.OQL_Execute(
     Statement = 'delete from Formula1Backend.LiveLapStage');
 
-  $Fetched = COUNT($Rows);
+  $Fetched = COUNT $Rows;
   SET $Result = 'session ' + $Key + ': fetched ' + toString($Fetched)
     + ', replaced ' + toString($Superseded) + ', kept ' + toString($Kept);
   IF trim($Token) = '' THEN

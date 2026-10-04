@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * The story of the race, from what the sync already stores.
  * =========================================================
@@ -40,7 +41,7 @@ create or modify non-persistent entity Formula1Backend.Stg_LiveStory (
  * overtake and a stewards' note want different weight on the page and the same
  * shape in the data.
  */
-CREATE OR REPLACE MICROFLOW Formula1Backend.Read_LiveStory (
+CREATE OR MODIFY MICROFLOW Formula1Backend.Read_LiveStory (
   $Request: System.HttpRequest,
   $Response: System.ODataResponse
 )
@@ -60,11 +61,11 @@ BEGIN
   LOOP $O IN $Overtakes BEGIN
     DECLARE $Passer String = 'Car ' + toString($O/OvertakingDriver);
     DECLARE $Passed String = 'Car ' + toString($O/OvertakenDriver);
-    $DA = FIND($Drivers, DriverNumber = $O/OvertakingDriver);
+    $DA = FIND $Drivers BY DriverNumber = $O/OvertakingDriver;
     IF $DA != empty THEN
       SET $Passer = $DA/Code;
     END IF;
-    $DB = FIND($Drivers, DriverNumber = $O/OvertakenDriver);
+    $DB = FIND $Drivers BY DriverNumber = $O/OvertakenDriver;
     IF $DB != empty THEN
       SET $Passed = $DB/Code;
     END IF;

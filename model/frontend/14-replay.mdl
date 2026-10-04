@@ -1,3 +1,4 @@
+mdl 1;
 /*
  * Screen 6 — Replay.
  * ==================
@@ -71,14 +72,14 @@ create or modify persistent entity Formula1Frontend.ReplayState (
  * stepping through a qualifying's predicted finishing order would be showing
  * a number the model does not claim to produce.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplaySessions ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplaySessions ()
   RETURNS List of F1Admin.Sessions AS $Have
 BEGIN
   $Have = CREATE LIST OF F1Admin.Sessions;
   RETRIEVE $Sessions FROM F1Admin.Sessions SORT BY dateStart DESC;
   LOOP $S IN $Sessions BEGIN
     RETRIEVE $Fcst FROM F1Admin.Forecast
-      WHERE sessionKey = $S/sessionKey LIMIT 1;
+      WHERE sessionKey = $S/sessionKey FIRST;
     IF $Fcst != empty THEN
       ADD $S TO $Have;
     END IF;
@@ -96,20 +97,20 @@ END;
  * while it is working, and a stepper that walks past the end of its own data
  * shows an empty grid and looks broken.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayPick (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayPick (
   $Session: F1Admin.Sessions
 )
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   IF $State = empty OR $Session = empty THEN
     RETURN $Ok;
   END IF;
 
   DECLARE $Max Long = 2;
   RETRIEVE $Last FROM F1Admin.Forecast
-    WHERE sessionKey = $Session/sessionKey SORT BY atLap DESC LIMIT 1;
+    WHERE sessionKey = $Session/sessionKey SORT BY atLap DESC FIRST;
   IF $Last != empty THEN
     SET $Max = $Last/atLap;
   END IF;
@@ -133,11 +134,11 @@ END;
  * ensure out leaves the datasource with exactly one retrieve, which is also
  * the clearer shape.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayEnsure ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayEnsure ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $Held FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $Held FROM Formula1Frontend.ReplayState FIRST;
   IF $Held != empty THEN
     RETURN $Ok;
   END IF;
@@ -157,20 +158,20 @@ BEGIN
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayState ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplayState ()
   RETURNS Formula1Frontend.ReplayState AS $State
 BEGIN
   $Ensured = CALL MICROFLOW Formula1Frontend.ACT_ReplayEnsure();
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   RETURN $State;
 END;
 
 /* One lap on. Clamped, so the last lap is a stop rather than a blank screen. */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayNext ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayNext ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
@@ -181,11 +182,11 @@ BEGIN
 END;
 
 /* One lap back. Lap 2 is the floor: lap 1 has nothing fitted behind it. */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayPrev ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayPrev ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
@@ -195,11 +196,11 @@ BEGIN
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayStart ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayStart ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
@@ -207,11 +208,11 @@ BEGIN
   RETURN $Ok;
 END;
 
-CREATE OR REPLACE MICROFLOW Formula1Frontend.ACT_ReplayEnd ()
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayEnd ()
   RETURNS Boolean AS $Ok
 BEGIN
   DECLARE $Ok Boolean = true;
-  RETRIEVE $State FROM Formula1Frontend.ReplayState LIMIT 1;
+  RETRIEVE $State FROM Formula1Frontend.ReplayState FIRST;
   IF $State = empty THEN
     RETURN $Ok;
   END IF;
@@ -255,7 +256,7 @@ create or modify non-persistent entity Formula1Frontend.ReplayCall (
  * classification follows. Laps come back newest first and a driver is taken
  * the first time it is seen.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayOrder (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplayOrder (
   $State: Formula1Frontend.ReplayState
 )
   RETURNS List of Formula1Frontend.ReplayEntry AS $Ordered
@@ -271,9 +272,9 @@ BEGIN
   RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
 
   LOOP $L IN $Laps BEGIN
-    $Seen = FIND($Rows, DriverNumber = $L/driverNumber);
+    $Seen = FIND $Rows BY DriverNumber = $L/driverNumber;
     IF $Seen = empty THEN
-      $D = FIND($Drivers, driverNumber = $L/driverNumber);
+      $D = FIND $Drivers BY driverNumber = $L/driverNumber;
       $Row = CREATE Formula1Frontend.ReplayEntry (
         Position = $L/position, DriverNumber = $L/driverNumber,
         LapNumber = $L/lapNumber, GapToLeader = $L/gapToLeader,
@@ -286,14 +287,14 @@ BEGIN
     END IF;
   END LOOP;
 
-  $Ordered = SORT($Rows, Position);
+  $Ordered = SORT $Rows BY Position;
   RETURN $Ordered;
 END;
 
 /*
  * The forecast made at the chosen lap, in predicted order.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DS_ReplayForecast (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplayForecast (
   $State: Formula1Frontend.ReplayState
 )
   RETURNS List of Formula1Frontend.ReplayCall AS $Ordered
@@ -308,7 +309,7 @@ BEGIN
   RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
 
   LOOP $F IN $Fcst BEGIN
-    $D = FIND($Drivers, driverNumber = $F/driverNumber);
+    $D = FIND $Drivers BY driverNumber = $F/driverNumber;
     $Row = CREATE Formula1Frontend.ReplayCall (
       MeanPosition = $F/meanPosition, MedianPosition = $F/medianPosition,
       DriverNumber = $F/driverNumber, PWin = $F/pWin, PPodium = $F/pPodium,
@@ -325,7 +326,7 @@ BEGIN
     ADD $Row TO $Rows;
   END LOOP;
 
-  $Ordered = SORT($Rows, MeanPosition);
+  $Ordered = SORT $Rows BY MeanPosition;
   RETURN $Ordered;
 END;
 
@@ -339,7 +340,7 @@ END;
  * hindsight. A chart that showed where the lines were going would answer the
  * question the stepping is there to ask.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayWin (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ReplayWin (
   $State: Formula1Frontend.ReplayState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
@@ -364,7 +365,7 @@ BEGIN
 
     LOOP $P IN $Fcst BEGIN
       IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
-        $D = FIND($Drivers, driverNumber = $P/driverNumber);
+        $D = FIND $Drivers BY driverNumber = $P/driverNumber;
         DECLARE $Code String = toString($P/driverNumber);
         IF $D != empty AND trim($D/code) != '' THEN
           SET $Code = $D/code;
@@ -385,7 +386,7 @@ END;
 /*
  * Position by lap, up to the chosen lap. The race as far as it has been run.
  */
-CREATE OR REPLACE MICROFLOW Formula1Frontend.DSJ_ReplayPositions (
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ReplayPositions (
   $State: Formula1Frontend.ReplayState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
@@ -399,7 +400,7 @@ BEGIN
     RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
     LOOP $L IN $Laps BEGIN
       IF $L/position != empty THEN
-        $D = FIND($Drivers, driverNumber = $L/driverNumber);
+        $D = FIND $Drivers BY driverNumber = $L/driverNumber;
         IF $D != empty AND trim($D/code) != '' THEN
           SET $Json = $Json + $Sep
             + '{"code":"' + $D/code + '","lap":' + toString($L/lapNumber)
@@ -419,7 +420,7 @@ END;
  * The page.
  * =========
  */
-create or replace page Formula1Frontend.Replay
+create or modify page Formula1Frontend.Replay
 (
   title: 'Replay',
   layout: Atlas_Core.Atlas_Default,
@@ -434,7 +435,7 @@ create or replace page Formula1Frontend.Replay
         container rHead (class: 'pagehead') {
           container rHeadMain (class: 'pagehead-main') {
             dynamictext rEyebrow (content: 'Replay', class: 'pagehead-eyebrow')
-            dynamictext rTitle (content: '{1}', contentparams: [{1} = SessionLabel],
+            dynamictext rTitle (content: '{1}', contentparams: ({1} = SessionLabel),
                                 rendermode: H2, class: 'pagehead-title')
             dynamictext rSub (
               content: 'the classification as it stood, and the forecast as it would have been made',
@@ -442,7 +443,7 @@ create or replace page Formula1Frontend.Replay
           }
           container rHeadBadge (class: 'pagehead-badge') {
             dynamictext rLap (content: 'LAP {1} / {2}',
-              contentparams: [{1} = AtLap, {2} = MaxLap])
+              contentparams: ({1} = AtLap, {2} = MaxLap))
           }
         }
 
@@ -453,13 +454,13 @@ create or replace page Formula1Frontend.Replay
          */
         container rControls (class: 'replay-controls') {
           actionbutton btnStart (Caption: '|<', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_ReplayStart)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_ReplayStart)
           actionbutton btnPrev (Caption: '< Lap', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_ReplayPrev)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_ReplayPrev)
           actionbutton btnNext (Caption: 'Lap >', ButtonStyle: Primary,
-            Action: MICROFLOW Formula1Frontend.ACT_ReplayNext)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_ReplayNext)
           actionbutton btnEnd (Caption: '>|', ButtonStyle: Default,
-            Action: MICROFLOW Formula1Frontend.ACT_ReplayEnd)
+            Action: CALL MICROFLOW Formula1Frontend.ACT_ReplayEnd)
         }
       }
 
@@ -469,11 +470,11 @@ create or replace page Formula1Frontend.Replay
                              PageSize: 12) {
           container chipSession (
             class: 'chip-pick',
-            dynamicclasses: 'if $currentObject/sessionKey = $dvReplay/SessionKey then ''is-picked'' else ''''',
-            OnClick: MICROFLOW Formula1Frontend.ACT_ReplayPick(Session: $currentObject)
+            dynamicclasses: if $currentObject/sessionKey = $dvReplay/SessionKey then 'is-picked' else '',
+            OnClick: CALL MICROFLOW Formula1Frontend.ACT_ReplayPick(Session = $currentObject)
           ) {
             dynamictext chipName (content: '{1} {2}',
-              contentparams: [{1} = location, {2} = sessionName])
+              contentparams: ({1} = location, {2} = sessionName))
           }
         }
       }
@@ -489,18 +490,18 @@ create or replace page Formula1Frontend.Replay
           }
           container rOrderGrid (class: 'grid-dense') {
             datagrid dgReplayOrder (
-              datasource: MICROFLOW Formula1Frontend.DS_ReplayOrder(State: $currentObject),
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayOrder(State = $currentObject),
               PageSize: 24, PagingPosition: bottom
             ) {
-              column rcPos (attribute: Position, caption: 'P', Alignment: right)
-              column rcCode (attribute: Code, caption: 'Code')
-              column rcDriver (attribute: DriverName, caption: 'Driver')
-              column rcLap (attribute: LapNumber, caption: 'Lap', Alignment: right)
-              column rcGap (attribute: GapToLeader, caption: 'Gap', Alignment: right)
-              column rcLast (attribute: LapSeconds, caption: 'Last', Alignment: right)
-              column rcTyre (attribute: Compound, caption: 'Tyre')
-              column rcAge (attribute: TyreAge, caption: 'Age', Alignment: right)
-              column rcStops (attribute: PitStops, caption: 'St', Alignment: right)
+              column (attribute: Position, caption: 'P', Alignment: right)
+              column (attribute: Code, caption: 'Code')
+              column (attribute: DriverName, caption: 'Driver')
+              column (attribute: LapNumber, caption: 'Lap', Alignment: right)
+              column (attribute: GapToLeader, caption: 'Gap', Alignment: right)
+              column (attribute: LapSeconds, caption: 'Last', Alignment: right)
+              column (attribute: Compound, caption: 'Tyre')
+              column (attribute: TyreAge, caption: 'Age', Alignment: right)
+              column (attribute: PitStops, caption: 'St', Alignment: right)
             }
           }
         }
@@ -514,18 +515,18 @@ create or replace page Formula1Frontend.Replay
           }
           container rFcstGrid (class: 'grid-dense') {
             datagrid dgReplayForecast (
-              datasource: MICROFLOW Formula1Frontend.DS_ReplayForecast(State: $currentObject),
+              datasource: MICROFLOW Formula1Frontend.DS_ReplayForecast(State = $currentObject),
               PageSize: 24, PagingPosition: bottom
             ) {
-              column rfPos (attribute: MedianPosition, caption: 'P', Alignment: right)
-              column rfCode (attribute: Code, caption: 'Code')
-              column rfDriver (attribute: DriverName, caption: 'Driver')
-              column rfRange (attribute: Range, caption: '10-90', Alignment: right)
-              column rfWin (attribute: WinPct, caption: 'Win', Alignment: right)
-              column rfPod (attribute: PodiumPct, caption: 'Podium', Alignment: right)
-              column rfPts (attribute: PointsPct, caption: 'Points', Alignment: right)
-              column rfStops (attribute: StopsLeft, caption: 'Stops', Alignment: right)
-              column rfLaps (attribute: LapsUsed, caption: 'Fitted', Alignment: right)
+              column (attribute: MedianPosition, caption: 'P', Alignment: right)
+              column (attribute: Code, caption: 'Code')
+              column (attribute: DriverName, caption: 'Driver')
+              column (attribute: Range, caption: '10-90', Alignment: right)
+              column (attribute: WinPct, caption: 'Win', Alignment: right)
+              column (attribute: PodiumPct, caption: 'Podium', Alignment: right)
+              column (attribute: PointsPct, caption: 'Points', Alignment: right)
+              column (attribute: StopsLeft, caption: 'Stops', Alignment: right)
+              column (attribute: LapsUsed, caption: 'Fitted', Alignment: right)
             }
           }
         }
@@ -540,7 +541,7 @@ create or replace page Formula1Frontend.Replay
               content: 'the model without hindsight: the line stops where you are',
               class: 'panel-sub')
           }
-          dataview dvRWin (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayWin(State: $currentObject)) {
+          dataview dvRWin (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayWin(State = $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (
               chartData: json,
               datasetName: 'table',
@@ -557,7 +558,7 @@ create or replace page Formula1Frontend.Replay
             dynamictext rPosSub (content: 'the race as far as it has been run',
                                  class: 'panel-sub')
           }
-          dataview dvRPos (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayPositions(State: $currentObject)) {
+          dataview dvRPos (datasource: MICROFLOW Formula1Frontend.DSJ_ReplayPositions(State = $currentObject)) {
             pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayPos (
               chartData: json,
               datasetName: 'table',
@@ -576,4 +577,4 @@ create or replace page Formula1Frontend.Replay
       }
     }
   }
-}
+};
