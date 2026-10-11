@@ -77,9 +77,9 @@ create or modify published odata service Formula1Backend.F1AdminApi (
   path: 'odata/f1-admin/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'Formula1Backend.Admin'
+  namespace: 'Formula1Backend.Admin',
+  Authentication: (microflow Formula1Backend.AuthenticateApiClient)
 )
-authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.LiveLap as 'Laps' (
     InsertMode: not_supported, UpdateMode: not_supported,

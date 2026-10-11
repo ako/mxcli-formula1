@@ -313,9 +313,9 @@ create or modify published odata service Formula1Backend.F1LiveApi (
   path: 'odata/f1-live/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'Formula1Backend.Live'
+  namespace: 'Formula1Backend.Live',
+  Authentication: (microflow Formula1Backend.AuthenticateApiClient)
 )
-authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_Season as 'Seasons' (
     ReadMode: microflow Formula1Backend.Read_Seasons,

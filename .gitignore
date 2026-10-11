@@ -85,6 +85,16 @@
 /.claude/skills/*/node_modules/
 /.claude/skills/*/*/node_modules/
 /.claude/skills/*/widget/dist/
+# mxcli's own skills and .ai-context are written by 'mxcli init --sync-skills'
+# from the running binary (100 files across 74 skills), so they follow the
+# binary and tracking them would mean a 200-file diff on every rebuild —
+# which is the problem open issue 9 was about. Reproduce them with
+#   ./mxcli init --sync-skills
+# The two hand-written packs below stay tracked: nothing regenerates those.
+/.ai-context/
+/.claude/skills/*
+!/.claude/skills/mendix-vega-charts/
+!/.claude/skills/packs/
 # SSH access to the devcontainer. authorized_keys.local is the public half and
 # is re-installed by .devcontainer/post-start.sh on every start, so it survives
 # a rebuild; it is yours, not the repo's, hence ignored. The private key is only

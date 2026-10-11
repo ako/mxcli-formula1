@@ -616,9 +616,9 @@ create or modify published odata service Formula1Backend.F1FanApi (
   path: 'odata/f1-fan/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'Formula1Backend.Fan'
+  namespace: 'Formula1Backend.Fan',
+  Authentication: (microflow Formula1Backend.AuthenticateApiClient)
 )
-authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_RaceWeekend as 'RaceWeekend' (
     ReadMode: microflow Formula1Backend.Read_RaceWeekend,

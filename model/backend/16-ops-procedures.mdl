@@ -538,9 +538,9 @@ create or modify published odata service Formula1Backend.F1OpsApi (
   path: 'odata/f1-ops/',
   version: '1.0.0',
   ODataVersion: OData4,
-  namespace: 'Formula1Backend.Ops'
+  namespace: 'Formula1Backend.Ops',
+  Authentication: (microflow Formula1Backend.AuthenticateApiClient)
 )
-authentication microflow Formula1Backend.AuthenticateApiClient
 {
   publish entity Formula1Backend.Stg_DriverForm as 'DriverForm' (
     ReadMode: microflow Formula1Backend.Read_DriverForm,

@@ -33,11 +33,14 @@ mdl 1;
  * Long format is what makes all three fall out: one row per (x, series, value)
  * rather than one row per x with a column per series.
  *
- * Numbers are written with `formatDecimal($x, '0.##')` — a plain decimal with
- * no grouping separator, which is the only form JSON accepts. A value that
- * could be empty is emitted as `null` and never as `0`: a zero plots as a real
- * measurement at the bottom of the scale, which is a lie the chart tells
- * convincingly.
+ * Numbers are written with `toString(round($x, n))`, never `formatDecimal`.
+ * `formatDecimal` formats in the *user's* language, so a Dutch session emits
+ * `12,50` and the whole array stops being JSON — for that user only, which is
+ * why it survived here until `mxcli check` grew MDL-JSONNUM01 and reported 25
+ * of them (FINDINGS §91). `toString(round(…))` is locale-independent and
+ * writes no exponent. A value that could be empty is emitted as `null` and
+ * never as `0`: a zero plots as a real measurement at the bottom of the scale,
+ * which is a lie the chart tells convincingly.
  */
 
 create or modify non-persistent entity Formula1Frontend.Chart (
@@ -65,7 +68,7 @@ BEGIN
   LOOP $S IN $Seasons BEGIN
     SET $Json = $Json + $Sep
       + '{"year":' + toString($S/year)
-      + ',"s":"Points","v":' + formatDecimal($S/points, '0.##') + '}';
+      + ',"s":"Points","v":' + toString(round($S/points, 2)) + '}';
     SET $Sep = ',';
     /*
      * Only a season that was actually classified gets a Finish point. f1db
@@ -139,27 +142,27 @@ BEGIN
   LOOP $P IN $Rows BEGIN
     IF $P/d1Name != empty AND $P/d1Points != empty THEN
       SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d1Name + '","pts":' + formatDecimal($P/d1Points, '0.##') + '}';
+        + ',"driver":"' + $P/d1Name + '","pts":' + toString(round($P/d1Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
     IF $P/d2Name != empty AND $P/d2Points != empty THEN
       SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d2Name + '","pts":' + formatDecimal($P/d2Points, '0.##') + '}';
+        + ',"driver":"' + $P/d2Name + '","pts":' + toString(round($P/d2Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
     IF $P/d3Name != empty AND $P/d3Points != empty THEN
       SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d3Name + '","pts":' + formatDecimal($P/d3Points, '0.##') + '}';
+        + ',"driver":"' + $P/d3Name + '","pts":' + toString(round($P/d3Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
     IF $P/d4Name != empty AND $P/d4Points != empty THEN
       SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d4Name + '","pts":' + formatDecimal($P/d4Points, '0.##') + '}';
+        + ',"driver":"' + $P/d4Name + '","pts":' + toString(round($P/d4Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
     IF $P/d5Name != empty AND $P/d5Points != empty THEN
       SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d5Name + '","pts":' + formatDecimal($P/d5Points, '0.##') + '}';
+        + ',"driver":"' + $P/d5Name + '","pts":' + toString(round($P/d5Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
   END LOOP;
@@ -188,7 +191,7 @@ BEGIN
   LOOP $T IN $Rows BEGIN
     SET $Json = $Json + $Sep
       + '{"team":"' + $T/ConstructorName + '"'
-      + ',"pts":' + formatDecimal($T/Points, '0.##')
+      + ',"pts":' + toString(round($T/Points, 2))
       + ',"colour":"' + $T/Colour + '"}';
     SET $Sep = ',';
   END LOOP;
@@ -221,14 +224,14 @@ BEGIN
       SET $Json = $Json + $Sep
         + '{"code":"' + $R/code + '","round":' + toString($R/round)
         + ',"driver":"' + $R/driver1Name + '","seat":"Seat 1"'
-        + ',"pts":' + formatDecimal($R/driver1Points, '0.##') + '}';
+        + ',"pts":' + toString(round($R/driver1Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
     IF $R/driver2Name != empty AND $R/driver2Points != empty THEN
       SET $Json = $Json + $Sep
         + '{"code":"' + $R/code + '","round":' + toString($R/round)
         + ',"driver":"' + $R/driver2Name + '","seat":"Seat 2"'
-        + ',"pts":' + formatDecimal($R/driver2Points, '0.##') + '}';
+        + ',"pts":' + toString(round($R/driver2Points, 2)) + '}';
       SET $Sep = ',';
     END IF;
   END LOOP;
@@ -281,7 +284,7 @@ BEGIN
     SET $Json = $Json + $Sep
       + '{"reason":"' + $R/reasonRetired + '"'
       + ',"n":' + toString($R/retirements)
-      + ',"share":' + formatDecimal($R/sharePercent, '0.##') + '}';
+      + ',"share":' + toString(round($R/sharePercent, 2)) + '}';
     SET $Sep = ',';
   END LOOP;
   SET $Json = $Json + ']';
@@ -464,27 +467,27 @@ BEGIN
   LOOP $S IN $Rows BEGIN
     IF $S/fp1Gap != empty THEN
       SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP1","gap":' + formatDecimal($S/fp1Gap, '0.###') + '}';
+        + '","session":"FP1","gap":' + toString(round($S/fp1Gap, 3)) + '}';
       SET $Sep = ',';
     END IF;
     IF $S/fp2Gap != empty THEN
       SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP2","gap":' + formatDecimal($S/fp2Gap, '0.###') + '}';
+        + '","session":"FP2","gap":' + toString(round($S/fp2Gap, 3)) + '}';
       SET $Sep = ',';
     END IF;
     IF $S/fp3Gap != empty THEN
       SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP3","gap":' + formatDecimal($S/fp3Gap, '0.###') + '}';
+        + '","session":"FP3","gap":' + toString(round($S/fp3Gap, 3)) + '}';
       SET $Sep = ',';
     END IF;
     IF $S/qualGap != empty THEN
       SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"Qualifying","gap":' + formatDecimal($S/qualGap, '0.###') + '}';
+        + '","session":"Qualifying","gap":' + toString(round($S/qualGap, 3)) + '}';
       SET $Sep = ',';
     END IF;
     IF $S/bestLapGap != empty THEN
       SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"Best race lap","gap":' + formatDecimal($S/bestLapGap, '0.###') + '}';
+        + '","session":"Best race lap","gap":' + toString(round($S/bestLapGap, 3)) + '}';
       SET $Sep = ',';
     END IF;
   END LOOP;
@@ -528,7 +531,7 @@ BEGIN
        AND contains($Codes, '|' + $R/code + '|') THEN
       SET $Json = $Json + $Sep
         + '{"code":"' + $R/code + '","lap":' + toString($R/lapNumber)
-        + ',"gap":' + formatDecimal($R/gapSeconds, '0.###') + '}';
+        + ',"gap":' + toString(round($R/gapSeconds, 3)) + '}';
       SET $Sep = ',';
     END IF;
   END LOOP;
@@ -692,13 +695,13 @@ BEGIN
   LOOP $P IN $Rows BEGIN
     IF $P/x != empty AND $P/y != empty THEN
       IF $FirstX = '' THEN
-        SET $FirstX = formatDecimal($P/x, '0.#');
-        SET $FirstY = formatDecimal($P/y, '0.#');
+        SET $FirstX = toString(round($P/x, 1));
+        SET $FirstY = toString(round($P/y, 1));
       END IF;
       SET $Json = $Json + $Sep
         + '{"i":' + toString($P/seq)
-        + ',"x":' + formatDecimal($P/x, '0.#')
-        + ',"y":' + formatDecimal($P/y, '0.#') + '}';
+        + ',"x":' + toString(round($P/x, 1))
+        + ',"y":' + toString(round($P/y, 1)) + '}';
       SET $Sep = ',';
       SET $Last = $P/seq + 1;
     END IF;
@@ -777,8 +780,8 @@ BEGIN
   LOOP $Pt IN $Track BEGIN
     IF $Pt/x != empty AND $Pt/y != empty THEN
       SET $Json = $Json + $Sep + '{"kind":"track","seq":' + toString($Pt/seq)
-        + ',"x":' + formatDecimal(($Pt/x - $MinX) * $Scale + $OffX, '0.#')
-        + ',"y":' + formatDecimal(($Pt/y - $MinY) * $Scale + $OffY, '0.#')
+        + ',"x":' + toString(round(($Pt/x - $MinX) * $Scale + $OffX, 1))
+        + ',"y":' + toString(round(($Pt/y - $MinY) * $Scale + $OffY, 1))
         + ',"car":""}';
       SET $Sep = ',';
     END IF;
@@ -786,8 +789,8 @@ BEGIN
   LOOP $Car IN $Cars BEGIN
     IF $Car/x != empty AND $Car/y != empty THEN
       SET $Json = $Json + $Sep + '{"kind":"car","seq":0'
-        + ',"x":' + formatDecimal(($Car/x - $MinX) * $Scale + $OffX, '0.#')
-        + ',"y":' + formatDecimal(($Car/y - $MinY) * $Scale + $OffY, '0.#')
+        + ',"x":' + toString(round(($Car/x - $MinX) * $Scale + $OffX, 1))
+        + ',"y":' + toString(round(($Car/y - $MinY) * $Scale + $OffY, 1))
         + ',"car":"' + toString($Car/driverNumber) + '"}';
       SET $Sep = ',';
     END IF;
@@ -832,7 +835,7 @@ BEGIN
        AND contains($Keep, '|' + $P/code + '|') THEN
       SET $Json = $Json + $Sep
         + '{"code":"' + $P/code + '","lap":' + toString($P/atLap)
-        + ',"p":' + formatDecimal($P/pWin * 100, '0.00') + '}';
+        + ',"p":' + toString(round($P/pWin * 100, 2)) + '}';
       SET $Sep = ',';
     END IF;
   END LOOP;

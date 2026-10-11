@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`) |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1627,7 +1627,12 @@ the scripts quietly stop being the source of truth.
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-9. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+9. ~~**`.ai-context/skills/` does not follow a binary upgrade** (§15, §34)~~ —
+   **fixed, verified in §91:** `mxcli init --sync-skills` (alias `--sync`)
+   refreshes the skills, the bundled lint rules and the mxcli section of
+   CLAUDE.md/AGENTS.md from the running binary, stamps the version, and refuses
+   when the binary is older than the stamp. Measured here: 100 file(s) across 74
+   skills plus `.ai-context/`, in one command. Original text: — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
@@ -1644,7 +1649,12 @@ the scripts quietly stop being the source of truth.
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
    statically: `check`/`lint` can compare the name against the model.
-13. **Page-widget properties: partly fixed in §90** — `PageSize` round-trips now; listview `OnClick` still writes and checks clean and comes back missing. (§51) —
+13. **Page-widget properties: narrowed to one case in §91** — listview `OnClick`
+   round-trips now (read back as `Action: call microflow …`), and so does
+   `sort by` on a listview's database datasource. **A GALLERY's `PageSize` is
+   still written, checked clean and absent on read-back**, with no
+   MDL-WIDGET07. The chart `CustomLayout` capital-letter case was not retested:
+   this project has no Mendix chart widgets left. (§51) —
    `sort by` on a LISTVIEW's database datasource, `OnClick` on a LISTVIEW,
    `PageSize` on a GALLERY, and chart-level `CustomLayout` /
    `CustomConfigurations` when spelled with a capital. All four pass
@@ -1655,7 +1665,8 @@ the scripts quietly stop being the source of truth.
    alone — which reads as "custom layout is unsupported" rather than "you
    spelled it wrong". MDL-WIDGET07 already exists for exactly this; whatever
    path drops these should route through it.
-14. **`LISTVIEW`'s `PageSize` does not round-trip** (§51) — the writer honours
+14. ~~**`LISTVIEW`'s `PageSize` does not round-trip** (§51)~~ — **fixed, verified
+   in §91:** `PageSize: 30` written and read back. Original text: — the writer honours
    it (`TestBuildListViewV3_PageSize` guards that), but `describe page` never
    prints it back, so the round-trip this repo uses to verify every other
    change reports it as dropped. The default is 20, which silently ends a
@@ -1706,8 +1717,14 @@ the scripts quietly stop being the source of truth.
    So the gap is coverage, not absence: finish `widget sync`, and wrap
    `rename-design-properties`, whose 158 renames across 44 documents currently
    require the v2-destroying binary.
-20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53, re-confirmed on `603aeb42` in §90 — same two lines) —
-   `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
+20. ~~**`CREATE MODEL` can author only `MxCloudGenAI`** (§53)~~ — **fixed at the
+   language level, verified in §91:** `agenteditor_write.go:73`/`:93` now
+   *default* `Provider` when the statement leaves it empty instead of assigning
+   it unconditionally, the grammar takes any identifier
+   (`identifierOrKeyword COLON identifierOrKeyword`), and `Provider: OpenAI`
+   parses and checks clean. What remains is documentation: `mxcli syntax agents
+   model` still shows only `MxCloudGenAI`, so the other four providers are
+   undiscoverable. Original text: — `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
    the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
    Mistral) cannot be expressed in MDL. A project not on Mendix Cloud GenAI
    cannot keep its model document as code.
@@ -1725,6 +1742,63 @@ the scripts quietly stop being the source of truth.
    `javasource/<module_path>/`, with the placeholder/whitelist/drift discipline
    the widget path already has, closes it. Pack drafted and validated in
    `.claude/skills/packs/mendix-odata-pushdown/`.
+23. **`create or modify microflow` cannot update a flow whose change is inside a
+   loop, and there is no override** (§91) — MDL-V1-REBUILD. From the `mdl 1;`
+   header, `create or modify microflow|nanoflow` splices into the stored flow to
+   keep Studio Pro's curves, merges and element IDs, and refuses rather than
+   rebuild when the splice cannot reach the change; `mdl 0` rebuilt. A `SET`
+   inside a `LOOP` body is out of reach, so **all 13** of this project's `DSJ_*`
+   chart-data microflows refused a one-line expression edit: "Nothing was
+   written." `--no-check` does not bypass it (the refusal is in exec's write
+   path, not pre-flight) and `create or replace` is a deprecated alias with the
+   same meaning. The refusal is well-made — it names the flow, the loop, its
+   coordinates and the exact `alter … replace loop … with …` remedy — but the
+   protection defends something a generated project does not have: these 13
+   flows were written by MDL and never opened in Studio Pro, so the only thing
+   the rebuild would reset is layout mxcli itself computed. The effect is that a
+   script set which provisions a fresh project cannot update an existing one.
+   mxcli knows which element IDs it wrote: either rebuild when no element in the
+   flow was authored by Studio Pro, or take an explicit opt-in
+   (`exec --rebuild-flows`, or a `Rebuild:` property) instead of requiring the
+   author to restate the loop body in a second statement form. Workaround that
+   keeps idempotency, measured in §91: one-off `drop microflow` then re-exec —
+   37 units written once, and a full second pass byte-identical.
+24. **`mxcli playwright check` reports OK for a URL that resolves to no page**
+   (§91) — `/p/no-such-page-xyzzy` and a deep link whose key does not resolve
+   both returned `title="Mendix - Narrate"  text=2122  console-errors=0`,
+   `OK 1 page(s)`, exit 0: the app's fallback page rendering cleanly. The help
+   anticipates the substitution problem for sign-in ("a sign-in form instead of
+   the page" fails the check) but not for navigation fallback, and exit status
+   is what CI and an agent key off. With `-p` the project's page/URL table and
+   each page's `Title` are already in hand, and the verdict already prints the
+   rendered title — comparing the two and failing on a mismatch is mechanical.
+   Everything else about the command held up: a failed `--assert-count` exits 1,
+   and the assertions are what caught a page reporting OK with every chart
+   missing from the DOM.
+25. **MDL-JSONNUM01 is lexical, so one variable hop hides the bug** (§91) — the
+   rule catches `formatDecimal(…)` without a locale inside a `set $Json = …`
+   statement and found 25 real instances here. It does not follow a String
+   variable: `DSJ_TrackMap` builds `$FirstX`/`$FirstY` with `formatDecimal` four
+   lines above a line the rule flagged, then concatenates them into `$Json`
+   twenty lines later, and that pair was not reported. Same defect, same
+   microflow, invisible. Following a String variable whose value reaches a JSON
+   assignment would close it.
+26. **MDL-WIDGET15 ignores complementary `visible:` expressions** (§91) — it
+   flagged `stripPos` and `stripDnf` on the Driver page as adjacent inline
+   `dynamictext` whose text concatenates. Their conditions are exact
+   complements (`finishPosition != empty` and `finishPosition = empty`), so they
+   can never both render. The rule already suppresses on `class` — which is why
+   the adjacent `stripRound` was not flagged — and negated conditions on the
+   same term are the same kind of suppression.
+27. **`fmt --upgrade` writes a property list `fmt` will not tidy** (§91) — the
+   DEPR720 rewrite is correct and semantically identical (proved by `mxcli diff`
+   before and after), but it lands as a dangling `(` at the end of the previous
+   line, properties at that line's indent rather than one level in, a trailing
+   comma, and the closing `)` dedented *below* the properties. `--upgrade`
+   deliberately does not reformat, which is right; the problem is that running
+   plain `fmt` afterwards does not normalise it either — it lowercased `RETURNS`
+   and left the indentation alone. So the untidy layout is what reaches the
+   repository. Retidied by hand here.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -7051,3 +7125,294 @@ identify, not make. The two that did not move are also the two that were filed
 as observations rather than with a proposed mechanism. Worth remembering next
 time: **an issue that names the target closes faster than one that names the
 symptom.**
+## 91. `1a4dce0`: a splice that will not edit inside a loop, and lint that found 25 real bugs
+
+*Verified 2026-10-11 against `ako/mxcli` main at `1a4dce0` — 443 commits (226
+non-merge) after `0cac3621`, the build §89 ran on. Everything below was executed
+against this project or a throwaway `git worktree` of it. Where a measurement
+needed a second pass to mean anything, the second pass is quoted.*
+
+The branch was 45 commits behind `main` and PR #7 had merged, so this starts
+with a rebase onto `main`; §90 is the one commit that had not landed, carried
+over and renumbered.
+
+### The deprecation migration works, and the project is now `mdl 2`-ready
+
+`mxcli check` over the 25 backend scripts reported **11 deprecations in 7
+files**, both "Refused from `mdl 2`":
+
+| Code | × | What |
+|---|---|---|
+| MDL-DEPR139 | 6 | a published OData service's trailing `authentication microflow M.F` clause becomes the last property, `Authentication: (microflow M.F)` |
+| MDL-DEPR720 | 5 | `call rest service`'s trailing `header`/`body`/`timeout` clauses become one property list, `(Headers: …, Body: …, Timeout: …)` (ADR-0013) |
+
+`mxcli fmt --upgrade` rewrote all 11, named each on stderr
+(`rewrote MDL-DEPR720 x5`) and left nothing un-rewritable. §89 predicted the
+whole migration was "one `fmt --upgrade -w` per file plus a re-exec". Measured
+here, that is true.
+
+What makes it trustworthy is the equivalence check rather than the absence of
+errors. For each of the 7 files, `mxcli diff` before and after:
+
+```
+model/backend/02-live-service.mdl    0 new, 0 modified, 0 removed -> identical
+model/backend/05-cached-service.mdl  0 new, 0 modified, 0 removed -> identical
+model/backend/14-weekend.mdl         0 new, 0 modified, 0 removed -> identical
+model/backend/15-live.mdl            1 unit -> same 1 unit
+model/backend/16-ops-procedures.mdl  2 units -> same 2 units
+model/backend/19-live-sync.mdl       1 unit -> same 1 unit
+model/backend/21-admin-resources.mdl 1 unit -> same 1 unit
+```
+
+The only textual difference between the two diffs was the deprecation warnings
+disappearing. Three of the seven would write nothing at all, which is the
+stronger case: a wrong rewrite would have shown up as a modification.
+
+Then verified past the model, because `AuthTypes` is the kind of property that
+can be present and wrong:
+
+- both apps rebuilt and booted, **0 CE codes** in either run log;
+- `show odataservices` reports `AuthTypes: Microflow` on all six;
+- all six `$metadata` endpoints return **200** with the `x-api-key` header, and
+  `GET /odata/f1/Seasons?$top=2` returns real rows.
+
+One wrinkle, filed as issue 27: the DEPR720 rewrite lands as a dangling `(`,
+properties at the previous line's indent, a trailing comma, and the closing `)`
+dedented below them. `--upgrade` deliberately does not reformat — that is right,
+it is what keeps the diff reviewable — but plain `fmt` afterwards does not tidy
+it either; it lowercased `RETURNS` and left the indentation alone. Retidied by
+hand, and `diff` confirmed the tidy was also semantically neutral.
+
+### `create or modify microflow` is a splice now, and it will not edit inside a loop
+
+This is the finding that matters most for how this project works.
+
+Thirty-four expression edits across 13 `DSJ_*` microflows (below) produced 13
+refusals, all the same shape:
+
+```
+✗ exec would refuse this statement: create or modify microflow
+  Formula1Frontend.DSJ_Career: this change cannot be spliced into the stored
+  flow: the Loop at (1295, 200) changes inside its body; the splice does not
+  edit inside a loop, and replacing the whole loop would rebuild every node it
+  holds. Nothing was written.                            [MDL-V1-REBUILD]
+```
+
+`mxcli help MDL-V1-REBUILD` says it is deliberate and version-gated:
+
+```
+Before mdl 1:  rebuilds the whole stored flow when the change cannot be spliced
+               in, which resets curves, drops merges and renumbers element IDs
+From mdl 1:    a refusal that names the change the splice cannot make, with
+               nothing written
+```
+
+So this is §88's phenomenon a second time — *a header that changes the meaning
+of text that did not change*. Every `DSJ_` microflow in this project builds its
+JSON inside a `LOOP`, so under `mdl 1;` **none of them can be edited by
+re-exec**. There is no override: `--no-check` does not bypass it (the refusal is
+in exec's write path, not the pre-flight), and `create or replace` is a
+deprecated alias with the same meaning.
+
+The refusal itself is excellent — it names the flow, the loop, its coordinates,
+and the exact remedy, down to the variable:
+
+```
+alter microflow Formula1Frontend.DSJ_Career {
+  replace loop $S in $Seasons with begin loop $S in $Seasons begin … end loop; end; };
+```
+
+But what it protects is layout mxcli itself computed. These 13 flows were
+written by MDL and have never been opened in Studio Pro; the curves and element
+IDs the rebuild would reset are generated too. The cost is concrete: a script
+set that provisions a fresh project can no longer update an existing one, which
+is the property §52 was written to establish.
+
+The route that keeps idempotency — one-off `drop microflow` ×13, then re-exec
+the three defining scripts and the security script:
+
+```
+13 dropped, 37 units written
+second full pass: sha256 over every .mxunit + .mpr unchanged
+```
+
+`drop` is careful about the consequence, which is worth quoting because it is
+the kind of warning that saves a session:
+
+> Removed its execute grants to Formula1Frontend.Enthusiast. A create of
+> Formula1Frontend.DSJ_Career later in this script or session carries them; a
+> create in a later run does not — do the drop and the create in one script, or
+> re-grant.
+
+Filed as issue 23, with the target named rather than the symptom: mxcli knows
+which element IDs it wrote, so either rebuild when no element came from Studio
+Pro, or take an explicit opt-in.
+
+### New lint found 25 real bugs in shipped code
+
+**MDL-JSONNUM01** — *`set 'Json' builds JSON with formatDecimal(…) and no
+locale: it formats in the user's language, so a Dutch user gets '12,50' and the
+JSON is invalid for them only.* Twenty-five instances across 13 `DSJ_*`
+microflows, 20 of them in `05-chart-data.mdl`, the script that feeds every Vega
+chart.
+
+This is a real defect that no previous check could see, and the reason it
+survived is instructive: both apps are `en_US`-only, so it cannot fire today.
+It would fire the first time anyone enabled a second language — and it would
+fire as *every chart on every screen is empty, for some users*.
+
+Fixed all 34 call sites: `formatDecimal($x, '0.##')` → `toString(round($x, 2))`,
+with the precision read off the old format string (`'0'`→0, `'0.#'`→1,
+`'0.##'`→2, `'0.###'`→3, `'0.0000'`→4). That is the remedy the rule names and
+the one the upstream Vega pack itself now uses. Verified after: 0 JSONNUM01,
+the apps rebuild clean, and the charts still render.
+
+**The rule is lexical, and this file shows what that costs** (issue 25).
+`DSJ_TrackMap` assigns `$FirstX`/`$FirstY` with `formatDecimal` four lines above
+a line the rule *did* flag, then concatenates them into `$Json` twenty lines
+later to close the track outline. Same bug, same microflow, not reported —
+because the `formatDecimal` call is not lexically inside a `set $Json`
+statement. After the automated pass the file was briefly inconsistent: every
+point locale-independent except the closing one. Fixed by hand.
+
+**MDL-WIDGET15 is a false positive here** (issue 26). It flagged `stripPos` and
+`stripDnf` on the Driver page as adjacent inline `dynamictext` whose text
+concatenates. Their conditions are exact complements —
+`visible: finishPosition != empty` and `visible: finishPosition = empty` — so
+they can never both render. The page was left alone. The rule already suppresses
+on `class`, which is why the equally adjacent `stripRound` was not flagged;
+negated conditions on the same term are the same kind of suppression.
+
+Also new and firing: **MDL-PERF01**, 31 times, on `create … commit` inside a
+loop ("one database round trip per iteration"). Correct, and left as-is — the
+refresh microflows it names are a bulk import where the cost is understood, and
+changing them is a performance task, not this one.
+
+### `playwright check` replaces the hand-written browser walk — with one gap
+
+`mxcli playwright check /p/narrative /p/replay /p/narrate -p app.mpr` signs in
+by itself and prints one line per page. Three pages verified in one call, no
+script, no screenshot to read:
+
+```
+login demo_administrator (demo user)
+page /p/narrative  title="Mendix - Race narrative"  text=1388  console-errors=0
+page /p/replay     title="Mendix - Replay"          text=1363  console-errors=0
+page /p/narrate    title="Mendix - Narrate"         text=2027  console-errors=0
+OK 3 page(s)
+```
+
+This is what earlier sessions built by hand out of `playwright-cli` sequences
+and screenshot reads. `--assert-count 'svg.marks>=1'` is the precise
+chart-rendering test — `svg.marks` is Vega's own root class — and it is what
+proved the 20 Vega charts still render after the number-format change.
+
+**The gap** (issue 24): a URL that resolves to no page still reports OK.
+
+```
+/p/no-such-page-xyzzy  title="Mendix - Narrate"  text=2122  console-errors=0  OK  exit 0
+/p/season/2023         title="Mendix - Narrate"  text=2122  console-errors=0  OK  exit 0
+```
+
+Both are the app's fallback page rendering cleanly, with identical text length.
+The help anticipates exactly this problem for sign-in — "a sign-in form instead
+of the page" fails the check — but not for navigation fallback, and exit status
+is what CI and an agent key off. With `-p`, the page/URL table and each page's
+`Title` are in hand and the verdict already prints the rendered title.
+
+Two corrections to my own first reading, both caught by re-measuring:
+
+- I first recorded a failed assertion as exiting 0. That was `tail`'s status
+  through a pipe. Measured without the pipe, a failed assertion exits 1, exactly
+  as documented. The OK-for-a-missing-page result survived the same re-check.
+- I guessed the fallback was a role redirect, since the Season page is granted
+  only to `Enthusiast` and the check had signed in as `demo_administrator`.
+  Re-run with `--role Enthusiast` it still landed on the fallback, so the
+  hypothesis was wrong: the deep link itself does not resolve. The page's
+  parameter is an **external** entity (`F1Cached.Seasons`), which is probably
+  §86's territory and is not chased here.
+
+The assertions also told the truth where the default verdict did not:
+`/p/narrative` reported OK with **no chart in the DOM at all** — zero elements
+whose class contains `chartNar`. Not a defect: `LiveNarrative` and `LiveLap` are
+empty in a freshly created database (`SELECT count(*)` = 0 on both, while
+`Season` has 77 and `Driver` 917), so the data views have no object and their
+contents never mount. A correct empty state that the one-line verdict cannot
+distinguish from a working page.
+
+### `run --local --detach` retires the process-management hack
+
+Both apps started detached and returned once serving — backend 119s, frontend
+44s — with `run-state.json` recording the arguments:
+
+```
+running: http://127.0.0.1:8080/ (pid 12601, up 54s, no watch, build #1 (boot))
+running: http://127.0.0.1:8180/ (pid 13229, up  3s, no watch, build #1 (boot))
+```
+
+`run restart` stopped in 300–500 ms and came back on the same ports, which is
+how both apps picked up the model changes above. This replaces the
+`setsid`/nohup/`pkill` handling earlier sessions used, and the generated
+`run-local` skill now says so in as many words: *use it "whenever you would
+reach for nohup, a sleep/grep poll loop or pkill"*. Whether a detached app
+survives the container idling is a property of this environment, not of mxcli,
+and is not tested here.
+
+### Open issue 9 closed, and the skills arrived mid-session
+
+`mxcli init --sync-skills` refreshed **100 files across 74 skills** plus
+`.ai-context/`, stamped the version, and the skills became visible to this
+session immediately — `run-local` and `test-app`, the two that document the
+features above, among them. Issue 9 was "`.ai-context/skills/` does not follow a
+binary upgrade"; it does now, by one command, and the command refuses when the
+binary is older than the stamp.
+
+They are left untracked and gitignored: they are reproducible from the binary,
+and the two hand-written packs under `.claude/skills/` stay tracked.
+
+### Issues re-verified by execution
+
+| # | Verdict |
+|---|---|
+| 9 | **fixed** — `init --sync-skills`, 100 files / 74 skills |
+| 13 | **narrowed to one case** — listview `OnClick` round-trips (back as `Action: call microflow …`) and so does `sort by` on a database datasource; a **GALLERY's `PageSize` is still dropped silently** |
+| 14 | **fixed** — `PageSize: 30` written and read back |
+| 15 | **unchanged** — `SET $N = 12.5` on an Integer, and `IF $S/raceCount > 0` on a possibly-unset Long, both still `Check passed!` |
+| 18 | **still open** — `marketplace install` has no dependency flag. But the destructive path is now opt-in and labelled: `--allow-format-change` reads *"use the legacy `mx module-import` path, which rewrites an MPR v2 project as v1 (one-way)"*, which hardens §90's issue-16 fix |
+| 20 | **fixed at the language level** — the writer now *defaults* `Provider` when empty rather than assigning it; the grammar takes any identifier; `Provider: OpenAI` parses and checks clean. `mxcli syntax agents model` still documents one value |
+
+`mxcli fix hashes` is new and clean on both apps — 519/519 and 541/541 units, 0
+mismatches, 0 missing, 0 orphans — checked before and after every write above.
+
+### Two smaller things
+
+`mxcli check` now simulates the set in order: *"Checking 15-narrative.mdl
+against a scratch copy of the project holding what the 14 file(s) before it
+write"*, and when one file would be refused it says so and carries on without
+it. That ordering is how all 13 MDL-V1-REBUILD refusals surfaced before exec
+touched anything. The side effect is that `mxcli check model/<app>/*.mdl` exits
+1 on this project's canonical set, because `CREATE DEMO USER` and the foundation
+entity scripts are deliberately not re-runnable — so the set is not a bare CI
+gate without excluding those files.
+
+And §90's one-time convergence recurred from a different fix. `keep interior
+blank lines in /** */ doc comments` means a re-run re-adds the blank comment
+lines the old writer dropped: 6 backend units on pass 1, then byte-identical.
+Worth repeating because it is now twice: **after an upgrade, the first pass is
+not the measurement — the second one is.**
+
+### What this round says about the loop
+
+Of the six issues this project had open and testable, four moved, and the two
+that moved furthest were the two that named a mechanism — issue 9 asked for the
+sync to follow the binary and got `--sync-skills`; issue 20 pointed at two
+specific lines and those two lines changed. Issue 18, filed as an observation,
+is where it was.
+
+The new finding is the other direction. MDL-V1-REBUILD is a *good* change —
+version-gated, loudly reported, with the remedy spelled out — that is wrong for
+this project specifically, because it protects hand-drawn layout in a project
+with none. That is not a bug report so much as a missing distinction, and it is
+the first thing in 91 sections where the right fix is for mxcli to notice
+something about itself: it wrote every element ID in these flows, so it already
+knows nothing would be lost.
