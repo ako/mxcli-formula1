@@ -1762,7 +1762,11 @@ the scripts quietly stop being the source of truth.
    (`exec --rebuild-flows`, or a `Rebuild:` property) instead of requiring the
    author to restate the loop body in a second statement form. Workaround that
    keeps idempotency, measured in §91: one-off `drop microflow` then re-exec —
-   37 units written once, and a full second pass byte-identical.
+   37 units written once, and a full second pass byte-identical. **Filed
+   upstream as ako/mxcli#1106**, with the narrow case named: `mfmutator`'s own
+   comments call this a gap rather than a decision ("alter does not splice
+   inside a loop *yet*", `splice.go:234`), and a same-shape body differing in
+   one activity's expression needs no re-layout at all.
 24. **`mxcli playwright check` reports OK for a URL that resolves to no page**
    (§91) — `/p/no-such-page-xyzzy` and a deep link whose key does not resolve
    both returned `title="Mendix - Narrate"  text=2122  console-errors=0`,
