@@ -1812,7 +1812,7 @@ the scripts quietly stop being the source of truth.
    plain `fmt` afterwards does not normalise it either — it lowercased `RETURNS`
    and left the indentation alone. So the untidy layout is what reaches the
    repository. Retidied by hand here.
-28. **`make build` requires rsync, which nothing declares** (§92) — `sync-mods`
+28. **`make build` requires rsync, which nothing declares** (§92, ako/mxcli#1217) — `sync-mods`
    (PR #1213, one commit old when measured) is the third rsync target in the
    Makefile and the only one without a `cp -R` fallback; its two siblings,
    `sync-skills` and `sync-skill-packs`, both carry one for exactly this case.
@@ -1821,7 +1821,7 @@ the scripts quietly stop being the source of truth.
    CONTRIBUTING's prerequisite list (Go, Git, Make, ANTLR4, a JDK). Copying the
    siblings' fallback fixes it; so would naming rsync as a prerequisite.
 29. **`mxcli playwright check <url>` fails a page it has just signed into and
-   rendered** (§92) — with an explicit URL the verdict is "the sign-in form is
+   rendered** (§92, ako/mxcli#1216) — with an explicit URL the verdict is "the sign-in form is
    showing, not the page" and exit 1; the same command with the URL omitted
    passes. Deterministic, 6/6 each way on a freshly restarted runtime. The
    sign-in it reports as absent demonstrably happened: `System.User.LastLogin`
@@ -1840,7 +1840,7 @@ the scripts quietly stop being the source of truth.
    this project's whole §91 verification path, which used explicit URLs
    throughout.
 30. **A bare `create or modify module role` silently drops the role's
-   description** (§92) — `create or modify module role Formula1Backend.ApiUser;`
+   description** (§92, ako/mxcli#1218) — `create or modify module role Formula1Backend.ApiUser;`
    reported `Modified module role` and erased the stored description (unit
    616 → 527 bytes). Bounded before reporting: grants are untouched (they live
    on the entity, keyed by role name — `describe entity` byte-identical across
@@ -7496,7 +7496,7 @@ sync-mods:        @rsync …          # no fallback
 
 `build` depends on `sync-all`, so this is a hard stop, and rsync is not in
 CONTRIBUTING's prerequisites (Go, Git, Make, ANTLR4, a JDK). `apt-get install
-rsync` fixed it. Filed as issue 28.
+rsync` fixed it. Filed as issue 28 (ako/mxcli#1217).
 
 Worth recording separately: the build script reported success anyway, because
 its exit code was read through a pipe to `tail`. That is the same mistake §91
@@ -7578,7 +7578,7 @@ fail.** And the sign-in the explicit-URL run says did not happen *did* happen �
 (`POST /xas/` with them by hand returns 200 and a session cookie), and the
 runtime log records 48 client-side Vega warnings inside the window of a failing
 run, which is the signed-in page drawing its charts. The verdict is computed
-against the login page the browser has already left. Filed as issue 29.
+against the login page the browser has already left. Filed as issue 29 (ako/mxcli#1216).
 
 Two wrong turns on the way there, both worth recording because each looked
 conclusive:
@@ -7684,7 +7684,7 @@ by measurement before reporting: the role's **grants are untouched** (they live
 on the entity, keyed by role name — `describe entity` byte-identical across the
 write), and `describe module role` emits the description, so describe → exec
 round-trips safely. Only the hand-written minimal form loses it, and "ensure
-this role exists" is exactly when you would write it. Filed as issue 30.
+this role exists" is exactly when you would write it. Filed as issue 30 (ako/mxcli#1218).
 
 ### MPR007 finds a broken landing in both apps
 
