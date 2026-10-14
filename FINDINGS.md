@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it) |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1742,8 +1742,15 @@ the scripts quietly stop being the source of truth.
    `javasource/<module_path>/`, with the placeholder/whitelist/drift discipline
    the widget path already has, closes it. Pack drafted and validated in
    `.claude/skills/packs/mendix-odata-pushdown/`.
-23. **`create or modify microflow` cannot update a flow whose change is inside a
-   loop, and there is no override** (§91) — MDL-V1-REBUILD. From the `mdl 1;`
+23. ~~**`create or modify microflow` cannot update a flow whose change is inside a
+   loop, and there is no override** (§91)~~ — **fixed, verified in §92:**
+   ako/mxcli#1106, closed by PR #1110, took the narrow route the issue argued
+   for. A body of the same shape is edited in place (`spliced: 1 replaced`),
+   nested loops included; adding, removing or moving a node in a body keeps the
+   refusal. Measured as a true splice, not a quiet rebuild: `describe … with
+   handles` before and after differs only in the changed expression, with every
+   `@position`, the loop's `@anchor` and the `@merge` *inside* the body intact.
+   Original text: — MDL-V1-REBUILD. From the `mdl 1;`
    header, `create or modify microflow|nanoflow` splices into the stored flow to
    keep Studio Pro's curves, merges and element IDs, and refuses rather than
    rebuild when the splice cannot reach the change; `mdl 0` rebuilt. A `SET`
@@ -1778,7 +1785,9 @@ the scripts quietly stop being the source of truth.
    rendered title — comparing the two and failing on a mismatch is mechanical.
    Everything else about the command held up: a failed `--assert-count` exits 1,
    and the assertions are what caught a page reporting OK with every chart
-   missing from the DOM.
+   missing from the DOM. **Not re-testable in §92** — reaching a nonexistent URL
+   needs explicit-URL mode, which issue 29 broke, so its FAIL on `020f4572b`
+   says nothing either way. Still open, still unmeasured on the current build.
 25. **MDL-JSONNUM01 is lexical, so one variable hop hides the bug** (§91) — the
    rule catches `formatDecimal(…)` without a locale inside a `set $Json = …`
    statement and found 25 real instances here. It does not follow a String
@@ -1803,6 +1812,44 @@ the scripts quietly stop being the source of truth.
    plain `fmt` afterwards does not normalise it either — it lowercased `RETURNS`
    and left the indentation alone. So the untidy layout is what reaches the
    repository. Retidied by hand here.
+28. **`make build` requires rsync, which nothing declares** (§92) — `sync-mods`
+   (PR #1213, one commit old when measured) is the third rsync target in the
+   Makefile and the only one without a `cp -R` fallback; its two siblings,
+   `sync-skills` and `sync-skill-packs`, both carry one for exactly this case.
+   `build` depends on `sync-all`, so on a machine without rsync the build stops
+   at `make: rsync: No such file or directory … Error 127`, and rsync is not in
+   CONTRIBUTING's prerequisite list (Go, Git, Make, ANTLR4, a JDK). Copying the
+   siblings' fallback fixes it; so would naming rsync as a prerequisite.
+29. **`mxcli playwright check <url>` fails a page it has just signed into and
+   rendered** (§92) — with an explicit URL the verdict is "the sign-in form is
+   showing, not the page" and exit 1; the same command with the URL omitted
+   passes. Deterministic, 6/6 each way on a freshly restarted runtime. The
+   sign-in it reports as absent demonstrably happened: `System.User.LastLogin`
+   advances on every failing run, the credentials return 200 and a session
+   cookie when posted to `/xas/` by hand, and the runtime log records 48
+   client-side Vega warnings inside the failing run's window — the signed-in
+   page drawing its charts. The verdict is computed against a login page the
+   browser has already left. Two confounds ruled out by measurement: stale
+   credentials (disproved by the direct POST) and the trial runtime's session
+   cap (real, documented, and absent — zero cap markers written during the
+   reproduction). Second half of the same issue: `loginFailureHint` exists for
+   that cap and never fires here, because it is only appended when
+   `opts.RuntimeLogPath` is set and the `playwright check` path does not set it
+   — so the command most likely to exhaust the cap is the one that cannot
+   explain it, and the marker sat 1,215 bytes from EOF, 29 times over. Breaks
+   this project's whole §91 verification path, which used explicit URLs
+   throughout.
+30. **A bare `create or modify module role` silently drops the role's
+   description** (§92) — `create or modify module role Formula1Backend.ApiUser;`
+   reported `Modified module role` and erased the stored description (unit
+   616 → 527 bytes). Bounded before reporting: grants are untouched (they live
+   on the entity, keyed by role name — `describe entity` byte-identical across
+   the write) and `describe module role` emits the description, so describe →
+   exec round-trips safely. Only the hand-written minimal form loses it, which
+   is exactly the "ensure this role exists" idiom `create module role` pushes
+   you towards by erroring when the role exists. Either keep an unstated
+   description, as the 0.26.0 DateTime-Localize fix did for `alter entity`, or
+   say what was cleared in the output.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -7420,3 +7467,260 @@ with none. That is not a bug report so much as a missing distinction, and it is
 the first thing in 91 sections where the right fix is for mxcli to notice
 something about itself: it wrote every element ID in these flows, so it already
 knows nothing would be lost.
+
+## 92. `020f4572b`: the loop splice landed, and a browser check that fails a page it just rendered
+
+Built from `ako/mxcli` main three days after §91: **292 commits, 160 non-merge**,
+spanning release 0.26.0 and the work after it. §91's headline issue was filed
+upstream as ako/mxcli#1106 and is **closed**, by PR #1110 — so this section
+starts by testing the fix I asked for, then works outward through the release.
+
+### The build needs rsync now, and does not say so
+
+`make build` failed before anything could be tested:
+
+```
+make: rsync: No such file or directory
+make: *** [Makefile:79: sync-mods] Error 127
+```
+
+`sync-mods` is one commit old (PR #1213, the companion-mod embed). It is the
+third rsync target in the Makefile and the only one without a fallback — its two
+siblings both carry `|| { rm -rf …; cp -R …; }` for exactly this case:
+
+```make
+sync-skills:      @rsync … || { … cp -R .claude/skills/mendix/. cmd/mxcli/skills/; }
+sync-skill-packs: @rsync … || { … cp -R .claude/skills/packs/. cmd/mxcli/skillpacks/; }
+sync-mods:        @rsync …          # no fallback
+```
+
+`build` depends on `sync-all`, so this is a hard stop, and rsync is not in
+CONTRIBUTING's prerequisites (Go, Git, Make, ANTLR4, a JDK). `apt-get install
+rsync` fixed it. Filed as issue 28.
+
+Worth recording separately: the build script reported success anyway, because
+its exit code was read through a pipe to `tail`. That is the same mistake §91
+caught itself making with `playwright check`, in this repo's own script rather
+than in a measurement — fixed by capturing `$?` before the pipe.
+
+### MDL-V1-REBUILD: the splice now edits inside a loop, and it is a real splice
+
+The test was the exact case #1106 described — one expression inside one `SET`
+inside a `LOOP`, in `DSJ_Career`, `round($S/points, 2)` to `3`:
+
+```
+check:  no flow change exec would refuse
+diff:   1 modified — exec would write 1 unit(s)
+exec:   Modified microflow: Formula1Frontend.DSJ_Career (spliced: 1 replaced)
+        17 documents already in sync (unchanged, not listed)
+```
+
+Where §91 got 13 refusals and "Nothing was written", this writes one unit and
+says what it did. `spliced: 1 replaced` is the useful part: it names the
+operation, so a caller can tell a splice from a rebuild without inspecting the
+model.
+
+And it is genuinely a splice. `describe … with handles` before and after differs
+in exactly two lines — the changed expression and the handle comment that quotes
+it. All 13 layout annotations survive byte-for-byte, including `@merge(820, 130)`
+on the `if` *inside* the loop body and the loop's own `@anchor(from: right, to:
+left)` — the two things `mxcli help MDL-V1-REBUILD` says a rebuild destroys.
+
+One measurement went further than needed and is worth keeping because it
+disproved a suspicion. Reverting the edit and re-exec'ing left the unit
+semantically identical (`describe` byte-identical to the pre-edit baseline) and
+stable (a third exec wrote nothing), but **not** byte-identical to the committed
+file. A `bson dump` diff across the round trip showed three values moved: the
+replaced activity's `$ID`, its nested `Action` `$ID`, and the `SequenceFlow`
+`OriginPointer` rewritten to match. My first reading was that the new in-loop
+path renumbers where it should carry identity. The control says otherwise —
+splicing a statement *outside* any loop in the same flow churns the same way
+(2 `$ID`s plus both its pointers):
+
+```
+in-loop splice:    96 identities before, 96 after — 3 re-minted
+top-level splice:  96 identities before, 96 after — 4 re-minted
+```
+
+So re-minting the replaced element is how `replace` has always worked, not
+something #1110 introduced; the identity count is conserved, every pointer is
+rewritten in the same pass, and no `GUID` appears in the diff at all. Not a
+defect. The only consequence is that an edit and its revert leave a three-value
+binary diff in the MPR with no semantic content.
+
+### `playwright check` fails a page it has just signed into and rendered
+
+This is the find that cost the most and matters most, and the first two
+explanations I reached for were both wrong.
+
+With an explicit URL, on a freshly restarted runtime:
+
+```
+$ mxcli playwright check http://frontend.local:8180/ -p Formula1Frontend.mpr --role Enthusiast
+  ERR    [Startup] Could not create a session because the server responded with 401
+  HTTP   401 POST /xas/
+  FAIL   the sign-in form is showing, not the page (pass --user/--password or --role)
+FAIL 1 of 1 page(s)                                                      exit 1
+```
+
+The same command with the URL removed, same role, same runtime:
+
+```
+$ mxcli playwright check -p Formula1Frontend.mpr --role Enthusiast
+page home  title="Mendix - Narrate"  text=2021  console-errors=0
+OK 1 page(s)                                                             exit 0
+```
+
+Six runs of each, deterministic: **project mode 6/6 pass, explicit URL 6/6
+fail.** And the sign-in the explicit-URL run says did not happen *did* happen —
+`System.User.LastLogin` for `fan` advances during every failing run (11:27:15 →
+11:28:36 on the run quoted above), the credentials are independently valid
+(`POST /xas/` with them by hand returns 200 and a session cookie), and the
+runtime log records 48 client-side Vega warnings inside the window of a failing
+run, which is the signed-in page drawing its charts. The verdict is computed
+against the login page the browser has already left. Filed as issue 29.
+
+Two wrong turns on the way there, both worth recording because each looked
+conclusive:
+
+- **"The credentials are stale."** Disproved by the direct `POST /xas/` (200 +
+  session) and by `LastLogin` advancing.
+- **"The trial runtime's session cap."** mxcli has an excellent hint for exactly
+  this — "the unlicensed local runtime allows only a handful of concurrent
+  sessions, and the login page reports that as *Sign in failed* as if the
+  password were wrong" — and the marker was in the log 40 times, so for a while
+  this looked like the whole answer. It was a genuine confound, not the cause: my
+  own hand-rolled curl login held a slot it never released, and once I restarted
+  the runtime the explicit-URL failure reproduced 6/6 with **zero** cap markers
+  written during the run. The cap is real, it is documented, and it was not this.
+
+The hint is worth a note of its own. It never printed, although
+`loginFailureHint` reads the last 64 KB of the runtime log and the marker sat
+1,215 bytes from EOF, 29 times over. It is only appended on the
+`login failed: %w` path and only when `opts.RuntimeLogPath` is set, which the
+`playwright check` path does not set — so the one command most likely to exhaust
+the cap is the one that cannot explain it. Folded into issue 29.
+
+Consequences for this project. `playwright check` was §91's replacement for the
+hand-written browser walk, and §91 used explicit URLs throughout, so that
+verification path is down until this is fixed; project mode covers the home page
+only (`OK 1 page(s)` — the page/URL table yields one entry). Charts are still
+verified, by assertion rather than by eye, and the assertion is live rather than
+silently passing:
+
+```
+--assert-count 'svg.marks>=1'      OK, exit 0
+--assert-count 'svg.marks>=9999'   FAIL … got 5, exit 1
+```
+
+Five Vega roots on the home page, and a failed assertion still exits 1 as §91
+corrected itself to say. **Issue 24 could not be re-tested at all** — a
+nonexistent URL is only reachable in explicit-URL mode, so its FAIL this time
+says nothing about whether that gap was fixed. It stays open and unmeasured.
+
+### `fix property-sets` had real work to do here, and it was all ours
+
+New in 0.26.0 (mendixlabs/mxcli#1373): every element must carry the property
+*names* Studio Pro writes for the project's Mendix version, or Studio Pro's
+merge engine throws the first time it saves the document — while `mx check`, the
+build and the runtime all stay green. This project has been written by a dozen
+mxcli builds, so it is exactly the population the command is for:
+
+```
+Formula1Backend   8 of 519 units: 26 key(s) added, 0 stripped
+Formula1Frontend  4 of 541 units:  4 key(s) added, 0 stripped
+```
+
+All 12 are microflows, and all 12 are the narrative family — `Narrative_Sweep`,
+`Nar_Pits`, `Nar_Swings`, `DS_NarrativeHead` and their siblings — the newest
+code in the repo. Nothing was stripped, both apps re-report "Every unit already
+has the property names Studio Pro writes", both are `fix hashes`-clean, unit
+counts are unchanged at 519 / 541, and both still build and boot with no CE
+codes. All six published OData services return 200 with real rows through the
+`x-api-key` microflow auth, so the rewrite did not disturb the services.
+
+A detail that cost a false hypothesis: the property-set repair is **not** why
+the spliced unit differed from its committed bytes. Restoring the committed
+bytes and re-running `--dry-run` reported the same 4 units, `DSJ_Career` not
+among them.
+
+### The breaking change does not break this project
+
+0.26.0 stops mxcli creating a module role on its own (mendixlabs/mxcli#1474) and
+flags it breaking for scripts that granted to `<Module>.User` without creating
+it. Checked across all 40 scripts: nothing here relies on it. The only `.User`
+references are `System.User`, which is Mendix's own, and
+`ODataPushdown.User`, which the pack creates explicitly. The full set still
+checks with 0 errors; the only two files that fail are the two that always have
+— `03-persistent-entities.mdl` (bare `create entity` on entities that exist) and
+`07-demo-users.mdl` — for the documented reason, not a new one.
+
+Worth noting the auto-created role from the old behaviour is still sitting in
+this project: `Formula1Backend.User`, described "Auto-created default role for
+mxcli document access". The change is correctly not retroactive, so it stays
+until someone removes it.
+
+### Two of this project's own long-standing warts are now fixable
+
+**`07-demo-users.mdl` is re-runnable.** Its header has said since §31 that
+`CREATE DEMO USER` has no `or modify` form, so the file halts on a second run and
+needs `--continue-on-error`. Both forms exist now:
+
+```
+CREATE OR MODIFY DEMO USER 'f1api' (…)   ->  Unchanged demo user: f1api
+```
+
+Idempotent, writes nothing on a second run. Migrated both statements and
+rewrote the header, which was stale twice over: it also claimed 06 is not
+re-runnable for want of `create or modify module role`, and 06 has used that
+form for some time.
+
+**A bare `create or modify module role` silently drops the role's
+description.** Found by accident while testing the above.
+`create or modify module role Formula1Backend.ApiUser;` reported
+`Modified module role` and erased "Read the published OData services. Nothing
+else. This is who Formula1Frontend logs in as." — unit 616 → 527 bytes. Bounded
+by measurement before reporting: the role's **grants are untouched** (they live
+on the entity, keyed by role name — `describe entity` byte-identical across the
+write), and `describe module role` emits the description, so describe → exec
+round-trips safely. Only the hand-written minimal form loses it, and "ensure
+this role exists" is exactly when you would write it. Filed as issue 30.
+
+### MPR007 finds a broken landing in both apps
+
+New lint rule: a user role none of whose module roles may open the home page it
+lands on. It fires once per app, and both are real:
+
+- **Backend**: `ApiConsumer` lands on `MyFirstModule.Home_Web`, the stock page
+  from `mxcli new`, which it was never granted. Harmless in practice — the
+  backend is an OData provider nobody browses — but it is CE2729 per widget the
+  moment the app moves to Production security.
+- **Frontend**: `User` lands on `Formula1Frontend.Narrate` with none of its four
+  module roles granted it. My first guess was that `User` is an unused leftover;
+  it is not — there is a stock `demo_user` mapped to it, and
+  `playwright check --role User` signs in as exactly that account. So a real
+  demo account lands on a page it cannot populate.
+
+Both are left as found: they are security configuration, and this round was
+about testing the build. Flagged rather than changed.
+
+### Re-measured, and the rest of the release
+
+`CONV011` still reports 31 commit-in-a-loop warnings on the backend after the
+rule was widened to count `change … commit` as well as `create … commit`, so
+this project had no instances of the newly covered form. Lint totals: backend
+685 issues (0 errors, 285 warnings), frontend 432 (0 errors, 121 warnings).
+
+The reference-set trap behind the new `add $X to $Obj/Module.Assoc` — where
+`change $Obj (Assoc = $X)` in a loop keeps only the last row, with no complaint
+from `check`, `mx check` or the runtime — **cannot occur here**, and that is
+measured rather than assumed: every `ReferenceSet` in both apps belongs to the
+`System` module, and `select count(*) … where AssociationType = 'ReferenceSet'
+and ModuleName != 'System'` returns 0 for both. A read-only historical dataset
+never needed a many-to-many. The one candidate a grep turned up,
+`CHANGE $H (RaceWinners = $Winners)`, assigns a `Long` counter.
+
+`playwright close` fails with `exec: "playwright-cli": executable file not found
+in $PATH`. Not a defect — `open`/`close`/`status`/`verify` drive the separate
+`playwright-cli` session tool, while `check` carries its own browser. Recorded
+because the error reads like a broken install when it is a different tool.
