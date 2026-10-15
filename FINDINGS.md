@@ -1851,6 +1851,27 @@ the scripts quietly stop being the source of truth.
    description, as the 0.26.0 DateTime-Localize fix did for `alter entity`, or
    say what was cleared in the output.
 
+31. **Version support info is hard to find, and absent from the syntax pages**
+   (§92 follow-up, ako/mxcli#1367) — `show features`, with its `for version X`
+   and `added since X` forms, answers "what does Mendix N support" completely,
+   and `checkFeature` enforces the same registry at 26 statement sites. But it
+   is not a `mxcli syntax` topic and does not appear in `syntax --json`, while
+   narrower statements (`SHOW STRUCTURE`, `MOVE`, `SEARCH`) each have one — so
+   the index that the generated CLAUDE.md names as the first stop for writing
+   MDL implies the statement does not exist. Found by reading
+   `mdl/executor/cmd_features.go`. Separately, the syntax entries carry a
+   `min_version` on **8 of 115** (3 domain-model, 5 workflow, hand-written in
+   two of the seven `features_*.go` files) where `sdk/versions/*.yaml` holds
+   68 for Mendix 11, 55 for 10 and 19 for 9 — and the two tables have drifted
+   apart in both directions: `workflow.boundary-event` has `MinVersion
+   "10.6.0"` in the syntax table and no feature at all in the YAML, so
+   `show features` never mentions boundary events; `data-transformer` is the
+   reverse, 11.9.0 in the YAML and no version on its syntax page. `exec`/
+   `check` gate on the YAML, so they and `syntax` disagree about what is
+   version-gated. Proposed fix in the issue: one registry, with an
+   `area`/`name` pair on each syntax entry — the 26 `checkFeature` call sites
+   already encode that mapping.
+
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
 Four of them retired a workaround in this repo — the OData action, custom
