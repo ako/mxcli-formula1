@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1871,6 +1871,21 @@ the scripts quietly stop being the source of truth.
    version-gated. Proposed fix in the issue: one registry, with an
    `area`/`name` pair on each syntax entry — the 26 `checkFeature` call sites
    already encode that mapping.
+
+32. **A relative `MetadataUrl` is stored as an absolute `file://` URL, so the
+   model carries the authoring machine's path** (§93) — `01-odata-clients.mdl`
+   writes `MetadataUrl: './contracts/f1-live-metadata.xml'`, which is portable,
+   but the stored client holds
+   `file:///workspaces/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml`
+   — resolved against the working directory of whichever container ran the
+   script. The committed model therefore names a path that exists on no other
+   machine, and re-executing the same unchanged script in a different checkout
+   rewrites all five clients (`/workspaces/…` → `/home/user/…`), which is 5 of
+   the 20 writes a full re-exec produces. The build does not care, because the
+   file is only read when the contract is refreshed, so this stays invisible
+   until the environment moves. If Mendix requires an absolute URL in that
+   property, the narrower ask is enough: leave the stored value alone when it
+   resolves to the same file, so re-exec is idempotent across checkout paths.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -7745,3 +7760,155 @@ never needed a many-to-many. The one candidate a grep turned up,
 in $PATH`. Not a defect — `open`/`close`/`status`/`verify` drive the separate
 `playwright-cli` session tool, while `check` carries its own browser. Recorded
 because the error reads like a broken install when it is a different tool.
+
+## 93. PR 1497: a 309-file driver swap, tested against its own base
+
+PR [ako/mxcli#1497](https://github.com/ako/mxcli/pull/1497) removes the
+deprecated v1 BSON driver (`go.mongodb.org/mongo-driver` v1.17.10, flagged
+CVE-2026-107325 with no fix on that line) and leaves mxcli on v2 alone. 309
+files, +1,381/−1,100, five commits.
+
+It is a refactor whose whole claim is that nothing changes, and its own
+description names the way that claim could fail:
+
+> A failed type assertion is not an error, so the value is silently dropped and
+> the next write emits a document with a property missing — which Studio Pro
+> refuses to merge.
+
+That is a claim about **written bytes**, which is the one thing this project is
+set up to measure. Tested at head `36f8cc426` against base `4c0e494e8` (main),
+both built here, with the base as a control throughout — because a refactor's
+output has to be compared with something, and §92's measurements were taken on
+a different build.
+
+### The premise, confirmed on both builds
+
+```
+go version -m mxcli   (PR head)   dep go.mongodb.org/mongo-driver/v2 v2.9.2
+go version -m mxcli   (base/main) dep go.mongodb.org/mongo-driver     v1.17.10
+                                  dep go.mongodb.org/mongo-driver/v2  v2.9.2
+```
+
+Zero v1 import paths anywhere in the tree, and `go.mod` requires only v2. The
+control build downloading v1.17.10 while the PR build does not is the clearest
+form the claim could take.
+
+The PR's three regression guards pass, and the one that matters most is written
+so it cannot pass vacuously — the trap subtest `t.Fatal`s *if the driver ever
+starts behaving*, with the reason:
+
+> plain Unmarshal now nests bson.M in a bson.M — the driver changed and
+> UnmarshalDocM may no longer be needed; re-measure before removing it
+
+The two tests the PR says caught the original breakage — `scheduledevents` and
+`TestNoopRerun_ReportsUnchanged` — also pass here.
+
+### The project-level test: identical output, where output is deterministic
+
+Re-exec the whole set (the odatapushdown module, 25 backend scripts, 15
+frontend scripts, `12-folders` last) against the already-provisioned project,
+with each build, from the same committed starting bytes.
+
+```
+                        writes   files touched
+base run 1 (main)          20          23
+base run 2 (main)          20          23
+PR head                    20          23
+```
+
+The write lists are **identical**, line for line, between main and the PR. Then
+the byte comparison, which needs a noise floor first, because two runs of the
+*same* binary do not produce the same bytes:
+
+```
+same binary, two runs:   7 of 23 files differ
+PR vs base:              7 of 23 files differ — exactly the same 7
+```
+
+So every file whose content is deterministic at all — 16 of 23 — is
+byte-identical between the PR and main, and the 7 that differ are the 7 that
+differ anyway. For the failure mode the PR names, the direct detector is
+`fix property-sets`, and after the PR build had done its writes:
+
+```
+Formula1Backend   Checked 519 unit(s) … Every unit already has the property names Studio Pro writes.
+Formula1Frontend  Checked 541 unit(s) … Every unit already has the property names Studio Pro writes.
+```
+
+Nothing dropped. Both apps `fix hashes`-clean, unit counts unchanged.
+
+### The three areas the PR says broke, round-tripped
+
+Each `describe`d and the output re-executed:
+
+- **Scheduled event** (the PR's "13 properties where Studio Pro writes 14"):
+  `Unchanged scheduled event: Formula1Backend.SE_NarrativeBuild`.
+- **Settings** (the PR's *"refusing to write a settings document that would drop
+  every part"* guard): `4 documents already in sync`, guard not tripped.
+- **Icon and image lookups**: `Unchanged navigation profile 'Responsive'`, with
+  all 8 menu items keeping their `Atlas_Core.Atlas.*` icons — including the
+  hyphenated ones that need quoting (`"time-clock"`, `"org-chart"`,
+  `"user-neutral-group"`, `"layout-list"`). Image collections read back fine,
+  though all 7 belong to marketplace modules rather than this project.
+
+Beyond that: both script sets `check` with 0 errors (only the two known
+non-re-runnable files fail, `03-persistent-entities.mdl` and the frontend's
+`12-demo-user.mdl`, which still uses the bare `CREATE DEMO USER` that §92
+migrated in the backend's `07`), both apps build and boot at build #1 with no
+CE codes, all six published OData services return 200 with real rows through
+the `x-api-key` microflow auth, and `playwright check` passes in project mode
+with `svg.marks>=1`.
+
+**Verdict: no regression found.** The one thing a project this size can add to
+106 green test packages is that the bytes it writes into a real 1,060-unit
+model are the same bytes, and they are.
+
+### What the test turned up about this project instead
+
+The re-exec was supposed to write nothing. It writes 20 documents — on main as
+much as on the PR, so this is ours, not the driver swap's. Three causes, two of
+them real:
+
+1. **Five OData clients carry an absolute path.** `MetadataUrl` is stored as
+   `file:///workspaces/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml`
+   and this container mounts the repo at `/home/user/mxcli-formula1`, so every
+   re-exec rewrites all five. The committed value is from the devcontainer. A
+   model that cannot be re-executed in a different checkout path without
+   churning is a portability bug in the scripts, and it has been invisible
+   because the path only changed when the environment did.
+2. **Five pages are `Replaced`, not spliced.** `Season`, `Weekend`,
+   `Constructor`, `Driver` and `Admin` are rebuilt on every run, which
+   renumbers their element IDs — and those four of the five are exactly the
+   self-referencing screens `model/README.md` documents as needing two passes.
+   This is where the 7-file noise floor comes from: a rebuild is deterministic
+   in meaning and not in bytes. The flow splice (§91, §92) has no page
+   equivalent in these scripts.
+3. **One microflow write is a genuine improvement landing late.**
+   `Fcst_RaceLength` gains interior blank lines in its `/** */` documentation —
+   the stored unit was written by a build that stripped them, and the current
+   one preserves them (mendixlabs/mxcli#1300). It will write once and then
+   settle.
+
+The consequence worth keeping: **this project cannot be byte-verified across
+runs** the way §91 and §92 verified single statements. Those measurements were
+sound because they re-exec'd one script and compared one unit; a full-set
+re-exec has a 7-file floor, and any future byte claim has to establish that
+floor first rather than assume zero.
+
+### Corrected twice, both mine
+
+Two grep patterns gave me wrong numbers, and both were caught by looking at the
+data rather than the summary:
+
+- `grep "icon\|ICON"` found nothing in the navigation describe and briefly
+  looked like the PR dropping icon lookups. The stored spelling is `Icon:` —
+  neither pattern matches, and `-i` finds all eight.
+- My write-counting pattern was `^(Created|Modified|Dropped|Moved) `, which
+  misses `Replaced`. The real count is 20, not the 15 I first recorded, and the
+  five missing lines were the page rebuilds that explain the whole noise floor.
+  The PR-vs-base comparison was re-run with the complete verb set before being
+  believed.
+
+Unrelated and still open: issue 29 (ako/mxcli#1216) reproduces unchanged on
+this build — `playwright check` with an explicit URL still fails a page it has
+signed into and rendered, so project mode remains the only working form.
