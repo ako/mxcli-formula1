@@ -1886,6 +1886,7 @@ the scripts quietly stop being the source of truth.
    until the environment moves. If Mendix requires an absolute URL in that
    property, the narrower ask is enough: leave the stored value alone when it
    resolves to the same file, so re-exec is idempotent across checkout paths.
+   **Filed upstream as ako/mxcli#1499.**
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
