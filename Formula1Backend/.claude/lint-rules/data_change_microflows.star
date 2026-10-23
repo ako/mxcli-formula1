@@ -38,7 +38,7 @@ def check():
     # Check each persistent entity
     for entity in entities():
         # Skip non-persistent and view entities (they don't need data-change microflows)
-        if entity.entity_type != "PERSISTENT":
+        if entity.entity_type != "Persistent":
             continue
 
         # Get all references to this entity

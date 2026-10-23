@@ -56,7 +56,7 @@ def check():
 
     for entity in entities():
         # Skip non-persistent entities (they don't need business keys)
-        if entity.entity_type != "PERSISTENT":
+        if entity.entity_type != "Persistent":
             continue
 
         # Skip system/administration entities that typically use internal IDs

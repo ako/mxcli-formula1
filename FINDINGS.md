@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output) |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1632,7 +1632,13 @@ the scripts quietly stop being the source of truth.
    refreshes the skills, the bundled lint rules and the mxcli section of
    CLAUDE.md/AGENTS.md from the running binary, stamps the version, and refuses
    when the binary is older than the stamp. Measured here: 100 file(s) across 74
-   skills plus `.ai-context/`, in one command. Original text: — re-confirmed
+   skills plus `.ai-context/`, in one command. **§94 found the other half:**
+   §91 gitignored only the *root* `/.ai-context/` and `/.claude/skills/`, and the
+   two app folders carry the same trees — 426 generated files of churn per
+   refresh (103 skills + 5 companion files per app, plus 124 retired flat `.md`
+   skills). Ignored the same way, keeping `mendix-bulk-oql-dml` and `widgets`
+   tracked, and keeping `.claude/lint-rules/` tracked because it is configuration
+   whose currency is what makes the prefix options work. Original text: — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
@@ -1887,6 +1893,23 @@ the scripts quietly stop being the source of truth.
    property, the narrower ask is enough: leave the stored value alone when it
    resolves to the same file, so re-exec is idempotent across checkout paths.
    **Filed upstream as ako/mxcli#1499.**
+
+33. **QUAL004 does not count a navigation menu item, and the catalog has no edge
+   for a published OData service's microflow properties** (§94, ako/mxcli#1639)
+   — two gaps, one rule and one graph. `NAV_Season`, `NAV_Weekend`,
+   `NAV_Constructor` and `NAV_Driver` are each the target of
+   `menu item '…' ( OnClick: call microflow … )`; `refs` reports the reference
+   as `NAVIGATION … menu_item` and QUAL004 still says "is not called from
+   anywhere". Deeper: a published service's `ReadMode: microflow X` and
+   `Authentication: (microflow X)` are not edges in the catalog's reference
+   graph at all, so `refs` and `impact` report nothing for the 34 `Read_`
+   microflows behind the six services and for `AuthenticateApiClient` — 35 of
+   the backend's 43 findings, with the rule advising "Remove if unused". Filed
+   with a wider claim that **was wrong**: the page-action half was measured
+   against stale bundled rule copies in this repo, and the current rule does
+   count page actions. Retitled and corrected by comment; what the correct rule
+   gives back is seven genuinely unreferenced `DS_`/`DSJ_` microflows, plus
+   `MyFirstLogic` from `mxcli new`.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -7913,3 +7936,199 @@ data rather than the summary:
 Unrelated and still open: issue 29 (ako/mxcli#1216) reproduces unchanged on
 this build — `playwright check` with an explicit URL still fails a page it has
 signed into and rendered, so project mode remains the only working form.
+
+## 94. `a059cb3c7`: a lint option that needed its rules refreshed first, and a correction
+
+PR 1497 is merged, so §93's subject is now in main. All five issues this project
+filed upstream — #1216, #1217, #1218, #1367, #1499 — are **still open**, so the
+targets this round are other people's fixes. 107 issues were closed in the four
+days before this build, most of them `[up#NNN]` mirrors of the older tracker.
+
+### The regression floor from §93 paid off immediately
+
+§93 had to establish that a full re-exec of this project is not byte-stable:
+7 of the 23 files it touches differ between two runs of the *same* binary,
+because five pages are `Replaced` rather than spliced and a rebuild renumbers
+element IDs. That measurement was stored, so this round cost one command:
+
+```
+                            writes   files touched
+§93, PR 1497 head              20          23
+§94, main a059cb3c7            20          23
+
+new main vs §93's recorded output:  7 of 23 files differ
+the known non-deterministic set:    the same 7, exactly
+```
+
+The write lists are identical line for line, and every file whose content is
+deterministic at all is byte-identical to what §93 recorded three days earlier.
+That is the whole regression answer for the model-writing path, and it took
+minutes rather than the two control builds §93 needed.
+
+### The page-rewrite refusal does not fire here, and the reason matters
+
+mendixlabs/mxcli#1622 now refuses `create or modify` / `create or replace` of a
+stored page holding a widget MDL cannot author — a classic data grid, reference
+selector, drop-down or reference set selector — because executing a `describe`
+of such a page used to rebuild it *without* them and report only
+`Replaced page M.P`.
+
+This project replaces five pages on every re-exec, so it was the obvious thing
+to break. It does not: all five scripts check clean. The refusal is for a widget
+**the statement does not declare by name**, and these pages declare their grids
+(`datagrid dgStandings (…)`, eight of them across five scripts). So the
+distinction the fix draws is exactly the right one, and a project that authors
+its pages in MDL rather than describing them is unaffected.
+
+### CONV020 finds nothing here, and the zero is real
+
+The new rule reports an object created in a microflow and never committed,
+returned or passed on — in the field, a seed microflow that logged "Seeded 20"
+against a table with 0 rows. Both apps: **0 findings.**
+
+A zero from a rule you have just met is worth one more command, so the rule was
+given something to find:
+
+```
+create or modify microflow Formula1Backend.TmpConv020Probe () returns Boolean as $Ok
+begin
+  $S = create Formula1Backend.Season ();
+  ...
+```
+```
+⚠ Microflow 'Formula1Backend.TmpConv020Probe' creates $S (Formula1Backend.Season)
+  without committing it, and never commits, returns or passes it on: the object is
+  discarded when the microflow ends. [CONV020]
+  → Commit $S (or create it with commit), return it, or pass it on; if it is only
+    a temporary value, use a non-persistent entity.
+```
+
+It fires, names the variable, the entity and three remedies. So the zero is a
+real clean bill rather than a rule that never ran — which it would have been
+worth knowing either way, because the backend's whole job is bulk loading and
+every create there is committed.
+
+### The prefix options work — after the rules are current
+
+mendixlabs/mxcli#1509 makes CUSTOM002's valid prefixes and QUAL004's entry-point
+prefixes `lint-config.yaml` options. This project is exactly the reported case:
+its conventions are `DS_`, `DSJ_`, `Read_`, `Nar_`, `ASU_`, `SE_`, `Fcst_` and a
+dozen more, and it was carrying **160 findings** that said so.
+
+Configured both apps, re-ran lint, and nothing changed. Counts identical to the
+digit. The obvious reading was that the feature does not work.
+
+It was not that. A control settled whether the file was even read:
+
+```
+QUAL002: {enabled: false}   ->   685 issues -> 533, QUAL002 findings 0
+```
+
+Read, and `enabled` honoured. The options were ignored because **the rules
+themselves were stale**. This project commits its `.claude/lint-rules/*.star`,
+they were written by an older mxcli, and `orphaned_elements.star` still had
+
+```python
+ENTRY_POINT_PREFIXES = ["ACT_", "SCH_", "WS_", "REST_", "OData_"]
+```
+
+hardcoded, with no `get_list_option` anywhere in any of the 29 files. I had
+diagnosed a rule from its output without checking which version of the rule was
+running. `mxcli init --sync-skills` refreshed 14 bundled rules and added two
+(`conv018`, `conv019`), and then:
+
+| | before | after |
+|---|---|---|
+| Backend CUSTOM002 | 99 | **4** |
+| Frontend CUSTOM002 | 61 | **1** |
+| Backend QUAL004 | 60 | **43** |
+| Frontend QUAL004 | 82 | **19** |
+
+The four CUSTOM002 survivors are all genuine, and one is a find:
+`AuthenticateApiClient` and `RecordPrediction` are honestly unprefixed,
+`Probe_DynamicSql` is a leftover probe deliberately left out of the config so it
+keeps being reported, and **`MyFirstLogic`** is the stock microflow from
+`mxcli new` that has been sitting in this project unnoticed since §1.
+
+### Issue 33, filed and then substantially corrected
+
+The QUAL004 residue looked like a reference-graph bug, and ako/mxcli#1639 was
+filed claiming 78 of 142 findings were referenced elements — page datasources,
+navigation menu items, the after-startup microflow, a scheduled event, and a
+page. Then the rules were refreshed, and most of that claim evaporated: the
+current rule **does** count page actions. `DSJ_Career` and `DS_DriverSeasons`
+are no longer flagged; the `Admin` page, `ASU_LoadCacheIfEmpty` and
+`Narrative_Sweep` are no longer flagged.
+
+Re-measured on current rules, asking `refs` about every single finding:
+
+```
+Formula1Backend   QUAL004 = 43, of which refs finds references for  0
+Formula1Frontend  QUAL004 = 19, of which refs finds references for  4
+```
+
+The four are `NAV_Season`, `NAV_Weekend`, `NAV_Constructor`, `NAV_Driver` —
+each the target of `menu item '…' ( OnClick: call microflow … )`, which `refs`
+reports as `NAVIGATION … menu_item` and QUAL004 does not count. That half
+stands, and so does the other half, which the rule refresh cannot touch because
+`refs` is wrong about it too:
+
+```
+$ mxcli refs Formula1Backend.Read_Drivers -p Formula1Backend.mpr
+(no references found: nothing in the catalog's reference graph points at …)
+```
+
+against `02-live-service.mdl:373`, `ReadMode: microflow Formula1Backend.Read_Drivers`.
+34 such microflows here, plus `AuthenticateApiClient` named by
+`Authentication: (microflow …)` on all six services — 35 of the backend's 43.
+Because that gap is in the graph rather than the rule, `refs` and `impact` are
+wrong about them, which are the two commands you would consult before deleting
+one. The issue was retitled and the correction posted as a comment rather than
+quietly edited.
+
+What the corrected rule gives back is worth more than the complaint: seven
+`DS_`/`DSJ_` microflows with **no references at all** — `DSJ_Retirements`,
+`DSJ_SeasonTeams`, `DS_SeasonFact`, `DS_SeasonLeaders`, `DS_ConstructorFact`,
+`DS_SeasonConstructorStandings`, `DS_TeamLatestStanding` — plus the `Cached_`,
+`Live_` and `Count_` Senna pairs, `MyFirstLogic`, and the `TmpLv` probe page
+§91 already flagged. That is real dead code this project had been dismissing as
+rule noise, and it is the reason the config deliberately does **not** whitelist
+`DS_`/`DSJ_`.
+
+### Open issue 9, the app-level half
+
+§91 closed issue 9 by gitignoring the root `/.ai-context/` and `/.claude/skills/`,
+because `init --sync-skills` writes them from the running binary. The two app
+folders have the same trees and they were not covered: this run produced **426
+generated files** of churn across them — 103 skill files and 5 companion files
+per app, plus 124 retired flat `.md` skills superseded by the `<name>/SKILL.md`
+layout. Ignored them the same way, keeping the two genuinely project-specific
+skills (`mendix-bulk-oql-dml`, `widgets`) tracked.
+
+`.claude/lint-rules/` and `lint-config.yaml` stay tracked on purpose. They are
+configuration, mendixlabs/mxcli#1615 refreshes a bundled rule only while its
+content is a version mxcli shipped, and having them current is precisely what
+made the prefix options work.
+
+### Not exercised, and said so
+
+Four of this release's clusters have no footprint here, and it is worth naming
+them rather than implying coverage: the consumed-REST work (list markers,
+`Response: json` parsing, `alter consumed rest service`, the operation-drop
+warning) — this project has **no** consumed REST service documents, only five
+inline `CALL REST SERVICE` calls; the non-persistent specialization fix — no
+entity here uses `extends`; MDL-CHANGE01 and the `System.owner` XPath refusal —
+no script names `System.owner` or `System.changedBy`; and `marketplace package`,
+which was not run.
+
+### Regression, verified
+
+Both apps: `fix property-sets` reports every unit complete, `fix hashes` matches
+every unit file, both build and boot at build #1 with no CE codes, all six
+published OData services return 200, and `playwright check` passes in project
+mode with `svg.marks>=1`. Lint totals moved 685 → 635 and 432 → 423, which is
+the prefix configuration less the two new rules.
+
+ako/mxcli#1216 reproduces unchanged: `playwright check` with an explicit URL
+still fails a page it has signed into and rendered, so project mode remains the
+only working form.

@@ -52,18 +52,29 @@ def check():
         if len(pii_attrs) == 0:
             continue
 
-        # Find roles with unconstrained READ
+        # Find roles that can read a PII attribute with no row constraint. The
+        # entity-level READ row is emitted when ANY member is readable, so it
+        # cannot answer this: a role granted `read (FullName)` has it too. The
+        # member row can. Its name is qualified for explicit member rights and
+        # bare when expanded from default rights, so match either spelling.
         unconstrained_roles = []
+        readable_pii = []
         for perm in permissions_for(e.qualified_name):
-            if perm.access_type == "READ" and perm.member_name == "" and not perm.is_constrained:
-                unconstrained_roles.append(perm.module_role_name)
+            if perm.access_type != "MEMBER_READ" or perm.is_constrained:
+                continue
+            for attr_name in pii_attrs:
+                if perm.member_name == attr_name or perm.member_name.endswith("." + attr_name):
+                    if perm.module_role_name not in unconstrained_roles:
+                        unconstrained_roles.append(perm.module_role_name)
+                    if attr_name not in readable_pii:
+                        readable_pii.append(attr_name)
 
         if len(unconstrained_roles) > 0:
             violations.append(violation(
                 message="Entity '{}' contains PII attributes ({}) and is readable without XPath row constraints by: {}".format(
                     e.qualified_name,
-                    ", ".join(pii_attrs),
-                    ", ".join(unconstrained_roles),
+                    ", ".join(readable_pii),
+                    ", ".join(sorted(unconstrained_roles)),
                 ),
                 location=location(
                     module=e.module_name,

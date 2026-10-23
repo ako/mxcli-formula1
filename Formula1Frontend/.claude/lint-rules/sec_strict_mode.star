@@ -27,6 +27,5 @@ def check():
     return [violation(
         message="Strict mode is disabled. This weakens XPath constraint enforcement and is relevant to CVE-2023-23835.",
         location=location(module="", document_type="security", document_name="ProjectSecurity"),
-        # mxcli/MDL cannot toggle strict mode — it is a Studio Pro-only setting.
-        suggestion="Enable strict mode in Studio Pro: Project Security > Enable 'Check security' and turn on strict-mode XPath validation (not settable via MDL).",
+        suggestion="Enable it with: ALTER PROJECT SECURITY STRICT MODE ON; (or in Studio Pro under Project Security).",
     )]

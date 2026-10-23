@@ -31,14 +31,16 @@ def check():
         if mf.activity_count > MAX_ACTIVITIES:
             loc = location(
                 module=mf.module_name,
-                document_type="Microflow",
+                document_type=mf.document_noun_title,
                 document_name=mf.qualified_name
             )
             v = violation(
-                message="Microflow '{}' has {} activities (max: {}). Consider splitting into smaller microflows.".format(
+                message="{} '{}' has {} activities (max: {}). Consider splitting into smaller {}s.".format(
+                    mf.document_noun_title,
                     mf.name,
                     mf.activity_count,
-                    MAX_ACTIVITIES
+                    MAX_ACTIVITIES,
+                    mf.document_noun
                 ),
                 location=loc,
                 suggestion="Extract logical sections into SUB_ microflows. This improves readability, testability, and reusability."
