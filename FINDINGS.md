@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output) |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1780,7 +1780,10 @@ the scripts quietly stop being the source of truth.
    comments call this a gap rather than a decision ("alter does not splice
    inside a loop *yet*", `splice.go:234`), and a same-shape body differing in
    one activity's expression needs no re-layout at all.
-24. **`mxcli playwright check` reports OK for a URL that resolves to no page**
+24. ~~**`mxcli playwright check` reports OK for a URL that resolves to no page**~~
+   — **fixed, verified in §95** with the remedy this entry proposed: the verdict
+   prints the resolved URL and fails on a mismatch ("the browser ended on
+   /p/narrate, not on /p/no-such-page-xyzzy", exit 1). Original text:
    (§91) — `/p/no-such-page-xyzzy` and a deep link whose key does not resolve
    both returned `title="Mendix - Narrate"  text=2122  console-errors=0`,
    `OK 1 page(s)`, exit 0: the app's fallback page rendering cleanly. The help
@@ -1818,7 +1821,11 @@ the scripts quietly stop being the source of truth.
    plain `fmt` afterwards does not normalise it either — it lowercased `RETURNS`
    and left the indentation alone. So the untidy layout is what reaches the
    repository. Retidied by hand here.
-28. **`make build` requires rsync, which nothing declares** (§92, ako/mxcli#1217) — `sync-mods`
+28. ~~**`make build` requires rsync, which nothing declares** (§92, ako/mxcli#1217)~~
+   — **fixed in code, verified in §95** (the issue is still open): `sync-mods`
+   now carries its siblings' `cp -R` fallback, verified with a stub rsync that
+   exits 1 — `make sync-mods` exits 0 and honours every exclusion. rsync is
+   still absent from CONTRIBUTING's prerequisites. Original text: — `sync-mods`
    (PR #1213, one commit old when measured) is the third rsync target in the
    Makefile and the only one without a `cp -R` fallback; its two siblings,
    `sync-skills` and `sync-skill-packs`, both carry one for exactly this case.
@@ -1826,8 +1833,11 @@ the scripts quietly stop being the source of truth.
    at `make: rsync: No such file or directory … Error 127`, and rsync is not in
    CONTRIBUTING's prerequisite list (Go, Git, Make, ANTLR4, a JDK). Copying the
    siblings' fallback fixes it; so would naming rsync as a prerequisite.
-29. **`mxcli playwright check <url>` fails a page it has just signed into and
-   rendered** (§92, ako/mxcli#1216) — with an explicit URL the verdict is "the sign-in form is
+29. ~~**`mxcli playwright check <url>` fails a page it has just signed into and
+   rendered** (§92, ako/mxcli#1216)~~ — **fixed, verified in §95:** explicit-URL
+   mode signs in and renders; `check <url> --role Enthusiast` on 127.0.0.1
+   reports `console-errors=0`, `OK`, exit 0, with `svg.marks>=1` passing.
+   Original text: — with an explicit URL the verdict is "the sign-in form is
    showing, not the page" and exit 1; the same command with the URL omitted
    passes. Deterministic, 6/6 each way on a freshly restarted runtime. The
    sign-in it reports as absent demonstrably happened: `System.User.LastLogin`
@@ -1845,8 +1855,9 @@ the scripts quietly stop being the source of truth.
    explain it, and the marker sat 1,215 bytes from EOF, 29 times over. Breaks
    this project's whole §91 verification path, which used explicit URLs
    throughout.
-30. **A bare `create or modify module role` silently drops the role's
-   description** (§92, ako/mxcli#1218) — `create or modify module role Formula1Backend.ApiUser;`
+30. ~~**A bare `create or modify module role` silently drops the role's
+   description** (§92, ako/mxcli#1218)~~ — **fixed, verified in §95:**
+   `Unchanged module role`, description intact, nothing written. Original text: — `create or modify module role Formula1Backend.ApiUser;`
    reported `Modified module role` and erased the stored description (unit
    616 → 527 bytes). Bounded before reporting: grants are untouched (they live
    on the entity, keyed by role name — `describe entity` byte-identical across
@@ -1878,7 +1889,7 @@ the scripts quietly stop being the source of truth.
    `area`/`name` pair on each syntax entry — the 26 `checkFeature` call sites
    already encode that mapping.
 
-32. **A relative `MetadataUrl` is stored as an absolute `file://` URL, so the
+32. ~~**A relative `MetadataUrl` is stored as an absolute `file://` URL, so the
    model carries the authoring machine's path** (§93) — `01-odata-clients.mdl`
    writes `MetadataUrl: './contracts/f1-live-metadata.xml'`, which is portable,
    but the stored client holds
@@ -1892,10 +1903,18 @@ the scripts quietly stop being the source of truth.
    until the environment moves. If Mendix requires an absolute URL in that
    property, the narrower ask is enough: leave the stored value alone when it
    resolves to the same file, so re-exec is idempotent across checkout paths.
-   **Filed upstream as ako/mxcli#1499.**
+   **Filed upstream as ako/mxcli#1499 — fixed, verified in §95:** a full
+   re-exec now writes 15 documents, not 20, and touches 19 files, not 23. The
+   arithmetic matches the number this entry reported.**~~
 
-33. **QUAL004 does not count a navigation menu item, and the catalog has no edge
-   for a published OData service's microflow properties** (§94, ako/mxcli#1639)
+33. **QUAL004 does not count a navigation menu item** (§94, ako/mxcli#1639 —
+   **half fixed, verified in §95**; closed as completed). The substantial half
+   landed: `ReadMode:`/`Authentication:` microflows are edges in the reference
+   graph now (`Read_Drivers` → `Found 1 reference`, `AuthenticateApiClient` →
+   `Found 6`), which took the backend's QUAL004 from 43 findings to 3. The
+   narrow half did not: the four `NAV_` microflows are still "not called from
+   anywhere" while `refs` finds each one's `NAVIGATION … menu_item`. Original
+   text, both halves:
    — two gaps, one rule and one graph. `NAV_Season`, `NAV_Weekend`,
    `NAV_Constructor` and `NAV_Driver` are each the target of
    `menu item '…' ( OnClick: call microflow … )`; `refs` reports the reference
@@ -1910,6 +1929,29 @@ the scripts quietly stop being the source of truth.
    count page actions. Retitled and corrected by comment; what the correct rule
    gives back is seven genuinely unreferenced `DS_`/`DSJ_` microflows, plus
    `MyFirstLogic` from `mxcli new`.
+
+34. **`playwright check` fails a rendering page because mxcli's own dev-tools
+   channel 502s on one hostname** (§95) — on `frontend.local:8180`, which is
+   this app's *configured* root URL, the page renders correctly
+   (`url=/p/narrate`, `title="Mendix - Narrate"`, `text=2021`) and the check
+   still exits 1 on `2 console error(s)`, both of them
+   `WebSocket connection to 'ws://frontend.local:8180/mxdevtools/' failed … 502`.
+   The identical check on `127.0.0.1:8180` reports `console-errors=0` and
+   passes. So a failure is reported against the app under test for mxcli's own
+   instrumentation, on the hostname the app is configured with. Either the
+   check should not count its own dev-tools channel as an app console error, or
+   `run --local` should serve `/mxdevtools/` on the configured host.
+35. **A source catalog build describes a pluggable widget by its generic form at
+   random** (§95) — `refresh catalog full source force` on an unchanged project
+   sometimes renders a widget as `vegachart chartReplayWin (…)` and sometimes as
+   `pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (…)`.
+   Measured over six runs of each of two builds: 3 of 6 and 4 of 6 runs had
+   between one and two occurrences, on one page, out of twenty such widgets.
+   Present on main, so not PR 1798's doing — but it means `catalog.source` is
+   not reproducible, which is what `search` and `show references` read, and it
+   undercuts any byte-identity claim about the source text measured from a
+   single run. The build describes up to eight documents in parallel while the
+   widget definitions are themselves catalog rows, which is the shape of a race.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -8132,3 +8174,157 @@ the prefix configuration less the two new rules.
 ako/mxcli#1216 reproduces unchanged: `playwright check` with an explicit URL
 still fails a page it has signed into and rendered, so project mode remains the
 only working form.
+
+## 95. PR 1798: a 70–93× read reduction, verified — and five of this project's own issues fixed
+
+PR [ako/mxcli#1798](https://github.com/ako/mxcli/pull/1798) makes
+`refresh catalog full source` read each unit file once instead of once per
+describe per lookup. 12 files, +341/−10. Tested at head `3259bba5b` against its
+base `9a8cf0bdd` (main), both built here.
+
+Two claims to check, and the PR is explicit about which matters: *"Count file
+opens, not seconds: the platform gap is per open."* An open costs microseconds
+on a warm Linux or macOS cache and about a millisecond under Windows Defender,
+so wall time on one platform says nothing about another.
+
+### The headline claim, reproduced independently
+
+`.mxunit` opens counted with `strace -e trace=openat`, which needs no
+instrumented build:
+
+| app | units | base opens | head opens | ratio | base time | head time |
+|---|---|---|---|---|---|---|
+| Formula1Backend | 519 | 36,521 | **524** | 70× | 4.2 s | 3.6 s |
+| Formula1Frontend | 541 | 50,900 | **546** | 93× | 7.2 s | 6.0 s |
+
+The head's open count is the unit count plus five — "at most one read per unit",
+exactly as claimed, on a project the author never saw. Wall time barely moves
+(14% and 17%), which is the PR's own point rather than a contradiction: on Linux
+with a warm cache the opens were never the wall-clock cost. A reviewer measuring
+seconds on this project would have concluded the change does almost nothing.
+
+### The correctness claim: every catalog table identical
+
+Ten tables dumped as sorted JSON with only snapshot-metadata keys stripped
+(`SnapshotDate`, `SnapshotId`, …; never content), base against head, both apps:
+
+```
+source 298 · strings 1665 · refs 1504 · permissions 669 · xpath_expressions 48
+microflows 128 · activities 1768 · entities 124 · pages 16 · objects 589   (backend)
+source 322 · strings 2157 · refs 1538 · permissions 1139 · xpath_expressions 91
+microflows 153 · activities 1533 · entities 114 · pages 25 · objects 713   (frontend)
+```
+
+All identical — **with one exception that turned out not to be the PR's.**
+
+### The exception: a pre-existing race in the source text
+
+One of the frontend's 322 source rows differed. In the base's text the Replay
+page's chart widget is described by its own keyword:
+
+```
+vegachart chartReplayWin ( spec: '{"$schema":...
+```
+
+and in the head's, by the generic fallback:
+
+```
+pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin ( spec: '{"$schema":...
+```
+
+Two of the project's twenty `vegachart` widgets, on one page. That is the wrong
+shape for a lookup that has broken — all twenty would fall back — so it was
+worth a second run before reporting. It did not reproduce. Sampling six runs of
+each binary, counting generic fallbacks per run:
+
+```
+base:  0 2 0 2 1 0   -> 3 of 6 runs affected
+head:  1 0 0 2 2 1   -> 4 of 6 runs affected
+```
+
+**So it happens on main too, and PR 1798 did not introduce it.** My first
+reading was an artifact of comparing one run against one run — the §93 lesson
+(establish the noise floor before claiming byte-identity) applied to someone
+else's claim this time, and it cuts both ways: the PR's "its source text is
+byte-identical" rests on one comparison, and the source text is not stable
+run-to-run on either side. The real defect is upstream of this PR: a source
+catalog build non-deterministically describes a pluggable widget by its generic
+`pluggablewidget '<id>'` form instead of its keyword, varying between runs of
+one unchanged project. The build describes up to eight documents in parallel,
+and the widget definitions are themselves catalog rows, which is the shape of a
+race. Filed separately.
+
+### Five of this project's own findings are fixed
+
+More of this round's value than the PR itself. Verified by re-running each
+original reproduction:
+
+- **Findings 24 — `playwright check` reported OK for a URL that resolves to no
+  page.** Fixed, and with the remedy §91 proposed. The verdict now prints the
+  resolved URL and compares it:
+  ```
+  page .../p/no-such-page-xyzzy  url=/p/narrate  title="Mendix - Narrate"  text=2116
+    FAIL   the browser ended on /p/narrate, not on /p/no-such-page-xyzzy      exit 1
+  ```
+- **Issue 29 / ako/mxcli#1216 — explicit-URL mode failed a page it had signed
+  into.** Fixed. `check <url> --role Enthusiast` on `127.0.0.1:8180` now gives
+  `url=/p/narrate title="Mendix - Narrate" text=2021 console-errors=0`, `OK`,
+  exit 0, with `svg.marks>=1` passing. §92 and §94 could only use project mode;
+  explicit URLs work again.
+- **Issue 30 / ako/mxcli#1218 — a bare `create or modify module role` erased the
+  description.** Fixed: `Unchanged module role: Formula1Backend.ApiUser`, the
+  description intact, nothing written.
+- **Issue 32 / ako/mxcli#1499 — a relative `MetadataUrl` stored as an absolute
+  `file://` URL.** Fixed, and the arithmetic matches the number this project
+  reported: a full re-exec now writes **15** documents, not 20, and touches 19
+  files, not 23. The five OData clients no longer churn.
+- **Issue 28 / ako/mxcli#1217 — `make build` needed rsync.** Fixed in code
+  (still open on GitHub): `sync-mods` has the `cp -R` fallback its siblings had.
+  Verified by control — with a stub `rsync` that exits 1 on PATH, `make
+  sync-mode` exits 0, populates the directory, and honours every exclusion
+  (`tests/`, `*.test.ts`, `tsconfig.json` all absent). rsync is still not in
+  CONTRIBUTING's prerequisites, which was the alternative fix.
+
+**Issue 33 / ako/mxcli#1639 is half fixed**, and was closed as completed. The
+substantial half landed: a published service's `ReadMode: microflow X` and
+`Authentication: (microflow X)` are now edges in the reference graph —
+`Read_Drivers` reports `Found 1 reference` where it reported none, and
+`AuthenticateApiClient` reports `Found 6`, one per service. That cleared the
+backend's QUAL004 from 43 findings to **3**, the 34 `Read_` microflows included.
+The narrow half did not: QUAL004 still reports the four `NAV_` microflows as
+"not called from anywhere" while `refs` finds each one's
+`NAVIGATION … menu_item`. Frontend QUAL004 is unchanged at 19.
+
+Only ako/mxcli#1367 (version support info absent from `mxcli syntax`) is
+untouched.
+
+### Regression
+
+Both apps: `fix property-sets` reports every unit complete, `fix hashes` matches
+every unit file, both build and boot at build #1 with no CE codes, all six
+published OData services return 200, `playwright check` passes in project mode
+with `svg.marks>=1`.
+
+One new observation, not a regression: on the `frontend.local` hostname —
+which is the app's own configured root URL — `playwright check` fails a page
+that renders perfectly, because mxcli's own dev-tools channel 502s and counts
+as app console errors:
+
+```
+page http://frontend.local:8180/  url=/p/narrate  title="Mendix - Narrate"  text=2021  console-errors=2
+  ERR    WebSocket connection to 'ws://frontend.local:8180/mxdevtools/' failed: … 502
+  FAIL   2 console error(s)                                                      exit 1
+```
+
+The same check on `127.0.0.1:8180` reports `console-errors=0` and passes. So the
+page is fine and the failure is mxcli's own instrumentation on one of the two
+hostnames this project deliberately uses. Recorded as issue 34.
+
+### Corrected
+
+Three of my own greps misled me this round, all caught by looking at the data:
+the catalog dumps that came back as four-row files were `select` hitting the
+10,000-line output limit, not tables differing; a frontend QUAL004 count of 37
+over 19 unique names was the rule's new suggestion text mentioning
+`rules.QUAL004.options.entry_point_prefixes`, so every finding matched the
+pattern twice; and the one-run source-text difference above.
