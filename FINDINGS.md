@@ -1931,7 +1931,7 @@ the scripts quietly stop being the source of truth.
    `MyFirstLogic` from `mxcli new`.
 
 34. **`playwright check` fails a rendering page because mxcli's own dev-tools
-   channel 502s on one hostname** (§95) — on `frontend.local:8180`, which is
+   channel 502s on one hostname** (§95, ako/mxcli#1800) — on `frontend.local:8180`, which is
    this app's *configured* root URL, the page renders correctly
    (`url=/p/narrate`, `title="Mendix - Narrate"`, `text=2021`) and the check
    still exits 1 on `2 console error(s)`, both of them
@@ -1942,7 +1942,7 @@ the scripts quietly stop being the source of truth.
    check should not count its own dev-tools channel as an app console error, or
    `run --local` should serve `/mxdevtools/` on the configured host.
 35. **A source catalog build describes a pluggable widget by its generic form at
-   random** (§95) — `refresh catalog full source force` on an unchanged project
+   random** (§95, ako/mxcli#1799) — `refresh catalog full source force` on an unchanged project
    sometimes renders a widget as `vegachart chartReplayWin (…)` and sometimes as
    `pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (…)`.
    Measured over six runs of each of two builds: 3 of 6 and 4 of 6 runs had
@@ -8318,7 +8318,7 @@ page http://frontend.local:8180/  url=/p/narrate  title="Mendix - Narrate"  text
 
 The same check on `127.0.0.1:8180` reports `console-errors=0` and passes. So the
 page is fine and the failure is mxcli's own instrumentation on one of the two
-hostnames this project deliberately uses. Recorded as issue 34.
+hostnames this project deliberately uses. Recorded as issue 34 (ako/mxcli#1800).
 
 ### Corrected
 
