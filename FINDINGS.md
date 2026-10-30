@@ -8465,7 +8465,7 @@ nothing tells the user to run it.
 
 So the right fix is still #1799, not anything in this PR — but #1799 stops being
 intermittent and cosmetic and becomes persistently wrong once cached, and the
-caching is what makes it so. Reported on both.
+caching is what makes it so. Reported on both (PR 1802 and ako/mxcli#1799).
 
 ### Regression
 
