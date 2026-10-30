@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b` |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1952,6 +1952,17 @@ the scripts quietly stop being the source of truth.
    undercuts any byte-identity claim about the source text measured from a
    single run. The build describes up to eight documents in parallel while the
    widget definitions are themselves catalog rows, which is the shape of a race.
+
+36. **`fix property-sets` reports seven MIXED property names on Mendix 11.14.0**
+   (§96, ako/mxcli#1805) — the new check (ako/mxcli#1505) finds property names
+   that some elements of a type carry and others lack, where the previous build
+   reported this project complete. Five are on the backend's domain model unit
+   (`LocalizeDate` and the four `NoGeneralization.Has*Attr`), two on published
+   OData services — including `PublishedMicroflow.Parameters` on 2 of 5, a
+   published OData *action*, which MDL could not author at all before `715bac5`
+   (§47, §48), so these documents may be the first of their kind. Reported with
+   the Mendix version because the command asks for exactly that; mxcli will not
+   fill a key it has not measured Studio Pro writing. Frontend clean.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -8328,3 +8339,142 @@ the catalog dumps that came back as four-row files were `select` hitting the
 over 19 unique names was the rule's new suggestion text mentioning
 `rules.QUAL004.options.entry_point_prefixes`, so every finding matched the
 pattern twice; and the one-run source-text difference above.
+
+## 96. Main's `#1791` and PR 1802: the incremental cache makes §95's race permanent
+
+Two performance changes, the last of the trio that began with #1789 (§95).
+`#1791` — every v2 command opening most unit files — is **on main** at
+`e3f7f061e`. `#1790` — every source rebuild re-describing everything — is
+[PR 1802](https://github.com/ako/mxcli/pull/1802) at `3e6025894`. PR 1798 merged.
+The "before" measurements use `3259bba5b`, the build §95 verified.
+
+### `#1791`: per-command opens, on two projects
+
+`.mxunit` opens counted with `strace -e trace=openat`, steady state (see the
+caveat below), with each command's output diffed between builds:
+
+| command | Formula1Backend (519 units) | Formula1Frontend (541 units) |
+|---|---|---|
+| `show modules` | 342 → **72** | 383 → **100** |
+| `describe microflow` | 239 → **35** | 251 → **171** |
+| `describe page` | 118 → **28** | 261 → **51** |
+
+**Every output byte-identical.** The claim holds on both apps. The ratios are
+smaller than the 8.9×/32×/11.6× reported on a 4,753-unit project, which is what
+fixed overhead does at a tenth the size.
+
+One outlier worth naming rather than averaging away: the frontend's
+`describe microflow` improves only 1.5×, against the backend's 6.8× for the same
+command. `DSJ_Career` still opens 171 of 541 units. The two projects differ in
+that the frontend's flows are referenced by pages carrying pluggable widgets, so
+something in that path still reads broadly. Not a defect — just the one cell
+where the win is thin.
+
+**A caveat the headline numbers hide.** The first run on the new build is
+*dearer* than the old one: `show modules` on the frontend measured 383 → **641**
+before settling at 100. The index moves to `unit-index-2.idx`, so the first
+command after an upgrade builds it from scratch by reading everything. Both
+index files then coexist (45,729 and 35,926 bytes here), which the changelog
+says is deliberate so an older mxcli keeps its own. Worth knowing because the
+first command an agent runs after an upgrade pays it, and on Windows — the
+platform this whole trio is for — that one run costs more than the version it
+replaced.
+
+### Main's `fix property-sets` now reports mixed property sets, and this project has seven
+
+New on main (ako/mxcli#1505): the command also reports a property name that some
+elements of a type carry and others lack, as `MIXED`, and exits 1. §95 had both
+apps reporting "Every unit already has the property names Studio Pro writes" —
+and `3259bba5b` still says exactly that, so this is the new check finding what
+the old one could not, not a regression:
+
+```
+MIXED  DomainModels$DateTimeAttributeType.LocalizeDate: on 15 of 16 element(s)
+MIXED  DomainModels$NoGeneralization.HasChangedByAttr:   on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasChangedDateAttr: on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasCreatedDateAttr: on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasOwnerAttr:       on 81 of 84 element(s)
+MIXED  ODataPublish$EntitySet.ReadMode:          on 42 of 60; without it: F1AdminApi
+MIXED  ODataPublish$PublishedMicroflow.Parameters: on 2 of 5; only on: F1OpsApi
+7 property name(s) left as they are.
+```
+
+Backend only; the frontend is clean. Five of the seven are on one unit,
+`bf8b2a01` — the backend's domain model, which is also one of the seven files
+§93 found non-deterministic. The other two are on published OData services, and
+`PublishedMicroflow.Parameters` is a published OData *action*, which this project
+was the first thing to author at all (§47, §48) — so it is unsurprising that
+mxcli's measured table does not cover it. The command asks for these to be
+reported with the Mendix version, so they were (ako/mxcli#1805).
+
+### PR 1802: the incremental rebuild works
+
+Frontend, 322 source rows:
+
+```
+refresh catalog full source force                 7.9 s   322 described
+refresh catalog, nothing changed                  0.1 s   no work at all
+refresh catalog, after one microflow edit         4.5 s   320 reused, 2 described
+```
+
+Two reused, two described — the edited `DSJ_Career` and the page that names it,
+which is the dependency rule working. 1.8× here rather than the 3.4× reported on
+FactoryManagement, again a size effect.
+
+### The interaction: reuse makes §95's race permanent
+
+This is what this project could contribute that the PR's own tests cannot, and
+it needed §95's finding to even look for.
+
+The PR's safety argument is *"Anything the plan can't vouch for is described
+again, so reuse can only make a build faster; it can't change the result."* That
+is true for a describe that is a function of its input. §95 established that one
+describe here is not: a pluggable widget renders as `vegachart …` or as
+`pluggablewidget 'f1.widget.web.vegachart.VegaChart' …` depending on the run,
+in 3 to 4 of 6 runs (ako/mxcli#1799).
+
+First, the correctness claim, with the control that makes it readable:
+
+```
+incremental vs forced full run 1   IDENTICAL
+incremental vs forced full run 2   differs in 2 lines
+forced full run 1 vs run 2         differs in the same 2 lines   <- control
+```
+
+The two *forced full* builds disagree with each other, and the incremental
+matches one of them. The differing row is `Formula1Frontend.Constructor`: two
+`vegachart` keywords in one, two generic forms in the other. So the PR's
+byte-identity holds as far as it can be measured — but it is measured against a
+moving target, and a single comparison can pass or fail by luck.
+
+Then the consequence. With the cache holding the generic form for `Constructor`:
+
+```
+plain refresh #1   source: 320 reused, 2 described   generic form still there
+plain refresh #2   no work at all                    generic form still there
+plain refresh #3   no work at all                    generic form still there
+forced full ×4                                       generic form gone, 4 for 4
+```
+
+**A racy wrong describe is now sticky.** Before PR 1802 every rebuild
+re-described everything, so a bad row had a fresh chance of coming out right —
+roughly even odds each time. Now the row is reused for as long as its unit is
+unchanged, and the rebuilds that `search` and `show references` trigger after
+every save are exactly the plain ones that reuse it. Only `FORCE` clears it, and
+nothing tells the user to run it.
+
+So the right fix is still #1799, not anything in this PR — but #1799 stops being
+intermittent and cosmetic and becomes persistently wrong once cached, and the
+caching is what makes it so. Reported on both.
+
+### Regression
+
+The full re-exec writes the same **15** documents as §95, item for item (1
+constant, 1 database connection, 4 entities, 3 Java actions, 1 microflow, 5
+replaced pages), touching 18 files against §95's 19 — inside the seven-file
+non-determinism §93 measured. Both apps `fix hashes`-clean, both build and boot
+at build #1 with no CE codes, all six published OData services 200.
+`playwright check` with an **explicit URL** passes on loopback
+(`url=/p/narrate`, `console-errors=0`, `svg.marks>=1`, exit 0), so #1216 stays
+fixed. The splice now reports `spliced: 1 edited in place` where §92 saw
+`spliced: 1 replaced`.
