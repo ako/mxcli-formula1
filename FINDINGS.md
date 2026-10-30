@@ -8348,7 +8348,7 @@ Two performance changes, the last of the trio that began with #1789 (§95).
 [PR 1802](https://github.com/ako/mxcli/pull/1802) at `3e6025894`. PR 1798 merged.
 The "before" measurements use `3259bba5b`, the build §95 verified.
 
-### `#1791`: per-command opens, on two projects
+### `#1791`: per-command opens, on two projects (reported as ako/mxcli#1806)
 
 `.mxunit` opens counted with `strace -e trace=openat`, steady state (see the
 caveat below), with each command's output diffed between builds:
