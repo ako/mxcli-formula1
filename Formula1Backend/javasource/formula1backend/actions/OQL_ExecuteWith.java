@@ -14,13 +14,17 @@ import com.mendix.systemwideinterfaces.core.UserAction;
 
 /**
  * Execute one OQL DML statement carrying up to four bound variables.
+ * 
+ * 
  * Variables are written $Name in the statement and bound here by name, so a
  * value never becomes part of the statement text. That matters for the same
  * reason it matters in SQL: a merchant called O'Brien breaks a concatenated
  * statement and does not break a bound one.
+ * 
  * Types are declared rather than guessed. A slot with an empty name is skipped,
  * which is what makes one action serve a statement with one variable and a
  * statement with four.
+ * 
  * @param Statement An OQL insert, update or delete statement using $Name variables
  * @param Name1 Variable name without the $, or empty to skip
  * @param Value1 The value, as text; converted according to Type1

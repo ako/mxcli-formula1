@@ -14,12 +14,15 @@ import com.mendix.systemwideinterfaces.core.UserAction;
 
 /**
  * Run a statement and report what happened instead of throwing.
+ * 
  * Returns 'OK rows=N' or 'ERR <exception>: <message>'. This exists because the
  * grammar OQL DML accepts is not documented anywhere the model can see, so
  * finding out what a statement does is an experiment, and an experiment that
  * rolls the transaction back on the first surprise is a slow experiment.
+ * 
  * Not for production paths: a failure that returns a string is a failure the
  * caller can ignore. Use OQL_Execute there and let it throw.
+ * 
  * @param Statement An OQL statement to try
  * @returns 'OK rows=N' or 'ERR ...'
  */

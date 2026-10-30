@@ -14,10 +14,12 @@ import com.mendix.systemwideinterfaces.core.UserAction;
 
 /**
  * Execute one OQL DML statement. Returns the number of rows affected.
+ * 
  * This is the primitive the rest of the file builds on. It deliberately has no
  * variables: a statement with variables goes through OQL_ExecuteWith, so the
  * caller has to decide which values are data (bound, escaped) rather than
  * getting a string-concatenation habit for free.
+ * 
  * WHAT THIS BYPASSES. The statement runs in the database, inside the calling
  * microflow's transaction. It does not go through the object cache, so:
  * * no before/after-commit event handlers fire,
@@ -26,6 +28,7 @@ import com.mendix.systemwideinterfaces.core.UserAction;
  * * a client holding the object is not refreshed.
  * Use it for bulk work over rows nobody is looking at. For a single object a
  * user is editing, change and commit the object.
+ * 
  * @param Statement An OQL insert, update or delete statement
  * @returns Rows affected
  */

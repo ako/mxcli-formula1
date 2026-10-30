@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b` |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30 |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1930,8 +1930,11 @@ the scripts quietly stop being the source of truth.
    gives back is seven genuinely unreferenced `DS_`/`DSJ_` microflows, plus
    `MyFirstLogic` from `mxcli new`.
 
-34. **`playwright check` fails a rendering page because mxcli's own dev-tools
-   channel 502s on one hostname** (§95, ako/mxcli#1800) — on `frontend.local:8180`, which is
+34. ~~**`playwright check` fails a rendering page because mxcli's own dev-tools
+   channel 502s on one hostname** (§95, ako/mxcli#1800)~~ — **fixed, verified in
+   §97**, and root-caused better than I had it: not the runtime but the HTTPS
+   proxy, which Chromium sends `ws://` to while `no_proxy` listed only loopback
+   names. `console-errors=0` on `frontend.local` now. Original text: — on `frontend.local:8180`, which is
    this app's *configured* root URL, the page renders correctly
    (`url=/p/narrate`, `title="Mendix - Narrate"`, `text=2021`) and the check
    still exits 1 on `2 console error(s)`, both of them
@@ -1942,7 +1945,7 @@ the scripts quietly stop being the source of truth.
    check should not count its own dev-tools channel as an app console error, or
    `run --local` should serve `/mxdevtools/` on the configured host.
 35. **A source catalog build describes a pluggable widget by its generic form at
-   random** (§95, ako/mxcli#1799) — `refresh catalog full source force` on an unchanged project
+   random** (§95, ako/mxcli#1799; **still open, and now persistent — §97**) — `refresh catalog full source force` on an unchanged project
    sometimes renders a widget as `vegachart chartReplayWin (…)` and sometimes as
    `pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (…)`.
    Measured over six runs of each of two builds: 3 of 6 and 4 of 6 runs had
@@ -1953,8 +1956,10 @@ the scripts quietly stop being the source of truth.
    single run. The build describes up to eight documents in parallel while the
    widget definitions are themselves catalog rows, which is the shape of a race.
 
-36. **`fix property-sets` reports seven MIXED property names on Mendix 11.14.0**
-   (§96, ako/mxcli#1805) — the new check (ako/mxcli#1505) finds property names
+36. ~~**`fix property-sets` reports seven MIXED property names on Mendix 11.14.0**
+   (§96, ako/mxcli#1805)~~ — **fixed, verified in §97:** the seven unfillable
+   names became 3 units and 34 keys that the command now fills, and `describe`
+   prints the four entity-set modes. Original text: — the new check (ako/mxcli#1505) finds property names
    that some elements of a type carry and others lack, where the previous build
    reported this project complete. Five are on the backend's domain model unit
    (`LocalizeDate` and the four `NoGeneralization.Has*Attr`), two on published
@@ -8478,3 +8483,174 @@ at build #1 with no CE codes, all six published OData services 200.
 (`url=/p/narrate`, `console-errors=0`, `svg.marks>=1`, exit 0), so #1216 stays
 fixed. The splice now reports `spliced: 1 edited in place` where §92 saw
 `spliced: 1 replaced`.
+
+## 97. `5897690cd` (0.29.0): the full script set finally writes nothing
+
+Release 0.29.0, built from main after PRs 1798 and 1802 both merged. Much of it
+is this project's own lineage, and one result has never been true before.
+
+### The whole script set is idempotent
+
+Three consecutive full re-execs of all 41 scripts, from a converged state:
+
+```
+converged tree hash: 52a3fa4c2b4e0be3
+  pass 1: 0 writes, tree hash 52a3fa4c2b4e0be3
+  pass 2: 0 writes, tree hash 52a3fa4c2b4e0be3
+  pass 3: 0 writes, tree hash 52a3fa4c2b4e0be3
+```
+
+**Zero writes, byte-identical.** The arc, each step measured in its own section
+and each drop explained:
+
+| | writes per full re-exec |
+|---|---|
+| §93, §94 | 20 |
+| §95 (after ako/mxcli#1499) | 15 |
+| §97, first pass on this build | 12 |
+| §97, every pass after | **0** |
+
+Where the 12 went: two `Modified OData service` writes were the one-time
+property-set completion (#1805, below) — applying `fix property-sets` first
+removes them, which is how 15 became 12 and also what stopped three entity
+writes. The remaining 12 are one-time convergence. The three Java actions and
+the one microflow rewrite their documentation to add the blank comment lines the
+MDL source has and an older build stripped:
+
+```
+  /**
+   * Run a statement and report what happened instead of throwing.
++  *
+   * Returns 'OK rows=N' or 'ERR <exception>: <message>'. …
+```
+
+And the five `Replaced page` writes — the ones that made §93's noise floor —
+stop, because 0.29.0 gave MDL a spelling for the page and widget settings a
+rewrite used to reset (`DesignProperties`, a scroll container's `LayoutMode`, a
+tab page's `Badge`, a text area's `NumberOfLines`, and the rest). A rewrite that
+resets nothing writes nothing.
+
+**So §93's seven-file non-determinism floor is gone.** §93 had to establish it,
+§95 reasoned around it to read PR 1798, and §96 used it to read PR 1802. A
+future byte claim about this project no longer needs it — which is worth saying
+plainly, because three sections' worth of careful hedging just became
+unnecessary.
+
+A prediction of mine was wrong on the way: §96 expected the Java-action javadoc
+fix (ako/mxcli#1700) to stop those three writes outright. They still wrote, once.
+Right in effect, wrong in mechanism — the write is the documentation converging,
+not the javadoc header.
+
+### Two more of this project's issues fixed
+
+**ako/mxcli#1800 — `playwright check` failing a page over the dev-tools
+channel.** Fixed, and root-caused better than I had it. I reported it as the
+runtime serving `/mxdevtools/` on one hostname and not the other; it was the
+**HTTPS proxy**: Chromium sends `ws://` to `https_proxy`, and `no_proxy` here
+lists only loopback names, so `frontend.local` went through the proxy and got a
+502. This container is exactly that environment —
+`https_proxy=http://127.0.0.1:33545`, `no_proxy=localhost,127.0.0.1,::1,…` with
+no `frontend.local`. Verified on the hostname that failed:
+
+```
+page http://frontend.local:8180/  url=/p/narrate  title="Mendix - Narrate"  text=2021  console-errors=0
+OK 1 page(s)                                                                            exit 0
+```
+
+The fix's other half — "no console error is ignored: the channel connects, and a
+genuine console error still fails the page" — is **not** verified here, because
+this project has no page that logs a real console error to test it with.
+
+**ako/mxcli#1805 — the seven MIXED property names.** Fixed. What the previous
+build could only report, this one fills:
+
+```
+NEEDS  F1OpsApi               +3 key(s)
+NEEDS  bf8b2a01 [DomainModel] +13 key(s)
+NEEDS  F1AdminApi             +18 key(s)
+Would complete 3 unit(s): 34 key(s) added, 0 stripped.
+```
+
+Applied: re-check clean, exit 0, and `describe odata service` now prints the four
+entity-set modes with the values Mendix was already reading the absent ones as
+(`ReadMode: ReadFromDatabase`, `InsertMode/UpdateMode/DeleteMode: NotSupported`).
+All six published services still return 200, F1AdminApi included — the one that
+gained 18 keys.
+
+### The `#1106` lineage closes
+
+§91's headline was that `create or modify microflow` refused any change inside a
+loop body. §92 verified the in-place half (ako/mxcli#1106 → #1110). ako/mxcli#1693
+does the structural half:
+
+```
+insert a LOG statement inside the DSJ_Career loop  ->  spliced: 1 inserted
+remove it again                                    ->  spliced: 1 dropped
+```
+
+And it is a splice, not a loop rebuild. The two `SET`s keep `@position(210, 130)`
+and `(370, 130)`, the `if` keeps its merge; the loop box widens from
+`@position(1225, 200)` to `(1298, 200)` to make room, and two `@curve`
+annotations appear for the new node's flows. Exactly the local adjustment an
+insert should cause.
+
+One wrinkle, measured before being believed: the drop does **not** give the room
+back — the loop box stays at 1298 and the downstream nodes stay shifted. That
+looked like it might drift without bound, so three further insert-and-drop
+cycles were run:
+
+```
+after cycle 1: loop @position 1298, 200
+after cycle 2: loop @position 1298, 200
+after cycle 3: loop @position 1298, 200
+```
+
+Stable. The freed room is reused by the next insert rather than accumulating. A
+one-off widening, semantically neutral, not worth filing.
+
+### `#1804`: incremental everywhere, and the race that now sticks
+
+The incremental rebuild PR 1802 brought to the source index now covers every
+catalog table. Measured on the frontend's 322 documents:
+
+```
+refresh catalog full source force      5.3 s
+refresh catalog after one edit         2.4 s
+```
+
+2.2× against the reported 8× on 4,753 documents — a size effect, as with every
+other figure in this trio.
+
+But **ako/mxcli#1799 still reproduces**, and the consequence §96 warned about on
+PR 1802 is now shipped. Six forced full builds, counting generic
+`pluggablewidget '<id>'` forms where the `vegachart` keyword belongs:
+
+```
+0 1 2 0 1 1      -> 4 of 6 runs affected
+```
+
+And with a bad row in the cache, three plain refreshes in a row keep it:
+
+```
+plain refresh 1: generic forms = 1
+plain refresh 2: generic forms = 1
+plain refresh 3: generic forms = 1
+```
+
+So a racy describe is now persistent in the tables `search` and `show references`
+read, on released code rather than a branch. Re-reported on the issue.
+
+### Regression, and what was not exercised
+
+Both apps: `fix hashes` clean, `fix property-sets` clean, both build and boot at
+build #1 with no CE codes, all six OData services 200, `playwright check` green
+on `frontend.local` with `svg.marks>=1`. Backend lint 635 → 596 issues, frontend
+unchanged at 423, 0 errors both.
+
+Not exercised, stated rather than implied: the self-reference retrieve rule
+(ako/mxcli#1793) — no association here goes from an entity to itself; the new
+`split` reference edge — no script uses `split type`; MDL-WF20 and the workflow
+work — this project has no workflow; and the return-value-mapping, admin-password
+and `extra code` additions, none of which this project uses.
+
+ako/mxcli#1367 and #1806 remain open, as does the `NAV_` half of #1639.
