@@ -14,9 +14,10 @@ the lake, which is new capability rather than a replacement, and is blocked on t
 mxcli work being extended now. **Stage 3** is where the real architectural win is:
 move the aggregation that currently happens in 68 data-source microflows into SQL
 and SPARQL against the lake. Stage 3 is also the riskiest and should not start
-until 1 and 2 are running. The one thing I would settle before any of it is the
-**Trino protocol question** in "What is not ready", because it decides whether a
-dev stack on DuckGraphLake tells the truth about production.
+until 1 and 2 are running. There is no protocol question to settle first: the
+target is **one binary**, with Trino dropping out along with the rest of the
+separate components, so the PostgreSQL wire the lake already serves *is* the read
+path rather than a dev-only stand-in for something else.
 
 ## What DuckGraphLake is
 
@@ -134,18 +135,17 @@ same questions are SQL or SPARQL one hop away once the lake holds the data:
 Do not start this until 1 and 2 run. It changes the frontend's data contract, and it
 is the only stage that touches the 20 charts that are the app's whole point.
 
-## What is not ready, and what I would settle first
+## What is not ready
 
-**The Trino protocol question — settle this before anything.** DuckGraphLake's own
-parked proposal (`docs/proposals/dev-stack.md`) is explicit that in production the
-apps read the lake **over the Trino JDBC driver**, and that "DuckDB alone is not
-enough unless something translates the protocol and the SQL dialect". Stage 1 as
-described connects Mendix over the *PostgreSQL* wire instead. That is fine for a
-dev stand-in, but it means dev and production differ in driver, protocol and SQL
-dialect at the same time — exactly the gap that lets a query work locally and fail
-deployed. Worth deciding whether the target is Trino-compatible dev (and so a shim
-is needed) or whether this stack is explicitly dev-only and the production read path
-is modelled separately.
+**Trino: settled, and it removes the one real blocker.** An earlier draft of this
+proposal led with a protocol question, because DuckGraphLake's parked
+`docs/proposals/dev-stack.md` says the apps read the lake **over the Trino JDBC
+driver** and that "DuckDB alone is not enough unless something translates the
+protocol and the SQL dialect". That is no longer the direction: Trino drops out with
+the rest of the separate components, and the goal is one binary. So Stage 1's
+PostgreSQL-wire connection is not a dev-only approximation of a Trino read path —
+it is the read path, and dev and production do not differ in driver, protocol or
+dialect. Stage 1 is unblocked.
 
 **No release yet.** `ako/duckgraphlake` has no tags and no releases, so there is no
 binary to download: it is a ~1 hour build on 4 cores (`server/build.sh`), or the
@@ -156,8 +156,9 @@ spend an hour.
 **That parked proposal is now partly superseded, in a good way.** It specifies Kafka
 + Lakekeeper + MinIO + Trino as separate dev components; the `server/` binary now
 *is* the broker, the Iceberg writer, the catalog and the query engine. The component
-table in `dev-stack.md` should probably be rewritten before it misleads someone —
-only Trino compatibility and SSO are still genuinely open.
+table in `dev-stack.md` should probably be rewritten before it misleads someone.
+With Trino dropping out too, **SSO is the only genuinely open component** in it —
+every other row is now the one binary.
 
 **Smaller things, each of which would bite:**
 
