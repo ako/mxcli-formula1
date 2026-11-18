@@ -1992,6 +1992,16 @@ the scripts quietly stop being the source of truth.
    `filename = true` on the glob would make the merge recoverable. The second of
    two non-mxcli entries here.
 
+39. **`Security$UserRole.Guid` reads back empty from every real document**
+   (§100, not yet filed — `ako/mxcli`) — gen binds key "Guid" as
+   `Primitive[string]`; documents store `GUID` as BSON binary, so both axes are
+   wrong and the accessor returns "" while the rest of the element decodes. The
+   key ledger accepts it because it compares case-insensitively, and
+   `initEntity`/`initIndex` escape the ledger entirely via type names
+   (`DomainModels$EntityImpl`, `DomainModels$EntityIndex`) that have no
+   metamodel struct. There is no type audit at all, though the metamodel already
+   records `model.ID`.
+
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
 Four of them retired a workaround in this repo — the OData action, custom
@@ -8870,3 +8880,89 @@ disables Iceberg itself.
 CDC, the ontology, SPARQL and OData were not exercised — Stage 1 needs none of them,
 and the 15 JSON-parameter queries stay on the PostgreSQL endpoint either way. Stage 2
 remains unproven.
+
+## 100. PR 2395 (CDC baseline GUIDs): verified, and the guard that let it through
+
+`ako/mxcli` main `8da40b5a` plus PR 2395. The PR retypes three CDC GUID properties
+from `Primitive[string]` to `ByIdRef` so they decode from BSON binary, and adds four
+properties the vendored gen was missing.
+
+### The PR itself holds
+
+- **Its control reproduces exactly.** Reverting `entityGuid` to
+  `NewPrimitive[string](..., property.DecodeString)` makes the guard fail with
+  `EntityGuid = "", want "057964e1-…"` — the symptom as reported, not a near miss.
+- **Merges cleanly** onto main (ahead of the PR's base `bf71d920`); 19 modelsdk
+  packages pass, 0 failures. The full `go build ./...` needs generated grammar that
+  is not in-tree, which is unrelated.
+- **The encode claim is true, and I checked it one level deeper than the PR does.**
+  The PR pins `codec.BinaryToUUID` against `mpr.IDToBsonBinary` at the codec level.
+  Setting both GUIDs through the accessors and encoding the element writes BSON
+  **binary subtype 0, 16 bytes**, and decodes back byte-exact. An *unset* GUID is
+  **omitted** from the document rather than written as an empty string — I expected
+  the latter from `encoder.go:356` (`ok && id != ""` falls through) and was wrong;
+  dirty-tracking drops it first.
+- **Nothing consumes it yet.** No CLI surface, no MDL grammar, and zero non-test
+  callers of `EntityGuid()`, `PropertyGuid()`, `AssociatedEntityGuid()` or
+  `AppName()`. The PR is preparatory, exactly as its body says. There is nothing to
+  exercise end to end, and the live-fixture check cannot be repeated here because
+  `ako/TestApp` is outside this session's repository scope.
+
+### The same defect is live on `Security$UserRole`, and provably so
+
+The PR's own insight says to grep gen for `Primitive[string]` on any property whose
+name ends in `Guid`. Doing that across all of gen, then comparing against
+`generated/metamodel` (which the **in-tree** generator produces and which records
+`model.ID` for a GUID), leaves **6** properties: `DataStorageGuid` on
+`Association`, `Attribute`, `CrossAssociation`, `Entity` and `Index`, plus
+`UserRole.Guid`.
+
+`DataStorageGuid` is already known — the key ledger lists three of them and
+`issue657_guid_test.go:48` says outright that the GUID "lives in the raw BSON under
+the `GUID` key (binary), not in the misnamed DataStorageGuid property". I nearly
+reported it as new; checking in-tree first is what stopped that.
+
+`UserRole.Guid` is not. Real documents store it under key **`GUID`** as binary — 982
+occurrences across this project's backend units, 890 in the frontend, and
+`Security$UserRole` is one of the types carrying it. Read through the gen:
+
+| key in document | value type | `Guid()` returns |
+| --- | --- | --- |
+| `GUID` | binary | **`""`** ← what a real document has |
+| `Guid` | binary | `""` |
+| `GUID` | string | `""` |
+| `Guid` | string | the GUID |
+
+Only the one combination that never occurs works. `Name()` on the same element
+decodes fine, so it is as invisible as the CDC case was.
+
+### Why the audit did not catch any of this
+
+`keyaudit_test.go` is a careful 121-entry ledger, and it passes. Three reasons it
+cannot see these:
+
+1. **It compares key names case-insensitively** (`storage[strings.ToLower(key)]`),
+   so gen's `"Guid"` is accepted against storage name `GUID`. BSON lookup is
+   case-sensitive, so the audit's "match" is a runtime miss. This is the whole
+   reason `UserRole.Guid` is absent from the ledger.
+2. **It skips types whose `SetTypeName` has no metamodel struct.** `initEntity` sets
+   `DomainModels$EntityImpl` and `initIndex` sets `DomainModels$EntityIndex`;
+   neither struct exists in `generated/metamodel`, so both are skipped in silence —
+   the exact failure its own comment describes for `Forms$` types and fixed there
+   with an alias. 711 of 930 gen types are checked; these two are among the 219 that
+   are not.
+3. **It audits key names only, never types.** The CDC defect was a type mismatch
+   with a correct key, so no key audit could have found it. The data for a type audit
+   is already in-tree: `generated/metamodel` records `model.ID`, and comparing that
+   against `Primitive[string]` bindings is what produced the 6 above.
+
+Worth proposing upstream: a case-sensitive comparison, an alias (or a fallback on
+the Go type name) for the `*Impl`/`EntityIndex` type names, and a type audit
+alongside the key audit. The last would have caught PR 2395's defect without anyone
+printing a GUID.
+
+### Not a finding
+
+`AppStoreGuid` and `AppStoreVersionGuid` are `Primitive[string]` in gen and genuinely
+stored as **string** in real units (10 occurrences in the backend, 14 in the
+frontend). Correctly typed; a grep on the name alone would have flagged them.
