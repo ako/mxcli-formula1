@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30; §98 on the published **nightly `nightly-20261117-b7dc2f863`**, against a source build of main `c4666c2` |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -8654,3 +8654,80 @@ work — this project has no workflow; and the return-value-mapping, admin-passw
 and `extra code` additions, none of which this project uses.
 
 ako/mxcli#1367 and #1806 remain open, as does the `NAV_` half of #1639.
+
+## 98. The published nightly, against a build from source
+
+Asked to upgrade to the latest mxcli nightly. Worth stating what that changes,
+because this project deliberately does not use it: `scripts/build-mxcli.sh`
+builds `ako/mxcli` main instead of downloading the prebuilt binary, so every
+section from §1 to §97 measured a source build.
+
+```
+source build (was installed)  mxcli version c4666c2 (2026-11-18T06:43:47Z)
+latest nightly                mxcli version nightly-20261117-b7dc2f863 (2026-11-17T11:04:39Z)
+```
+
+`mxcli setup mxcli --tag nightly` fetches it from `mendixlabs/mxcli` releases,
+105.8 MB. The nightly is **~20 hours behind** what was installed: `c4666c2` is
+`ako/mxcli` main's head, and `b7dc2f863` is a commit on the same line a day
+earlier ("Merge pull request #1878 from ako/main"). My shallow checkout did not
+have that commit, which briefly looked like the nightly coming from a different
+lineage; the GitHub API settled it before it reached this file.
+
+**Still works.** Both script sets `check` with 0 errors (only the two documented
+non-re-runnable files fail), both apps build and boot at build #1, all six
+published OData services return 200 with real rows, and `playwright check`
+passes on `frontend.local` with `svg.marks>=1` and `console-errors=0`.
+
+### One thing to know: the older binary rewrites three documents
+
+§97's result was that a full re-exec writes nothing. On the nightly, the first
+pass writes three — two database connections and a constant — and every pass
+after writes nothing:
+
+```
+nightly   pass 1: 3 writes   tree 3efac5589819930d
+nightly   pass 2: 0 writes   tree 3efac5589819930d
+```
+
+The three are semantically identical before and after (`describe database
+connection` byte-for-byte unchanged), so nothing is lost; it is the older
+binary's byte form. The question that matters is whether the two builds then
+fight over them, so the source build was put back and the set re-run:
+
+```
+c4666c2   pass 1: 0 writes   tree 3efac5589819930d
+c4666c2   pass 2: 0 writes   tree 3efac5589819930d
+```
+
+**No ping-pong.** The newer build accepts the nightly's form, so the three
+writes are a one-time cost of the switch, not churn between the two. Committed,
+because leaving them uncommitted would mean a dirty tree after every nightly
+run, and both builds treat the committed state as converged.
+
+### Two incidental confirmations
+
+**A new git-state warning is accurate.** Booting printed:
+
+> Warning: git branch "claude/mendix-app-provisioning-gvqxpg" has no upstream.
+> Studio Pro 11.13 fails to open a project in this state … run: git push -u origin …
+
+The branch *has* been pushed in every earlier section, so this looked like a
+false positive. It is not — this container was recycled, and
+`git rev-parse --abbrev-ref '@{upstream}'` answers `fatal: no upstream
+configured`. The check caught a real state that would have broken Studio Pro.
+
+**The boot failure was the environment, not the nightly.** The first boot died
+on `FATAL: password authentication failed for user "mendix"`, which reads like a
+regression. It was not: the SessionStart hook had reported "Database ready", but
+`run --local --setup --ensure-db` then said `Creating role "mendix"` — the role
+did not exist, so the hook's claim was stale against a recycled container.
+Re-running the project's own setup fixed both apps. Worth recording because the
+first instinct on a boot failure right after a binary swap is to blame the
+binary.
+
+### Note for later
+
+The scratchpad had been cleared, so the re-exec harness §93–§97 relied on was
+gone and had to be rewritten from scratch — not for the first time. It belongs
+in `scripts/` beside `fingerprint.sh` rather than in a temporary directory.
