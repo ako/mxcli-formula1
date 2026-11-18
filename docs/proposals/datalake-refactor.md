@@ -7,7 +7,8 @@ this solution's current data storage. Nothing here has been built yet.
 ## Recommendation in one paragraph
 
 Do it in three stages, in this order, and treat them as independent. **Stage 1**
-replaces the 44 hand-written `read_csv` queries with a served folder and gains an
+replaces the hand-written `read_csv` queries with a served folder — **21** of the 44,
+not all 44; see the survey and gains an
 ontology, SPARQL and MCP over the same data for no extra modelling — it is
 available today and reversible in one constant. **Stage 2** adds entity CDC into
 the lake, which is new capability rather than a replacement, and is blocked on the
@@ -186,10 +187,75 @@ every other row is now the one binary.
   strictly better than re-pointing the sync.
 - **Not put the lake in the session-start hook** until there is a release binary.
 
+## Survey: what the 44 queries actually are
+
+Done before the build finished, and it changes Stage 1's scope. "44 `read_csv`
+queries" is not one population but three:
+
+| Population | Count | What it is |
+|---|---|---|
+| **Real file reads** | **21** | Read columns out of a CSV. The view-swap candidates. |
+| **Shape stubs** | **8** | `SELECT '' AS a, 0 AS b, … FROM read_csv(seasons.csv) LIMIT 1` — every column a literal. |
+| **JSON-param compute** | **15** | `from_json({lapsJson}::JSON, '[{…schema…}]')` — DuckDB as a function over JSON the microflow passes in. No stored data is read. |
+
+### The 21 real reads — Stage 1's actual scope
+
+`GetSeasons`, `GetCircuits`, `GetConstructors`, `GetDrivers`, `GetRaces`,
+`GetRaceResults`, `GetDriverCount`, `GetRaceResultCount`, `GetDriverStandings`,
+`GetConstructorStandings`, `GetDriverSeasons`, `GetDriverRaces`, `GetRetirements`,
+`GetFacts`, `GetLiveOrder`, `GetLiveMessages`, `GetLiveSession`, `GetLiveTrace`,
+`GetLiveStints`, `GetCircuitOutlines`, `GetCircuitPoints`.
+
+They touch **20 distinct files** across `data/f1db`, `data/facts`, `data/live` and
+`data/circuits`; 9 read more than one. The most-shared are `f1db-seasons.csv` (9
+queries), `f1db-constructors.csv` (7), `f1db-drivers.csv` (5) and
+`f1db-races-race-results.csv` (5) — so a handful of views carry most of the traffic,
+and the first one converted should be one of those.
+
+One wrinkle: the lake names a view after the file, so `f1db-seasons.csv` becomes
+`f1db-seasons`, which needs quoting in SQL (`FROM "f1db-seasons"`). An `--init`
+script giving them plain aliases (`CREATE VIEW seasons AS SELECT * FROM "f1db-seasons"`)
+would keep the 21 rewrites tidier, and is the kind of thing `--init setup.sql` exists for.
+
+### The 15 JSON-param queries are a better opportunity than a migration
+
+These never touch the data folder. The microflow fetches from the OpenF1 API, passes
+the response in as a parameter, and DuckDB parses and aggregates it per call — six of
+them with window functions. Swapping a view in does nothing for them.
+
+What would: Stage 2. If the live sync's results land in the lake (as entities via CDC,
+or as a topic), these fifteen become queries over **stored** tables instead of over a
+JSON blob re-parsed on every request, and the window functions get something to range
+over. That is a real gain, but it belongs with Stage 2, not Stage 1.
+
+Note they must stay on the PostgreSQL endpoint, not Quack: they are parameterised, and
+the server's README records that Quack does not forward bound parameters.
+
+### The 8 stubs are a question for you, not a migration task
+
+`GetSeasonProgress`, `GetRaceWeekend`, `GetRaceSessions`, `GetCalendar`,
+`GetWeekendShape`, `GetLapChart`, `GetTeamSeason`, `GetTeamH2H` all read one row of
+`f1db-seasons.csv` and return hard-coded constants — empty strings, zeros, a NULL
+timestamp. `GetRaceWeekend` declares 23 such columns.
+
+They look like result-shape placeholders from when those screens were built, with the
+real data arriving another way. Worth deciding whether they are dead scaffolding to
+delete or unfinished paths to implement; either way they should not be counted in the
+refactor, and they inflate "44 queries" by a fifth.
+
+### On the method
+
+Two of my own classifier passes were wrong before this one, which is worth recording
+because the numbers above would otherwise look more certain than they are: the first
+missed `LIMIT 1` stubs entirely, and the second mistook `0.0 AS distance` for a
+`table.column` reference, which let `GetRaceWeekend` pass as a real read and pushed
+`GetFacts` into the stub column. The counts above were settled by reading the
+ambiguous queries rather than by pattern.
+
 ## Next step
 
 Smallest useful experiment, and it tests Stage 1 end to end without touching the model:
 build the binary once, run `duckgraphlake ./data`, and check that the F1 ontology and
 SPARQL work against the folder as the user reports. Then repoint **one** of the 44
 queries at a view and compare its result with the `read_csv` version. If those agree,
-the remaining 43 are mechanical.
+the remaining 20 are mechanical.
