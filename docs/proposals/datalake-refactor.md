@@ -330,11 +330,15 @@ what the verified run above used, and it is the artifact Stage 1 should own.
 
 The harness is in the session scratchpad, which does not survive the session; the parts
 worth keeping are the two generators (per-file views from the file list, typed views
-from the model's declared specs) and the comparison itself. Startup needed one fix
-beyond `server/build.sh`: the binary loads Iceberg, Iceberg needs the `avro` extension,
-and a source build ships neither, so it exits fatally. The release tarball includes
-both in `extensions/`; building from source means installing `avro` into
-`~/.duckdb/extensions/v2.0.0/<platform>/` first. There is no flag to disable Iceberg.
+from the model's declared specs) and the comparison itself.
+
+Startup needs one fix beyond `server/build.sh`: the binary exits 1 before serving,
+because three of its four `LOAD iceberg` call sites omit the `INSTALL avro` that the
+fourth performs, and the build points auto-installs at a repository directory it never
+creates. The load on the default path is guarded only by `--kafka-port` being set, so
+`--kafka-port 0` starts cleanly while `--no-kafka-cdc` does not. Filed upstream as
+ako/DuckGraphLake#27; until it lands, either pass `--kafka-port 0` or install `avro`
+into `~/.duckdb/extensions/v2.0.0/<platform>/`.
 
 ## Next step
 

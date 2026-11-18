@@ -1969,14 +1969,16 @@ the scripts quietly stop being the source of truth.
    the Mendix version because the command asks for exactly that; mxcli will not
    fill a key it has not measured Studio Pro writing. Frontend clean.
 
-37. **A DuckGraphLake build from source cannot start** (§99, not yet filed —
-   `ako/DuckGraphLake`) — `server/build.sh` links cleanly, but the binary exits
-   fatally on startup: it loads the Iceberg extension, Iceberg requires `avro`,
-   and a source build ships neither. The release tarball carries both in
-   `extensions/`. The workaround is to fetch `avro` from `extensions.duckdb.org`
-   into `~/.duckdb/extensions/v2.0.0/<platform>/`; no flag disables Iceberg
-   (`--kafka-port 0` and `--no-kafka-cdc` cover Kafka only). This is the one
-   non-mxcli entry in this list, kept here because it blocked §99 outright.
+37. **A DuckGraphLake build from source cannot start with default flags** (§99,
+   ako/DuckGraphLake#27) — `server/build.sh` links cleanly, but the binary exits 1
+   before serving: three of its four `LOAD iceberg` sites lack the `INSTALL avro`
+   guard that the fourth one has, and the build enables DuckDB's
+   `local_extension_repository` so Iceberg's implicit auto-install of `avro`
+   resolves against `server/build/repository/`, which the build never creates.
+   `main.cpp:532` runs an unguarded load whenever `--kafka-port` is set, which is
+   the default. Workarounds: `--kafka-port 0`, or install `avro` into
+   `~/.duckdb/extensions/v2.0.0/<platform>/`. This is the one non-mxcli entry in
+   this list, kept here because it blocked §99 outright.
 
 
 ### Fixed upstream in `715bac5`
@@ -8821,13 +8823,29 @@ an environment with open egress.
 
 ### Building the server
 
-`server/build.sh` succeeds (736 targets, 87 MB binary) but the result **exits fatally
-on startup**: it loads Iceberg, Iceberg requires the `avro` extension, and a source
-build ships neither. The release tarball carries both in `extensions/`; from source,
-`avro` has to be installed into `~/.duckdb/extensions/v2.0.0/<platform>/` — fetched
-from `extensions.duckdb.org`, 8.6 MB compressed. There is no flag to disable Iceberg
-(`--kafka-port 0` and `--no-kafka-cdc` cover Kafka only). Worth raising upstream: a
-source build should not need an undocumented manual extension install to start.
+`server/build.sh` succeeds (736 targets, 87 MB binary) but the result **exits 1 before
+serving**, on a folder holding nothing but CSV and JSON: Iceberg's initialiser cannot
+auto-install its `avro` dependency. Filed as ako/DuckGraphLake#27.
+
+My first write-up of this was shallow — "it loads Iceberg, and a source build ships
+neither extension" — and that would have made a vague issue. Reproducing it properly
+changed the diagnosis twice. Removing `avro` did **not** reproduce the failure under
+the flags I had been using (`--kafka-port 0`), which killed the first explanation. The
+trigger is the Kafka port, and not the CDC logic: `--no-kafka-cdc` still fails,
+`--kafka-port 0` starts cleanly. `main.cpp:532` explains both — `if (config.kafka_port)
+{ INSTALL iceberg; LOAD iceberg; }`, with no `INSTALL avro` first.
+
+The root cause was already documented in the source. `setup.cpp:229` comments that the
+build's `local_extension_repository` makes *auto*-installs resolve against the build's
+own repository directory — which `build.sh` never creates — while an explicit `INSTALL
+avro` goes to the core repository and works. That call site has the guard; the other
+three (`main.cpp:534`, `setup.cpp:263`, `kafka_lake.cpp:272`) do not. So this is a
+dropped guard, not a missing dependency, and the useful report names the three sites
+rather than the symptom.
+
+Workarounds: `--kafka-port 0`, or install `avro` (8.6 MB from
+`extensions.duckdb.org`) into `~/.duckdb/extensions/v2.0.0/<platform>/`. No flag
+disables Iceberg itself.
 
 ### What this does not cover
 

@@ -9,10 +9,12 @@ both variants, 2 reading CSVs absent from the repository.
 
 ## Running it
 
-    # 0. the server needs avro beside iceberg, or it exits on startup (§99)
-    curl -sSL -o /tmp/avro.gz \
-      http://extensions.duckdb.org/v2.0.0/linux_amd64/avro.duckdb_extension.gz
-    gunzip -c /tmp/avro.gz > ~/.duckdb/extensions/v2.0.0/linux_amd64/avro.duckdb_extension
+    # 0. nothing needed -- step 2 passes --kafka-port 0, which avoids the
+    #    startup failure in ako/DuckGraphLake#27 (see FINDINGS §99). If you
+    #    do want the Kafka endpoint, a source build needs avro installed first:
+    #      curl -sSL -o /tmp/avro.gz \
+    #        http://extensions.duckdb.org/v2.0.0/linux_amd64/avro.duckdb_extension.gz
+    #      gunzip -c /tmp/avro.gz > ~/.duckdb/extensions/v2.0.0/linux_amd64/avro.duckdb_extension
 
     # 1. the view definitions: one per file, then the declared specs on top
     # the connection name must be qualified, and the line limit lifted or the
