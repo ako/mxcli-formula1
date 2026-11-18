@@ -317,7 +317,17 @@ The earlier draft assumed `f1db-seasons.csv` becomes a view named `f1db-seasons`
 does not. Discovery makes **one view per folder** (a glob across everything inside it)
 and **one view per file** only for files at the root it is given — and it converts
 hyphens to underscores, so the name is `f1db_seasons`. Pointed at `data/`, the 47
-different-schema CSVs in `data/f1db/` collapse into a single unusable glob view.
+different-schema CSVs in `data/f1db/` merge into one view.
+
+I first called that view unusable. Measuring it corrected that: it is well-formed and
+answers queries, with 151 columns and 248,287 rows unioned by name, and no error. The
+actual problem is narrower and worse — the glob omits `filename`, so nothing records
+which file a row came from, and there is no predicate that recovers the 77 rows of
+`f1db-seasons.csv`. Column meanings collide too: `name` holds 3,624 distinct constructor,
+circuit, driver, engine and chassis names at once. Documented behaviour
+(`server/README.md:37`), so not a bug, but filed as ako/DuckGraphLake#31 because a folder
+of unrelated tables is a common layout and `filename = true` would make the merge
+recoverable.
 
 Two further wrinkles: eight queries reach *out* of their folder with `/../` into
 `facts`, `live` and `circuits`, so the server has to be pointed at `data/`, not

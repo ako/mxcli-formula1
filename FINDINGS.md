@@ -1981,6 +1981,17 @@ the scripts quietly stop being the source of truth.
    this list, kept here because it blocked §99 outright.
 
 
+38. **A folder of unrelated datasets becomes one unattributable view**
+   (§99, ako/DuckGraphLake#31) — discovery merges every file in a folder with
+   `read_csv(..., union_by_name = true)` and no `filename`, so `data/f1db`'s 47
+   distinct tables become one view of 151 columns and 248,287 rows in which no row
+   can be traced to its file. A CSV gets its own view only if it sits at the served
+   root, and some of this project's queries reach across sibling folders, so the
+   server must be pointed at the parent. Documented behaviour, not a contradiction;
+   `--init` with 62 generated view statements is a clean workaround, and
+   `filename = true` on the glob would make the merge recoverable. The second of
+   two non-mxcli entries here.
+
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
 Four of them retired a workaround in this repo — the OData action, custom
@@ -8783,7 +8794,14 @@ infer types breaks queries that work today.
 Pointed at `data/`, discovery produced one glob view per folder — all 47
 different-schema CSVs in `data/f1db/` collapsed into a single view `f1db`. Pointed at
 `data/f1db/`, it produced one view per file, hyphens converted to underscores
-(`f1db_seasons`, not `f1db-seasons`). Neither layout works unaided, because eight
+(`f1db_seasons`, not `f1db-seasons`). So whether a CSV gets its own view depends only on
+whether it sits at the served root or one level below it.
+
+I called the merged view unusable before measuring it, and that was wrong: it is
+`read_csv(..., union_by_name = true)`, 151 columns, 248,287 rows, and it answers queries
+without error. The defect is specific — no `filename`, so no row can be traced to its
+file, and `name` mixes 3,624 constructor, circuit, driver, engine and chassis names in
+one column. Filed as ako/DuckGraphLake#31. Neither layout works unaided, because eight
 queries reach out with `/../` into `facts`, `live` and `circuits` while `{dataDir}`
 stays `data/f1db`. The server's `--init` flag — a SQL script run after discovery —
 resolves it: 62 generated `CREATE OR REPLACE VIEW` statements, 55 per-file plus 7
