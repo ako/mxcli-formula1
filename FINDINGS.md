@@ -8966,3 +8966,115 @@ printing a GUID.
 `AppStoreGuid` and `AppStoreVersionGuid` are `Primitive[string]` in gen and genuinely
 stored as **string** in real units (10 occurrences in the backend, 14 in the
 frontend). Correctly typed; a grep on the name alone would have flagged them.
+
+## 101. Main `c152c8c3`: PR 2395 merged, and PR 2394's batch measured against this project
+
+PR 2395 is merged; its head is unchanged from the `edb32b25` §100 verified, so there is
+nothing new in it. What arrived with it is PR **2394** — seven commits, three of which
+touch what this solution actually does.
+
+### `fix(odata)` #2354: this project has the exact pattern, and nothing churned
+
+`create external entities` named a colliding navigation property with a numeric
+suffix; it now uses `<Parent>_<Nav>`. This solution's frontend is built from five
+`create external entities` calls, and it carries the old spelling:
+`F1Cached.season_2` and `F1Cached.season_3`, from three entities (`Races`,
+`DriverStandings`, `ConstructorStandings`) each exposing a `season` navigation.
+
+Two things needed checking, and the diff answered neither.
+
+**Does it rewrite what exists?** No. Re-executing `02-external-entities.mdl` on the new
+binary writes **nothing**, so the existing names stand and the §97/§98 idempotence
+property survives. Had it renamed in place, `impact` reports no references to either
+association, so it would have been safe here anyway — but silently renaming a published
+association is the kind of change that breaks a consumer, and it does not happen.
+
+**Does the new naming actually work on a real service?** Yes, and I checked it against
+the old binary side by side rather than trusting the unit test. Creating the same
+`F1Cached.CachedApi` contract into a scratch module with each binary:
+
+| binary | association names |
+| --- | --- |
+| nightly `b7dc2f863` | `circuit`, `constructor`, `driver`, `season`, **`season_2`**, **`season_3`** |
+| main `c152c8c3` | `circuit`, `constructor`, `driver`, `season`, **`DriverStanding_season`**, **`ConstructorStanding_season`** |
+
+Non-colliding names are untouched in both — `uniqueAssocName` returns early on
+`!collides(base)`. I had misread the diff as renaming every navigation property,
+because the `+` lines show the `<Parent>_<Nav>` branch without that leading guard; the
+guard is in the unchanged context above it. Reading the whole function corrected it
+before the claim went anywhere.
+
+### `fix(run)` #2365: flag-first, so no change here
+
+`run --local` took its ports only from flags, ignoring the configuration. Now the
+configuration supplies them and the flags override. The precedence is explicit —
+`app, admin = appFlag, adminFlag`, then the configuration fills only what is still 0 —
+so this project's `--app-port 8180 --admin-port 8190` still wins, silently. The backend,
+which passes no port flags, now announces:
+
+```
+Ports from configuration "Default": app 8080, admin 8090 (override with --app-port / --admin-port)
+```
+
+The Default configuration happens to declare exactly the old hard-coded defaults, so
+the behaviour here is unchanged and only the message is new.
+
+### `fix(run)` #2360: measurable on this project's own diagnostics
+
+`run` and `run status/stop/wait/restart` exited through `os.Exit`, skipping the session
+close, so `diag loop-report` counted every call as a vanished process with no time.
+This project's history showed the symptom exactly — **`run status`: 5 calls, 5
+unclosed, 0.0s total**. Three `run status` calls on the new binary:
+
+| | calls | unclosed | failed | median |
+| --- | --- | --- | --- | --- |
+| before | 5 | 5 | 0 | 0.0s |
+| after 3 new calls | 8 | **still 5** | 3 | 8ms |
+
+The three new calls closed and were counted with their time and exit code instead of
+adding to "did not close", which stayed at 42. Fix confirmed, not inferred.
+
+### Regression check: the set is still idempotent
+
+The re-exec harness is now `scripts/reexec-all.sh`, in the repository rather than the
+scratchpad, which has lost it twice (the §98 note asked for this). All 41 scripts on
+both binaries:
+
+- **0 writes on each**, and the per-script tables are **byte-identical** between
+  `b7dc2f863` and `c152c8c3`. No regression, no behaviour drift.
+- Three scripts exit non-zero on **both** binaries, so pre-existing and project-side,
+  not the binary's: `00-dependencies.mdl` (`add jar dependency` without the
+  `if not exists` form, 2 statements), `03-persistent-entities.mdl` (`create
+  association` without `or modify`, 14 statements), and `12-demo-user.mdl`
+  (`create demo user`, 2 statements). None writes anything, and
+  `--continue-on-error` carries past them.
+
+The last one is worth fixing: the **backend's** demo users were migrated to
+`CREATE OR MODIFY DEMO USER` in §92, which reports "Unchanged demo user" and writes
+nothing. The frontend's `12-demo-user.mdl` was never migrated and still halts on
+"demo user already exists". Same for the other two, which now have idempotent forms
+available.
+
+### Incidentally re-verified
+
+`rsync` is absent in this container, and `make build` completed — `sync-mods` synced 31
+lint rule files through the `cp -R` fallback. That is ako/mxcli#1217, which §95 verified
+with a stub `rsync` that exits 1; this is the real condition.
+
+### Both apps boot and serve on the new binary
+
+Given that two of the three relevant commits touch `run`, the dev loop was worth
+exercising rather than reasoning about. Both apps built cold and served: backend
+`200` on `:8080`, frontend `200` on `:8180` — the frontend on its flag-given port, not
+the configuration's. End to end, the backend's published OData service still answers
+through the BYOD DuckDB warehouse:
+
+```
+GET /odata/f1/Drivers?$top=3   ->  real rows from f1db-drivers.csv
+```
+
+My first attempt returned `401` and I nearly wrote it up as an authentication
+regression. The header was mine: the service authenticates through
+`AuthenticateApiClient`, which reads `x-api-key`, and I had sent `ApiKey` — one of the
+spellings the *frontend's* consumed-service configuration uses for its own constants.
+Checking the microflow before reporting is what caught it.
