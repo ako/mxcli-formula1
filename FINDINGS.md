@@ -1969,6 +1969,16 @@ the scripts quietly stop being the source of truth.
    the Mendix version because the command asks for exactly that; mxcli will not
    fill a key it has not measured Studio Pro writing. Frontend clean.
 
+37. **A DuckGraphLake build from source cannot start** (§99, not yet filed —
+   `ako/DuckGraphLake`) — `server/build.sh` links cleanly, but the binary exits
+   fatally on startup: it loads the Iceberg extension, Iceberg requires `avro`,
+   and a source build ships neither. The release tarball carries both in
+   `extensions/`. The workaround is to fetch `avro` from `extensions.duckdb.org`
+   into `~/.duckdb/extensions/v2.0.0/<platform>/`; no flag disables Iceberg
+   (`--kafka-port 0` and `--no-kafka-cdc` cover Kafka only). This is the one
+   non-mxcli entry in this list, kept here because it blocked §99 outright.
+
+
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
 Four of them retired a workaround in this repo — the OData action, custom
@@ -8731,3 +8741,96 @@ binary.
 The scratchpad had been cleared, so the re-exec harness §93–§97 relied on was
 gone and had to be rewritten from scratch — not for the first time. It belongs
 in `scripts/` beside `fingerprint.sh` rather than in a temporary directory.
+
+## 99. DuckGraphLake: the read path verified query by query
+
+The datalake proposal's Stage 1 claimed the 44 `F1Warehouse` queries could read from
+served views instead of re-parsing CSVs. That was an argument, not a measurement. This
+section records the measurement.
+
+### Method
+
+Both variants run against the **same** DuckGraphLake connection, over the PostgreSQL
+wire endpoint: variant A is the query's SQL exactly as the MDL stores it, with
+`{dataDir}` bound to `data/f1db`; variant B is the same SQL with every `read_csv(...)`
+call — balanced parens, so the explicit-spec form too — replaced by a view name. The
+Mendix model was never modified. The comparison is full result text, not row counts,
+and distinguishes "identical rows and order" from "same rows, different order".
+
+### Result: 19 identical, and the condition that makes it true
+
+| Outcome | Queries |
+| --- | --- |
+| Identical, rows and order | 19 |
+| Non-deterministic in both variants | 1 (`GetDriverSeasons`) |
+| Untested — input not generated in this container | 2 (`GetCircuitOutlines`, `GetCircuitPoints`) |
+
+`GetRaceResults` matched at 27,731 rows, `GetDriverStandings` at 1,683,
+`GetLiveTrace` at 1,437.
+
+The first pass was **not** clean: all five live queries failed on the view side with
+`Cannot mix values of type VARCHAR and ...`. Eight queries read with an explicit
+`columns = {...}` spec, and DuckDB's inference does not reproduce it —
+`live-order.csv` declares `sessionKey` as `VARCHAR`, inference yields `BIGINT`.
+Regenerating those seven views *from the model's own declared specs* turned all five
+into identical results. The specs are load-bearing; a migration that lets the server
+infer types breaks queries that work today.
+
+### Discovery is per-folder, not per-file
+
+Pointed at `data/`, discovery produced one glob view per folder — all 47
+different-schema CSVs in `data/f1db/` collapsed into a single view `f1db`. Pointed at
+`data/f1db/`, it produced one view per file, hyphens converted to underscores
+(`f1db_seasons`, not `f1db-seasons`). Neither layout works unaided, because eight
+queries reach out with `/../` into `facts`, `live` and `circuits` while `{dataDir}`
+stays `data/f1db`. The server's `--init` flag — a SQL script run after discovery —
+resolves it: 62 generated `CREATE OR REPLACE VIEW` statements, 55 per-file plus 7
+carrying declared specs.
+
+### What running the queries surfaced
+
+**`GetDriverSeasons` returns an arbitrary row.** It ends `GROUP BY rr.year,
+rr.driverId ORDER BY rr.year DESC LIMIT 1`; 25 drivers tie on the latest year. Across
+four cold starts the unmodified `read_csv` version returned `pierre-gasly` ×3 and
+`kimi-antonelli` ×1, the view version `pierre-gasly` ×3 and `george-russell` ×1. Both
+unstable, so the query needs a tiebreaker.
+
+This one nearly became a false report. It first showed as a csv-vs-view difference,
+and a csv-vs-csv control run came back clean across 19 queries — which looked like
+confirmation that the views were at fault. Five further runs were clean, an isolated
+repeat was clean, and only deliberate cold starts reproduced it. The control had been
+stable by luck: within one warm process the scan order does not change, so repeating a
+variant in the same process cannot detect this class of instability at all. The noise
+floor has to be established across process restarts, not within a process.
+
+**`GetCircuitOutlines` and `GetCircuitPoints` had no data to read** — but this is an
+environment gap, not a defect. They reference `/../circuits/f1db-circuit-paths.csv` and
+`/../circuits/f1db-circuit-points.csv`, which `scripts/fetch-circuit-outlines.py`
+generates from OpenStreetMap. `data/circuits/` is gitignored exactly like `data/f1db`,
+`data/facts`, `data/laps` and `data/live`; the difference is that the other four are
+fetched during setup and this one is not, so it was simply absent in this container. I
+first recorded these as queries reading files that do not exist, which was wrong: they
+are two of the 21, and they stayed unverified here only because their input had never
+been generated. The verified count is 19 of 21, with 2 untested rather than broken.
+
+Generating it here failed for a second, unrelated reason: the script queries the
+OpenStreetMap Overpass API, and all three of its hosts are unreachable through this
+environment's network policy (`ws_closed_mid_exchange` from the agent proxy, then a
+timeout). Closing those last two needs `overpass-api.de` on the allowlist, or a run in
+an environment with open egress.
+
+### Building the server
+
+`server/build.sh` succeeds (736 targets, 87 MB binary) but the result **exits fatally
+on startup**: it loads Iceberg, Iceberg requires the `avro` extension, and a source
+build ships neither. The release tarball carries both in `extensions/`; from source,
+`avro` has to be installed into `~/.duckdb/extensions/v2.0.0/<platform>/` — fetched
+from `extensions.duckdb.org`, 8.6 MB compressed. There is no flag to disable Iceberg
+(`--kafka-port 0` and `--no-kafka-cdc` cover Kafka only). Worth raising upstream: a
+source build should not need an undocumented manual extension install to start.
+
+### What this does not cover
+
+CDC, the ontology, SPARQL and OData were not exercised — Stage 1 needs none of them,
+and the 15 JSON-parameter queries stay on the PostgreSQL endpoint either way. Stage 2
+remains unproven.

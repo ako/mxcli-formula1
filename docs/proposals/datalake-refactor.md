@@ -252,10 +252,101 @@ missed `LIMIT 1` stubs entirely, and the second mistook `0.0 AS distance` for a
 `GetFacts` into the stub column. The counts above were settled by reading the
 ambiguous queries rather than by pattern.
 
+## Measured: the equivalence holds, with one condition
+
+Stage 1 is no longer a plan. I built the binary, served the folder, and ran every
+real-read query twice against the **same** DuckGraphLake connection — once exactly as
+the Mendix model has it (`read_csv({dataDir} || '/...')`), once with every `read_csv`
+call swapped for a view. Nothing in the Mendix model was touched; both variants are
+plain SQL over the same server, so the comparison isolates the storage change.
+
+| Outcome | Queries |
+| --- | --- |
+| Identical — same rows, same order | **19** |
+| Non-deterministic in *both* variants (pre-existing) | 1 — `GetDriverSeasons` |
+| Untested — input not generated in this container | 2 — `GetCircuitOutlines`, `GetCircuitPoints` |
+
+Every comparable query agrees byte for byte, including `GetRaceResults` at 27,731 rows
+and `GetLiveTrace` at 1,437. Stage 1's read path is proven, not assumed.
+
+### The condition: the declared column specs are load-bearing
+
+Eight queries read with an explicit spec — `read_csv(path, header = true, columns =
+{...})`. Pointed at views built by DuckDB's own type **inference**, all five live
+queries failed outright:
+
+```
+ERROR:  Cannot mix values of type VARCHAR and ...
+```
+
+`live-order.csv` is the clearest case: the model declares `sessionKey` as `VARCHAR`,
+inference makes it `BIGINT`. Re-emitting those seven views *with the declared spec*
+carried over turned all five from errors into identical results. So the migration is
+mechanical, but it is not "point at the folder and go": whatever creates the views has
+to carry the column types the model already states, and generating them from the
+model's own specs is the way to get that right.
+
+### What the comparison surfaced about the app
+
+Neither item is about the lake, and neither was visible until the queries ran.
+
+**`GetDriverSeasons` is non-deterministic.** It ends `GROUP BY rr.year, rr.driverId
+ORDER BY rr.year DESC LIMIT 1`, and 25 drivers tie on the latest year, so `LIMIT 1`
+picks arbitrarily among them. Across cold starts the *unmodified* `read_csv` version
+returned `pierre-gasly` three times and `kimi-antonelli` once; the view version
+returned `pierre-gasly` three times and `george-russell` once. Both are unstable, so
+this is a defect in the query, not a migration risk — it needs a tiebreaker. It is
+also a warning about the method: run it once and it looks stable, which is why the
+verdict above rests on repeated cold starts rather than a single pass.
+
+**Two queries could not be tested here.** `GetCircuitOutlines` and `GetCircuitPoints`
+read `/../circuits/f1db-circuit-paths.csv` and `/../circuits/f1db-circuit-points.csv`,
+which `scripts/fetch-circuit-outlines.py` generates from OpenStreetMap. That directory
+is gitignored like every other fetched dataset, but unlike `f1db`, `facts`, `laps` and
+`live` it is not produced during setup, so it was absent in this container. I first
+wrote these up as queries reading nonexistent files; that was wrong. They are ordinary
+members of the 21 and need one script run to verify — so the measured result is 19 of
+21 confirmed, 2 outstanding. I tried to close the gap and could not: the script reads
+the OpenStreetMap Overpass API, and none of its three hosts is reachable through this
+environment's network policy, so the fetch hangs and times out. It needs either
+`overpass-api.de` allowed here or a run somewhere with open egress.
+
+### Discovery does not do what this proposal first assumed
+
+The earlier draft assumed `f1db-seasons.csv` becomes a view named `f1db-seasons`. It
+does not. Discovery makes **one view per folder** (a glob across everything inside it)
+and **one view per file** only for files at the root it is given — and it converts
+hyphens to underscores, so the name is `f1db_seasons`. Pointed at `data/`, the 47
+different-schema CSVs in `data/f1db/` collapse into a single unusable glob view.
+
+Two further wrinkles: eight queries reach *out* of their folder with `/../` into
+`facts`, `live` and `circuits`, so the server has to be pointed at `data/`, not
+`data/f1db/`; and the queries' own `{dataDir}` stays `data/f1db` regardless. The fix
+is the server's `--init` flag, a SQL script run after discovery — 62 `CREATE OR REPLACE
+VIEW` statements generated from the file list and the model's column specs. That is
+what the verified run above used, and it is the artifact Stage 1 should own.
+
+### Reproducing it
+
+The harness is in the session scratchpad, which does not survive the session; the parts
+worth keeping are the two generators (per-file views from the file list, typed views
+from the model's declared specs) and the comparison itself. Startup needed one fix
+beyond `server/build.sh`: the binary loads Iceberg, Iceberg needs the `avro` extension,
+and a source build ships neither, so it exits fatally. The release tarball includes
+both in `extensions/`; building from source means installing `avro` into
+`~/.duckdb/extensions/v2.0.0/<platform>/` first. There is no flag to disable Iceberg.
+
 ## Next step
 
-Smallest useful experiment, and it tests Stage 1 end to end without touching the model:
-build the binary once, run `duckgraphlake ./data`, and check that the F1 ontology and
-SPARQL work against the folder as the user reports. Then repoint **one** of the 44
-queries at a view and compare its result with the `read_csv` version. If those agree,
-the remaining 20 are mechanical.
+The read path is settled, so the open questions are no longer about feasibility:
+
+1. **Decide the 8 stubs** — delete as scaffolding, or implement. They are a fifth of
+   the query count and nothing can be planned around them until that is answered.
+2. **Fix `GetDriverSeasons`**, and run `scripts/fetch-circuit-outlines.py` so the two
+   circuit queries can be verified like the rest. Both are worth doing whether or not
+   the refactor proceeds; adding the circuits fetch to setup would stop the gap
+   recurring.
+3. **Generate the `--init` script from the model** rather than from a shell loop, so
+   the column specs stay in step with the MDL by construction.
+4. **Then Stage 2**, which is the part still genuinely unproven: nothing here tested
+   CDC, the ontology, SPARQL or OData, because Stage 1 needs none of them.
