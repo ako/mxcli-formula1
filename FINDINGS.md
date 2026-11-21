@@ -2003,18 +2003,19 @@ the scripts quietly stop being the source of truth.
    records `model.ID`.
 
 40. **MPR017 treats a database-query result mapping as no assignment** (§102,
-   not yet filed) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
+   ako/mxcli#2501) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
    "can only ever be false, so the branch it guards is unreachable", when all three are
-   set by an `execute database query` result mapping. 4 of 4 findings across both apps
-   are this cause, and the source data holds 77 true rows. Acting on the advice would
-   delete working logic.
+   set by an `execute database query` result mapping, and the source data holds 77 true
+   rows. The frontend's fourth finding is a second mechanism: `F1Admin.Narrative.major`
+   is an attribute of an external entity, which the remote service supplies and no local
+   activity assigns. Acting on the advice would delete working logic.
 
-41. **MPR019 asks for an index on an external entity** (§102, not yet filed) — all 39
+41. **MPR019 asks for an index on an external entity** (§102, ako/mxcli#2502) — all 39
    frontend findings name external entities, which have no local table and cannot carry
    an index. The backend's 5 findings are on local entities and are sound, so the rule
    needs an external-entity guard, not rework.
 
-42. **`report all` panics with a nil context** (§102, not yet filed) — `panic: cannot
+42. **`report all` panics with a nil context** (§102, ako/mxcli#2500) — `panic: cannot
    create context from nil parent` in the dependencies stage, after four reports have
    been computed and with nothing written to disk. `report all` calls each kind with a
    `reportKinds` command that never got `SetContext`, and the dependencies collector is
@@ -9150,14 +9151,25 @@ Across 30 pre-existing rules the counts are **identical** on both binaries — n
 Three of the four new rules fire: MPR016 (5 backend / 6 frontend), MPR017 (3 / 1),
 MPR019 (5 / 39). MPR018 fires nowhere here.
 
-**MPR017 is wrong on every finding it makes here.** It reports an attribute "tested by
-a decision but can only ever be false, so the branch it guards is unreachable" for
-`Stg_ConstructorStanding.ChampionshipWon`, `Stg_DriverStanding.ChampionshipWon` and
-`Stg_ProcedureResult.Accepted`. All three are populated by **database query result
-mappings** (`ChampionshipWon = championshipWon`, `Accepted = accepted`), not by a Change
-activity, so the rule does not see the assignment. The values are real: the source data
-holds 77 rows with `championshipWon = true` against 1,606 false. The rule's advice —
-"remove the flag and the decision that reads it" — would delete working logic.
+**MPR017 is wrong on every finding it makes here, by two different mechanisms.** On the
+backend it reports an attribute "tested by a decision but can only ever be false, so the
+branch it guards is unreachable" for `Stg_ConstructorStanding.ChampionshipWon`,
+`Stg_DriverStanding.ChampionshipWon` and `Stg_ProcedureResult.Accepted`. All three are
+populated by **database query result mappings** (`ChampionshipWon = championshipWon`,
+`Accepted = accepted`), not by a Change activity, so the rule does not see the
+assignment. The values are real: the source data holds 77 rows with
+`championshipWon = true` against 1,606 false.
+
+The frontend's single finding is a *different* cause, which I only found by reading it
+rather than assuming it matched — I had recorded all four as one mechanism, and that was
+wrong. `F1Admin.Narrative.major` is reported as "nothing ever assigns it and it has no
+default", and `F1Admin.Narrative` is an **external entity**: no local activity ever
+assigns any of its attributes, because the remote OData service supplies them. So MPR017
+needs the same external-entity guard MPR019 does, on top of understanding query
+mappings.
+
+Either way the advice — "remove the flag and the decision that reads it" — would delete
+working logic.
 
 **MPR019 fires 39 times on the frontend, and all 39 are impossible to act on.** It asks
 for an index whose first attribute is the filtered one; all 28 entities it names are
@@ -9201,6 +9213,13 @@ journeys measured, release not assessed. It distinguishes "not given" from "fail
 which is the right distinction to make. One of its gaps is self-inflicted —
 "vulnerabilities were not checked: --offline" is there because `--offline` is the
 workaround for the panic above.
+
+### Filed
+
+ako/mxcli#2500 (the `report all` panic, with the nil-`SetContext` cause, the
+token-plus-module trigger and the `--offline` workaround), #2501 (MPR017, both
+mechanisms) and #2502 (MPR019 on external entities). #2501 and #2502 cross-reference
+each other, since a shared "is this entity external?" guard would close half of each.
 
 ### Not exercised here
 
