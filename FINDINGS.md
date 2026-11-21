@@ -2002,6 +2002,25 @@ the scripts quietly stop being the source of truth.
    metamodel struct. There is no type audit at all, though the metamodel already
    records `model.ID`.
 
+40. **MPR017 treats a database-query result mapping as no assignment** (§102,
+   not yet filed) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
+   "can only ever be false, so the branch it guards is unreachable", when all three are
+   set by an `execute database query` result mapping. 4 of 4 findings across both apps
+   are this cause, and the source data holds 77 true rows. Acting on the advice would
+   delete working logic.
+
+41. **MPR019 asks for an index on an external entity** (§102, not yet filed) — all 39
+   frontend findings name external entities, which have no local table and cannot carry
+   an index. The backend's 5 findings are on local entities and are sound, so the rule
+   needs an external-entity guard, not rework.
+
+42. **`report all` panics with a nil context** (§102, not yet filed) — `panic: cannot
+   create context from nil parent` in the dependencies stage, after four reports have
+   been computed and with nothing written to disk. `report all` calls each kind with a
+   `reportKinds` command that never got `SetContext`, and the dependencies collector is
+   the only one reading `cmd.Context()`. Triggered by any project with a Mendix token
+   and at least one Marketplace module or widget; `--offline` is the workaround.
+
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
 Four of them retired a workaround in this repo — the OData action, custom
@@ -9078,3 +9097,113 @@ regression. The header was mine: the service authenticates through
 `AuthenticateApiClient`, which reads `x-api-key`, and I had sent `ApiKey` — one of the
 spellings the *frontend's* consumed-service configuration uses for its own constants.
 Checking the microflow before reporting is what caught it.
+
+## 102. Main `cda86262`: 198 commits, a storage-format change, a new gate, and a crash
+
+Three days after §101, main carries 198 commits. The bulk is two new surfaces — `mxcli
+verify` (a gate over check, lint and mx check) and a large `report` suite — plus four
+new lint rules, seven new check rules, and a change to how every unit is stored.
+
+### The storage-format change is the one that could have hurt, and does not (#2467)
+
+`f3a524b0` makes mxcli write `$ID`, `$Type`, then an element's remaining keys sorted
+case-insensitively, which is what Studio Pro does. mxcli wrote metamodel order, so a
+Studio Pro open rewrote every unit mxcli had touched. For this project the risk was the
+§97/§101 idempotence property: if existing units were reordered on contact, re-exec
+would rewrite everything.
+
+It does not. The commit says the comparison path deliberately stays order-insensitive,
+and that holds here — all 41 scripts re-exec with **0 writes**, git reports **0 files
+touched**, and the key-order census is unchanged to the element (2,003 out-of-order
+elements, 41 types, 22 units, before and after).
+
+The write path does sort, verified on identical input rather than read from the diff:
+
+| binary | the probe microflow's unit | its module unit |
+| --- | --- | --- |
+| `c152c8c3` (old) | 7 in order, **8 out** | 0 in order, **1 out** |
+| `cda86262` (new) | **15 in order, 0 out** | **1 in order, 0 out** |
+
+**This solution's standing exposure, measured:** 4,954 elements across 50 units are in
+the old order — 2,003 in 22 backend units, 2,951 in 28 frontend units. Some types are
+wholly affected, including `DatabaseConnector$QueryParameter` (135/135) and
+`DatabaseQuery` (47/47), i.e. the entire BYOD warehouse. Because re-exec writes
+nothing, none of it normalises on its own: each unit converts only when it next really
+changes. A Studio Pro open would rewrite all 50 at once.
+
+### `mxcli verify`: both apps pass, and mx check finds nothing
+
+With no baseline recorded, every finding counts as new:
+
+| | lint | of which | mxcheck | result |
+| --- | --- | --- | --- | --- |
+| backend | 610 new | 310 warning, 300 info, **0 error** | **0 findings** | passed |
+| frontend | 469 new | 225 warning, 244 info, **0 error** | **0 findings** | passed |
+
+`mx check` reporting nothing on either app is the strongest single statement about this
+model's health so far, and it is the authority — the help text is explicit that check
+and lint cannot predict everything it rejects.
+
+### Four new lint rules: no drift, and two false-positive classes
+
+Across 30 pre-existing rules the counts are **identical** on both binaries — no drift.
+Three of the four new rules fire: MPR016 (5 backend / 6 frontend), MPR017 (3 / 1),
+MPR019 (5 / 39). MPR018 fires nowhere here.
+
+**MPR017 is wrong on every finding it makes here.** It reports an attribute "tested by
+a decision but can only ever be false, so the branch it guards is unreachable" for
+`Stg_ConstructorStanding.ChampionshipWon`, `Stg_DriverStanding.ChampionshipWon` and
+`Stg_ProcedureResult.Accepted`. All three are populated by **database query result
+mappings** (`ChampionshipWon = championshipWon`, `Accepted = accepted`), not by a Change
+activity, so the rule does not see the assignment. The values are real: the source data
+holds 77 rows with `championshipWon = true` against 1,606 false. The rule's advice —
+"remove the flag and the decision that reads it" — would delete working logic.
+
+**MPR019 fires 39 times on the frontend, and all 39 are impossible to act on.** It asks
+for an index whose first attribute is the filtered one; all 28 entities it names are
+**external entities**, which have no local table and cannot carry an index. The
+backend's 5 findings are on local persistable entities (`LiveForecast`, `LiveLap`,
+`LivePayload`) and are legitimate, so the rule needs an external-entity guard rather
+than rework.
+
+MPR016 (65 overlapping entities in three clusters) is real and cosmetic, and names its
+own fix, `mxcli layout --only-overlapping`.
+
+### `report all` panics (every project, given a token)
+
+```
+panic: cannot create context from nil parent
+```
+
+`report all` completes quality, architecture, security and configuration, then dies in
+`dependencies`. **Nothing is written** — the output folder is empty, so all four
+finished reports are lost.
+
+`report dependencies` on its own succeeds (exit 0), which locates it: cobra sets the
+context during `Execute`, but `report all` calls each kind through `rk.spec.collect(rk.cmd, …)`
+with a pre-built command out of the `reportKinds` registry that never gets `SetContext`.
+`cmd_report_dependencies.go:88` is the only collector that reads `cmd.Context()`, and it
+hands the nil straight to `checkMarketplace`.
+
+The trigger is a Mendix token plus at least one Marketplace module or widget — without a
+token the code takes the "no Marketplace token" branch and never calls, which is
+presumably why it survived CI. `MENDIX_PAT` is set in this environment and the backend
+has 7 modules.
+
+**Workaround:** `report all --offline`, which skips the Marketplace check and completes,
+writing 17 files.
+
+### The reports themselves are sober
+
+`readiness` returns **not ready** for this project, and every reason is a missing input
+rather than a defect: no requirements in `docs/brain/plan`, no test results read, no
+journeys measured, release not assessed. It distinguishes "not given" from "failed",
+which is the right distinction to make. One of its gaps is self-inflicted —
+"vulnerabilities were not checked: --offline" is there because `--offline` is the
+workaround for the panic above.
+
+### Not exercised here
+
+The OData batch does not touch this solution: #2477 (import enum-typed properties) has
+nothing to import, since the published contracts expose no enumeration-typed property at
+all, and #2497's attribute mapping leaves `02-external-entities.mdl` writing nothing.
