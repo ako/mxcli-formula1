@@ -2002,25 +2002,34 @@ the scripts quietly stop being the source of truth.
    metamodel struct. There is no type audit at all, though the metamodel already
    records `model.ID`.
 
-40. **MPR017 treats a database-query result mapping as no assignment** (§102,
-   ako/mxcli#2501) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
+40. ~~**MPR017 treats a database-query result mapping as no assignment**~~ (§102,
+   ako/mxcli#2501) — **fixed, verified in §103** (6→1 on the backend, 1→0 on the
+   frontend; see issue 43 for the mechanism that remains) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
    "can only ever be false, so the branch it guards is unreachable", when all three are
    set by an `execute database query` result mapping, and the source data holds 77 true
    rows. The frontend's fourth finding is a second mechanism: `F1Admin.Narrative.major`
    is an attribute of an external entity, which the remote service supplies and no local
    activity assigns. Acting on the advice would delete working logic.
 
-41. **MPR019 asks for an index on an external entity** (§102, ako/mxcli#2502) — all 39
+41. ~~**MPR019 asks for an index on an external entity**~~ (§102, ako/mxcli#2502) —
+   **fixed, verified in §103** (39→0 on the frontend, 5→5 on the backend) — all 39
    frontend findings name external entities, which have no local table and cannot carry
    an index. The backend's 5 findings are on local entities and are sound, so the rule
    needs an external-entity guard, not rework.
 
-42. **`report all` panics with a nil context** (§102, ako/mxcli#2500) — `panic: cannot
+42. ~~**`report all` panics with a nil context**~~ (§102, ako/mxcli#2500) — **fixed,
+   verified in §103**, along with two symptoms I had not reported — `panic: cannot
    create context from nil parent` in the dependencies stage, after four reports have
    been computed and with nothing written to disk. `report all` calls each kind with a
    `reportKinds` command that never got `SetContext`, and the dependencies collector is
    the only one reading `cmd.Context()`. Triggered by any project with a Mendix token
    and at least one Marketplace module or widget; `--offline` is the workaround.
+
+43. **MPR017 cannot see a Java action's writes** (§103, residual on
+   ako/mxcli#2501) — `ODataPushdown.Query.WantsCount` is reported as "can only ever be
+   false" although `QueryObject.java:55` sets it via `o.setValue(context,
+   "WantsCount", …)` on the object the Java action returns. A third mechanism beyond
+   the two #2501 fixed, and the one finding of seven that survives the fix.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -9226,3 +9235,109 @@ each other, since a shared "is this entity external?" guard would close half of 
 The OData batch does not touch this solution: #2477 (import enum-typed properties) has
 nothing to import, since the published contracts expose no enumeration-typed property at
 all, and #2497's attribute mapping leaves `02-external-entities.mdl` writing nothing.
+
+## 103. The three §102 issues are fixed — and §102 undercounted MPR017
+
+`244dbcc4`. ako/mxcli#2500, #2501 and #2502 are all closed, and all three fixes hold up.
+Two commits carry them: `fa34f157` (report all) and `105c5fa9` (the lint rules).
+
+### A correction first: MPR017 was 7 findings, not 4
+
+§102 said MPR017 fired 3 times on the backend and once on the frontend. The backend
+count was **6**. My own rule-by-rule table from that run said 6; I transposed it with
+MPR016's 5 when writing the section, then read only the first three findings because the
+output was truncated, and reported those three as the whole set. ako/mxcli#2501 carries
+the same wrong count.
+
+Reading all seven changes the picture, because they are **three** mechanisms, not two:
+
+| mechanism | findings | fixed by #2501? |
+| --- | --- | --- |
+| database-connection query `Map:` target | 5 | yes |
+| an external entity's attribute | 1 | yes |
+| **a Java action's returned object** | **1** | **no** |
+
+The five are `Stg_ConstructorStanding.ChampionshipWon`, `Stg_DriverStanding.ChampionshipWon`,
+`Stg_ProcedureResult.Accepted`, `Stg_RaceResult.FastestLap` and
+`Stg_RaceResult.PolePosition` — all mapped, the last two confirmed at `dbc.txt:188-189`.
+The external one is `F1Admin.Narrative.major`.
+
+The third is `ODataPushdown.Query.WantsCount`. `ODataPushdown.Query` is a non-persistent
+entity with `WantsCount: Boolean default false`, returned by the Java action
+`ODataPushdown.Parse`, and `QueryObject.java:55` sets it:
+
+```java
+o.setValue(context, "WantsCount", r.wantsCount);
+```
+
+The model reads `$Q/WantsCount` in six places and assigns it nowhere, so MPR017 is right
+about the model and wrong about the program — it cannot see into Java source. Neither
+shipped guard addresses it.
+
+### Verified: the fixes do what they claim, and only that
+
+Predicted before measuring, from the mechanism breakdown above: MPR017 should fall to
+**1**, not 0, and the survivor should be `WantsCount`. It did.
+
+| | MPR017 | MPR019 |
+| --- | --- | --- |
+| backend | 6 → **1** (`ODataPushdown.Query.WantsCount`) | 5 → **5** |
+| frontend | 1 → **0** | 39 → **0** |
+
+MPR019 staying at 5 on the backend is the control that matters: those findings are on
+local persistable entities (`LiveForecast`, `LiveLap`, `LivePayload`), and an
+over-broad guard would have silenced them too. It did not.
+
+The implementation is also narrower than I feared. `mappedAttributeNames` collects into a
+flat `map[string]bool`, which I took for a bare-name set that would suppress any
+same-named attribute on another entity. It does not: the mappings store **qualified**
+names, and the rule's own new tests include `Shop.Line.Accepted` beside
+`Shop.Result.Accepted`, which is exactly that discrimination. Hypothesis checked against
+the code and dropped before it went anywhere.
+
+The fix also found a mechanism I had only speculated about — an **import mapping** that
+sets a Boolean from JSON `true`, reproduced on a real project — so the walk covers
+import mappings as well as database queries.
+
+### `report all`: all four parts, including two I did not report
+
+`report all` without `--offline`: **exit 0, no panic, 17 files**.
+
+My issue suggested the context fix, a `recover` around collectors, and incremental
+writes. `fa34f157` does all three, and adds two things I had missed:
+
+- **`report readiness -p` had the same nil call.** Verified: exit 0, no panic.
+- **The vulnerability check was separately failing** as `net/http: nil Context`, which
+  my `--offline` workaround had masked rather than avoided. Now
+  `marketplaceChecked: true`, `vulnChecked: true`, no `vulnNote`, zero occurrences of
+  "nil Context" or "the advisory database was not asked", and the readiness page no
+  longer carries "vulnerabilities were not checked: --offline". The Marketplace data is
+  real — per-module notes about withdrawn versions and widget name matches.
+
+Incremental writing tested by interrupting the run at 18s and 30s: **3 JSON files were
+already on disk** both times, with no `index.html`. Previously nothing was written until
+every kind had been collected. The panic-survival half I did not test — it needs an
+induced panic, and the one that used to occur is gone.
+
+### Regression: nothing moved that should not have
+
+148 commits since §102. The full 41-script re-exec writes **0** and leaves **0** files
+dirty, the same 3 pre-existing script-side failures, and the key-order census is
+unchanged to the element (2,003 / 41 types / 22 units). `verify` still passes both apps
+with **0 errors** and `mx check` still reports **nothing**.
+
+Lint moved only where it should, and the arithmetic closes exactly:
+
+- backend 610 → 611 = −5 MPR017 + 6 **MPR021**
+- frontend 469 → 435 = −1 MPR017 − 39 MPR019 + 6 MPR021
+
+MPR021 is new in this batch and reports an association line crossing entity boxes it
+does not connect — the same cosmetic family as MPR016, with the same remedy
+(`mxcli layout`), and legitimate here because this project's entities were never placed
+by hand.
+
+### Also landed
+
+Main's HEAD is `feat(cdc): author change data capture services in MDL (part C)` (#2567) —
+the lineage that began with the #2395 read fix §100 verified. That is the mxcli half of
+the datalake proposal's Stage 2, which §99 left as the unproven stage.
