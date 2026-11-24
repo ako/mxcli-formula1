@@ -117,9 +117,44 @@ What it buys: a queryable history of every entity (`<entity>_history`, `op`, `ts
 `tx_id`) that the Mendix database does not keep, and a read model the frontend could
 reach **without** the backend publishing it first.
 
-Blocked on: mxcli's CDC support. The current build (`nightly-20261117-b7dc2f863`)
-has `business-events` syntax but no CDC statement, so there is nothing to declare it
-with yet.
+**No longer blocked, and no longer a plan — this now works.** mxcli
+`nightly-363-g244dbcc4` added `create or modify change data capture service`, and the
+whole path is proven end to end on this solution (FINDINGS §104):
+
+```
+create or modify change data capture service Formula1Backend.LiveStateCdc
+( ServiceName: 'LiveStateCdc' )
+{ entity Formula1Backend.LiveSyncState as 'LiveSyncState' ( RowId as 'RowId', … ); };
+```
+
+`model/backend/27-cdc-stream.mdl` holds it, with the reasoning. `mx check` reports **0
+findings** on the result — the baseline mxcli computes satisfies CE1585 — re-exec writes
+nothing, and the full 41-script set stays idempotent.
+
+Running the backend with `--runtime-setting Kafka.BootstrapServers=127.0.0.1:9092`
+needs no model change. The runtime then publishes to
+`cdc.Formula1Backend.LiveSyncState.1.local`, and the lake builds, with **no hand-written
+mapping**:
+
+| | |
+| --- | --- |
+| `formula1backend.livesyncstate` | current state, one row per object |
+| `formula1backend.livesyncstate_history` | every change, with `change_op` and `changed_at` |
+| OData | entity set `Formula1Backend_LiveSyncState` |
+| SPARQL | class `…/Formula1Backend/Formula1Backend_LiveSyncState` |
+
+All 8 authored attributes arrive typed from the Debezium schema (DateTime →
+`TIMESTAMP WITH TIME ZONE`), plus the implicit `id` the runtime supplies rather than the
+model. The history is the point: a startup snapshot (`op r`) and then a real update
+(`op u`) from one call to the published `LiveSyncSet` action, which is a change record
+the Mendix database does not keep.
+
+Caveat worth carrying into any wider rollout: the topic is
+`cdc.<AppName>.<ExposedName>.<Major>.<space>`, so removing a member, renaming an exposed
+name or changing a type bumps the major and **starts a new topic** — downstream that is
+a new table with no history. Renaming the entity does the same, because `ExposedName`
+defaults from the entity name. That is why `27-cdc-stream.mdl` writes every exposed name
+out explicitly instead of defaulting it.
 
 ### Stage 3 — move aggregation out of microflows
 
@@ -362,5 +397,6 @@ The read path is settled, so the open questions are no longer about feasibility:
    recurring.
 3. **Generate the `--init` script from the model** rather than from a shell loop, so
    the column specs stay in step with the MDL by construction.
-4. **Then Stage 2**, which is the part still genuinely unproven: nothing here tested
-   CDC, the ontology, SPARQL or OData, because Stage 1 needs none of them.
+4. **Stage 2 is proven** (FINDINGS §104), on one entity. What is still untested is
+   breadth rather than mechanism: a service over the F1 entities at ~30k rows, and
+   whether a major bump's new topic is manageable in practice.

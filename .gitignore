@@ -121,6 +121,13 @@
 # re-running the script; .cache/ holds the raw Overpass responses.
 /data/circuits/
 
+# DuckGraphLake's own state, written into the folder it serves (FINDINGS §104):
+# .duckgraphlake/ is the Kafka log it keeps per topic, warpstream/ the Iceberg
+# tables the CDC topics become. Both are rebuilt from the topics and belong to
+# the dev stack, not to the model.
+/data/.duckgraphlake/
+/data/warpstream/
+
 # Same reasoning as the root /.ai-context/ and /.claude/skills/ above, applied
 # to the two app folders: 'mxcli init --sync-skills' writes 103 skill files and
 # 5 companion files per app from the running binary, so they follow the binary

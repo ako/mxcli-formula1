@@ -9341,3 +9341,99 @@ by hand.
 Main's HEAD is `feat(cdc): author change data capture services in MDL (part C)` (#2567) —
 the lineage that began with the #2395 read fix §100 verified. That is the mxcli half of
 the datalake proposal's Stage 2, which §99 left as the unproven stage.
+
+## 104. Stage 2 proven: Mendix entity CDC into the lake, authored in MDL
+
+§99 left the datalake proposal's Stage 2 as the unproven stage — nothing had tested CDC,
+the ontology, SPARQL or OData, because Stage 1 needed none of them. mxcli
+`nightly-363-g244dbcc4` added `create or modify change data capture service` (#2567, the
+lineage that began with the read fix §100 verified), so the whole path is now testable.
+It works, first attempt, with no hand-written mapping anywhere.
+
+### Authoring it
+
+`model/backend/27-cdc-stream.mdl` declares one service over `LiveSyncState`:
+
+```
+create or modify change data capture service Formula1Backend.LiveStateCdc
+( ServiceName: 'LiveStateCdc' )
+{ entity Formula1Backend.LiveSyncState as 'LiveSyncState' ( RowId as 'RowId', … ); };
+```
+
+`LiveSyncState` was chosen because CDC tracks *committed* writes and most of this app's
+entities are the wrong shape for a first proof: the `Stg_*` rows are filled from a BYOD
+query result mapping and never committed (which is also what MPR017 misread — §103), and
+the big F1 entities are loaded once and then only read. `LiveSyncState` is one row that
+two paths write — `SE_LiveSync` every minute, and the published `Ops_LiveSyncSet` action
+on demand — so it is both self-driving and controllable.
+
+- `mxcli check`: passed.
+- `mx check` through `verify`: **0 findings**. The baseline mxcli computes satisfies
+  CE1585, and `AppName` is written from the project name, so no CE1577 either. Lint
+  unchanged at 611.
+- Re-exec: **"Unchanged change data capture service"**, 0 writes, twice, and the version
+  stays at 1.0 rather than bumping on a no-op modify. The full 41-script set still
+  writes nothing.
+- `describe` prints the topic template beside the revision, which is what the proposal
+  asked for: `cdc.Formula1Backend.LiveSyncState.1.{space}`.
+
+### The runtime half
+
+`mxcli run --local --runtime-setting Kafka.BootstrapServers=127.0.0.1:9092` — no model
+change needed for a dev loop. The lake had to run **with** Kafka this time rather than
+`--kafka-port 0`, which is only possible because the `avro` extension is installed
+(ako/DuckGraphLake#27); the broker came up on `:9092` and the topic list was empty before
+the app connected, which makes the before/after unambiguous.
+
+The runtime published to `cdc.Formula1Backend.LiveSyncState.1.local`, so `{space}`
+resolves to `local`, and every documented segment is real: app name, exposed name and
+*major* revision.
+
+### What the lake built from it, unprompted
+
+| | |
+| --- | --- |
+| schema | `formula1backend` |
+| current state | `formula1backend.livesyncstate` |
+| history | `formula1backend.livesyncstate_history` |
+| OData | entity set `Formula1Backend_LiveSyncState` |
+| SPARQL | class `…/Formula1Backend/Formula1Backend_LiveSyncState` |
+
+All 8 authored attributes arrive typed from the messages' own Debezium schema —
+`TelemetryCursor` and `LastRunAt` as `TIMESTAMP WITH TIME ZONE`, the counters as
+`BIGINT` — plus the implicit `id` (`BIGINT`), which comes from the runtime's schema and
+not from the model, exactly as the grammar's comment says.
+
+### The history is the part worth having
+
+Two events, which is precisely what should be there:
+
+```
+change_op  changed_at                   SessionKey     Enabled
+r          2026-11-24 18:49:55.32825                   f
+u          2026-11-24 18:50:36.712476   cdc-proof-1    t
+```
+
+The `r` is the startup snapshot; the `u` is one `POST /odata/f1-ops/LiveSyncSet` with
+`sessionKey=cdc-proof-1`. The current-state view shows only the latest, and SPARQL and
+OData both return the updated row through the generated mapping. That change record is
+something the Mendix database does not keep.
+
+### Two things to carry forward
+
+**A major bump starts a new topic.** `cdc.<AppName>.<ExposedName>.<Major>.<space>` means
+removing a member, renaming an exposed name or changing a type re-points the stream, and
+downstream that is a new table with no history. Renaming the *entity* does it too,
+because `ExposedName` defaults from the entity name. That is why the script writes every
+exposed name out explicitly rather than defaulting it — defaulting would make a later
+rename silently move the topic.
+
+**The lake writes into the folder it serves.** `data/.duckgraphlake/` (the Kafka log per
+topic) and `data/warpstream/` (the Iceberg tables) appeared as untracked files. Both are
+rebuilt from the topics and belong to the dev stack, so they are now gitignored.
+
+### Still untested
+
+Breadth, not mechanism: a service over the F1 entities at ~30k rows, associations (this
+one has none, so the `__<assoc>` link view was never exercised), and whether a major
+bump's new topic is manageable in practice.
