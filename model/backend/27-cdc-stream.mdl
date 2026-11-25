@@ -1,0 +1,72 @@
+mdl 1;
+/*
+ * Change data capture: stream LiveSyncState's committed changes to Kafka.
+ *
+ * This is Stage 2 of docs/proposals/datalake-refactor.md. Stage 1 proved the
+ * read path -- 19 of 21 warehouse queries return byte-identical rows from
+ * DuckGraphLake views instead of re-parsing CSVs (FINDINGS §99). Stage 2 is the
+ * write path: Mendix publishes entity changes as Debezium envelopes on a Kafka
+ * topic, and the lake turns each topic into a table, a `_current` view, an OData
+ * entity set and a SPARQL class without a hand-written mapping.
+ *
+ *
+ * WHY LiveSyncState AND NOT A WAREHOUSE ENTITY
+ *
+ * CDC tracks committed database writes, so the subject has to be a persistent
+ * entity that something actually changes. The warehouse entities are the wrong
+ * shape for a first proof: `Stg_*` are staging rows filled from a BYOD query
+ * result mapping and never committed, and the big F1 entities (RaceResult at
+ * 27,731 rows) are loaded once and then read.
+ *
+ * LiveSyncState is one row that two paths write, which makes it both observable
+ * and controllable:
+ *
+ *   - SE_LiveSync runs Sync_Cycle every minute and updates the run bookkeeping,
+ *     so events arrive on their own with no prompting;
+ *   - Ops_LiveSyncSet is published on the admin OData service and does
+ *     `change $State (...) commit`, so a single change can be triggered on
+ *     demand and looked for by hand.
+ *
+ *
+ * THE TOPIC NAME IS A CONTRACT
+ *
+ * The runtime publishes to `cdc.<AppName>.<ExposedName>.<Major>.<space>`, so
+ * AppName, the exposed name and the MAJOR revision are all part of the topic.
+ * A major bump -- caused by removing a member, renaming an exposed name, or
+ * changing a type -- starts a NEW topic, which downstream is a new table with no
+ * history. Renaming the entity does the same, because ExposedName was defaulted
+ * from the entity name: the GUID survives, so CDC keeps working, but the
+ * baseline disagrees and accepting that change is a rename.
+ *
+ * So the exposed names below are written out rather than defaulted, even where
+ * they match the member name. Defaulting them would make a later entity rename
+ * silently re-point the topic.
+ *
+ * `id` is deliberately absent. Studio Pro's editor shows it as a checked,
+ * disabled row under every tracked entity, but it is not a stored property --
+ * the object id reaches a consumer from the runtime's Debezium schema, not from
+ * the model. Authoring one is a check error.
+ *
+ * The baseline is computed, not authored: mxcli rebuilds it to match the live
+ * sources, which is what Studio Pro's "accept changes" does, and it carries the
+ * GUIDs the runtime keys the database on. mxbuild reports CE1585 without one.
+ *
+ * Needs Mendix 11.10.0+, where Baseline was introduced; this project is 11.14.0.
+ */
+
+create or modify change data capture service Formula1Backend.LiveStateCdc
+(
+  ServiceName: 'LiveStateCdc'
+)
+{
+  entity Formula1Backend.LiveSyncState as 'LiveSyncState' (
+    RowId            as 'RowId',
+    Enabled          as 'Enabled',
+    SessionKey       as 'SessionKey',
+    TelemetryCursor  as 'TelemetryCursor',
+    LastRunAt        as 'LastRunAt',
+    LastResult       as 'LastResult',
+    LapsWritten      as 'LapsWritten',
+    RunCount         as 'RunCount'
+  );
+};

@@ -267,7 +267,7 @@ BEGIN
         IF $E/major THEN SET $Major = 1; END IF;
         SET $Json = $Json + $Sep
           + '{"lap":' + toString($E/lap)
-          + ',"slot":' + formatDecimal($Y, '0.00')
+          + ',"slot":' + toString(round($Y, 2))
           + ',"moved":' + toString($Moved)
           + ',"kind":"' + $E/kind + '"'
           + ',"major":' + toString($Major)
@@ -370,9 +370,9 @@ BEGIN
           SET $Json = $Json + $Sep
             + '{"lap":' + toString($Lap) + ',"code":"the rest"'
             + ',"colour":"#2A323D"'
-            + ',"x0":' + formatDecimal($Acc, '0.0000')
-            + ',"x1":' + formatDecimal($Acc + $Rest, '0.0000')
-            + ',"pct":"' + formatDecimal($Rest * 100, '0') + '%"}';
+            + ',"x0":' + toString(round($Acc, 4))
+            + ',"x1":' + toString(round($Acc + $Rest, 4))
+            + ',"pct":"' + toString(round($Rest * 100, 0)) + '%"}';
           SET $Sep = ',';
         END IF;
         SET $Lap = $P/atLap;
@@ -390,9 +390,9 @@ BEGIN
         SET $Json = $Json + $Sep
           + '{"lap":' + toString($P/atLap) + ',"code":"' + $Code + '"'
           + ',"colour":"' + $Col + '"'
-          + ',"x0":' + formatDecimal($Acc, '0.0000')
-          + ',"x1":' + formatDecimal($Acc + $P/pWin, '0.0000')
-          + ',"pct":"' + formatDecimal($P/pWin * 100, '0') + '%"}';
+          + ',"x0":' + toString(round($Acc, 4))
+          + ',"x1":' + toString(round($Acc + $P/pWin, 4))
+          + ',"pct":"' + toString(round($P/pWin * 100, 0)) + '%"}';
         SET $Sep = ',';
         SET $Acc = $Acc + $P/pWin;
       ELSE
@@ -403,9 +403,9 @@ BEGIN
       SET $Json = $Json + $Sep
         + '{"lap":' + toString($Lap) + ',"code":"the rest"'
         + ',"colour":"#2A323D"'
-        + ',"x0":' + formatDecimal($Acc, '0.0000')
-        + ',"x1":' + formatDecimal($Acc + $Rest, '0.0000')
-        + ',"pct":"' + formatDecimal($Rest * 100, '0') + '%"}';
+        + ',"x0":' + toString(round($Acc, 4))
+        + ',"x1":' + toString(round($Acc + $Rest, 4))
+        + ',"pct":"' + toString(round($Rest * 100, 0)) + '%"}';
     END IF;
   END IF;
   SET $Json = $Json + ']';

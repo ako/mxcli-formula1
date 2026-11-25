@@ -25,4 +25,60 @@ excludeModules:
 #     severity: warning
 #     options:
 #       maxObjects: 20
-rules: {}
+rules:
+  # This project's microflow vocabulary, declared so CUSTOM002 stops reporting
+  # every microflow as badly named. The built-in list (ACT_, SUB_, DS_, VAL_,
+  # SCH_, IVK_, OCH_) is replaced, not extended, so it is repeated here.
+  #
+  # Not listed on purpose: Probe_ (one leftover investigation microflow), so it
+  # keeps being reported.
+  CUSTOM002:
+    options:
+      valid_prefixes:
+        - ACT_          # page and button actions
+        - SUB_          # sub-microflows
+        - DS_           # page data sources
+        - DSJ_          # data sources that return a Vega JSON payload
+        - VAL_          # validation
+        - SCH_          # scheduled
+        - IVK_          # invoked
+        - OCH_          # on-change
+        - Read_         # published OData service read implementations
+        - Nar_          # narrative builders
+        - Narrative_    # narrative orchestration
+        - Live_         # live-session logic
+        - Cached_       # cached-service reads
+        - Sync_         # OpenF1 sync
+        - Refresh_      # cache refresh
+        - Count_        # count helpers
+        - Fcst_         # forecasting
+        - Replay_       # replay screen
+        - NAV_          # navigation entry points
+        - Ops_          # admin and ops actions
+        - Check_        # consistency checks
+        - ASU_          # after-startup
+        - SE_           # scheduled events
+        - BCR_          # before-create handlers
+        - Test_         # tests
+        - TestSupport_  # test fixtures
+
+  # Microflows that nothing in the model calls *by design*. Only the test
+  # prefixes are listed: a microflow called solely from tests/*.test.mdl is
+  # genuinely an entry point, which is what this option is for.
+  #
+  # Deliberately NOT listed, so they keep being reported:
+  #   DS_, DSJ_  -- page actions ARE counted, so anything still flagged here is
+  #                 real dead code. Seven of ours are (FINDINGS §94).
+  #   NAV_       -- a navigation menu item is not counted as a caller, so these
+  #                 four are false positives (ako/mxcli#1639). Listing them
+  #                 would hide the bug.
+  #   Read_      -- a published service's `ReadMode: microflow X` is not an edge
+  #                 in the catalog's reference graph, so `refs` and `impact` are
+  #                 wrong about these too (same issue). 34 of them here.
+  QUAL004:
+    options:
+      entry_point_prefixes:
+        - ACT_
+        - SCH_
+        - Test_
+        - TestSupport_

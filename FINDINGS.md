@@ -7,7 +7,7 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30; §98 on the published **nightly `nightly-20261117-b7dc2f863`**, against a source build of main `c4666c2` |
 | Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
@@ -1627,7 +1627,18 @@ the scripts quietly stop being the source of truth.
    is a white-filled SVG in an `<img>`, so a dark theme ships with a bright tile in the
    corner of every page. A theme could emit the mask-and-paint rule (§33 has it) so the
    default mark at least takes the brand colour.
-9. **`.ai-context/skills/` does not follow a binary upgrade** (§15, §34) — re-confirmed
+9. ~~**`.ai-context/skills/` does not follow a binary upgrade** (§15, §34)~~ —
+   **fixed, verified in §91:** `mxcli init --sync-skills` (alias `--sync`)
+   refreshes the skills, the bundled lint rules and the mxcli section of
+   CLAUDE.md/AGENTS.md from the running binary, stamps the version, and refuses
+   when the binary is older than the stamp. Measured here: 100 file(s) across 74
+   skills plus `.ai-context/`, in one command. **§94 found the other half:**
+   §91 gitignored only the *root* `/.ai-context/` and `/.claude/skills/`, and the
+   two app folders carry the same trees — 426 generated files of churn per
+   refresh (103 skills + 5 companion files per app, plus 124 retired flat `.md`
+   skills). Ignored the same way, keeping `mendix-bulk-oql-dml` and `widgets`
+   tracked, and keeping `.claude/lint-rules/` tracked because it is configuration
+   whose currency is what makes the prefix options work. Original text: — re-confirmed
    on `c76d4b7`: binary rebuilt at 12:05, skills still stamped from the previous day.
    Stale guidance, no warning.
    `01ef224` puts the sync in `init`; after a rebuild to `b4a825e` the skills
@@ -1644,7 +1655,12 @@ the scripts quietly stop being the source of truth.
    the next `--test-endpoint` injection, while `mx check` reports 0 errors and
    the app serves normally. It got committed here and survived weeks. Resolvable
    statically: `check`/`lint` can compare the name against the model.
-13. **Five page-widget properties are parsed, dropped and not reported** (§51) —
+13. **Page-widget properties: narrowed to one case in §91** — listview `OnClick`
+   round-trips now (read back as `Action: call microflow …`), and so does
+   `sort by` on a listview's database datasource. **A GALLERY's `PageSize` is
+   still written, checked clean and absent on read-back**, with no
+   MDL-WIDGET07. The chart `CustomLayout` capital-letter case was not retested:
+   this project has no Mendix chart widgets left. (§51) —
    `sort by` on a LISTVIEW's database datasource, `OnClick` on a LISTVIEW,
    `PageSize` on a GALLERY, and chart-level `CustomLayout` /
    `CustomConfigurations` when spelled with a capital. All four pass
@@ -1655,12 +1671,13 @@ the scripts quietly stop being the source of truth.
    alone — which reads as "custom layout is unsupported" rather than "you
    spelled it wrong". MDL-WIDGET07 already exists for exactly this; whatever
    path drops these should route through it.
-14. **`LISTVIEW`'s `PageSize` does not round-trip** (§51) — the writer honours
+14. ~~**`LISTVIEW`'s `PageSize` does not round-trip** (§51)~~ — **fixed, verified
+   in §91:** `PageSize: 30` written and read back. Original text: — the writer honours
    it (`TestBuildListViewV3_PageSize` guards that), but `describe page` never
    prints it back, so the round-trip this repo uses to verify every other
    change reports it as dropped. The default is 20, which silently ends a
    24-round season in a "Load more" button.
-15. **Two expression traps that only `mx check` catches** (§51) — division is
+15. **Expression traps: partly fixed in §90** — `/` division is now MDL045 with a fix hint; a Decimal→Integer assignment and a comparison against a possibly-unset number both still pass `check`. (§51) — division is
    `div`, not `/` (CE0117 for any operand types, Decimal included), and `div`
    does *not* floor, so `77 div 5` is 15.4; and there is no cast from Decimal
    to Long, so a rounded percentage has to go through
@@ -1668,7 +1685,7 @@ the scripts quietly stop being the source of truth.
    argument is rejected by `mxcli check`. Also `not contains(…)` does not parse
    where `contains(…) = false` does. A `check` that validated microflow
    expressions against Mendix's grammar would catch all four at write time.
-16. **A marketplace module install collapses MPR v2 into v1** (§53) — one
+16. ~~**A marketplace module install collapses MPR v2 into v1** (§53)~~ — **fixed, verified in §90.** `marketplace install` transplants units with mxcli's own writer (466 → 485 units, `.mpr` unchanged); `mxcli fix widgets`/`fix design-properties` replace the two `mx` commands that also collapsed it. Original text: — one
    `mx module-import`, nothing else, turns 94 KB + 466 `.mxunit` files into a
    single 16 MB blob. That removes the diffable model, `diff-local`, mergeable
    units and the whole property PR 125 just established. `mx convert` only
@@ -1680,14 +1697,14 @@ the scripts quietly stop being the source of truth.
    widget. `mxcli widget init` is the counter-example that preserves v2, so the
    behaviour is a property of the `mx` binary rather than of writing to a v2
    project.
-17. **A module flagged `IsThemeModule` cannot be installed headlessly at all**
+17. ~~**A module flagged `IsThemeModule` cannot be installed headlessly at all**~~ — **fixed, verified in §90** (Conversational UI installs, 363 units, v2 intact). Original text:
    (§53) — Conversational UI 7.2.0 carries `Projects$ModuleImpl.IsThemeModule =
    true` while its own `manifest.json` says `"type": "Module"`, and
    `mx module-import` refuses it (exit 112). Flipping that one boolean imports
    the identical package cleanly, so the flag is the sole gate. This blocks the
    only Mendix-supplied chat UI from any CLI-driven project. mxcli could at
    minimum detect the flag and say *why* instead of surfacing `exit status 112`.
-18. **Installing a marketplace module resolves no dependencies** (§53) — the four
+18. **Installing a marketplace module resolves no dependencies** (§53, re-confirmed on `603aeb42` in §90 — Conversational UI alone leaves 717 × CE1613) — the four
    Agents Kit 2 modules pull in `CommunityCommons`, `AgentCommons`, `Encryption`
    and two widgets, none of them named in the install output or the module docs.
    They are found by installing, reading CE1613s, and repeating; and the error
@@ -1695,8 +1712,8 @@ the scripts quietly stop being the source of truth.
    fixing a reference makes new documents checkable. `mxcli marketplace install`
    knows the content id — resolving or at least *listing* the dependency set
    would remove the loop.
-19. **`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
-   equivalent** (§53, corrected in §56) — after a headless widget install the
+19. ~~**`mxcli widget sync` covers 7 of 40; `rename-design-properties` has no
+   equivalent** (§53, corrected in §56)~~ — **fixed, verified in §90:** `mxcli fix widgets` and `mxcli fix design-properties`, both v2-preserving. Original text: — after a headless widget install the
    project reports 210 × CE0463, which reads exactly like the malformed-template
    defect that has its own diagnosis skill. It is not: `mx update-widgets` takes
    it to 1 and `mx rename-design-properties` to 0. *This entry originally said
@@ -1706,16 +1723,22 @@ the scripts quietly stop being the source of truth.
    So the gap is coverage, not absence: finish `widget sync`, and wrap
    `rename-design-properties`, whose 158 renames across 44 documents currently
    require the v2-destroying binary.
-20. **`CREATE MODEL` can author only `MxCloudGenAI`** (§53) —
-   `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
+20. ~~**`CREATE MODEL` can author only `MxCloudGenAI`** (§53)~~ — **fixed at the
+   language level, verified in §91:** `agenteditor_write.go:73`/`:93` now
+   *default* `Provider` when the statement leaves it empty instead of assigning
+   it unconditionally, the grammar takes any identifier
+   (`identifierOrKeyword COLON identifierOrKeyword`), and `Provider: OpenAI`
+   parses and checks clean. What remains is documentation: `mxcli syntax agents
+   model` still shows only `MxCloudGenAI`, so the other four providers are
+   undiscoverable. Original text: — `agenteditor_write.go:70` and `:90` assign the provider unconditionally, so
    the other four providers Agents Kit 2 supports (OpenAI, Bedrock, Gemini,
    Mistral) cannot be expressed in MDL. A project not on Mendix Cloud GenAI
    cannot keep its model document as code.
-21. **The agent doctypes have no version-registry entry** (§53) — `show features`
+21. ~~**The agent doctypes have no version-registry entry** (§53)~~ — **fixed, verified in §90:** all four listed by `show features`, gated 11.9.0. Original text: — `show features`
    on 11.13.0 lists nothing for agents or MCP, so there is no `checkFeature()`
    pre-check and no actionable error on an older project, though
    `mxcli syntax agents` states the requirement as Mendix 11.9+.
-22. **A skill pack cannot carry Java source** (§54) — `Installs` has only
+22. ~~**A skill pack cannot carry Java source** (§54)~~ — **fixed, verified in §90:** `installs.java` shipped and this project's drafted pack landed upstream as `mendix-odata-pushdown`. Original text: — `Installs` has only
    `widgets` and `mdl`, pack files land inside `.claude/skills/<pack>/`, and
    MDL's `CREATE JAVA ACTION … AS $$ … $$` takes a method body with no
    standalone-class form. So `mendix-odata-pushdown` — the third pack the skill-
@@ -1725,6 +1748,288 @@ the scripts quietly stop being the source of truth.
    `javasource/<module_path>/`, with the placeholder/whitelist/drift discipline
    the widget path already has, closes it. Pack drafted and validated in
    `.claude/skills/packs/mendix-odata-pushdown/`.
+23. ~~**`create or modify microflow` cannot update a flow whose change is inside a
+   loop, and there is no override** (§91)~~ — **fixed, verified in §92:**
+   ako/mxcli#1106, closed by PR #1110, took the narrow route the issue argued
+   for. A body of the same shape is edited in place (`spliced: 1 replaced`),
+   nested loops included; adding, removing or moving a node in a body keeps the
+   refusal. Measured as a true splice, not a quiet rebuild: `describe … with
+   handles` before and after differs only in the changed expression, with every
+   `@position`, the loop's `@anchor` and the `@merge` *inside* the body intact.
+   Original text: — MDL-V1-REBUILD. From the `mdl 1;`
+   header, `create or modify microflow|nanoflow` splices into the stored flow to
+   keep Studio Pro's curves, merges and element IDs, and refuses rather than
+   rebuild when the splice cannot reach the change; `mdl 0` rebuilt. A `SET`
+   inside a `LOOP` body is out of reach, so **all 13** of this project's `DSJ_*`
+   chart-data microflows refused a one-line expression edit: "Nothing was
+   written." `--no-check` does not bypass it (the refusal is in exec's write
+   path, not pre-flight) and `create or replace` is a deprecated alias with the
+   same meaning. The refusal is well-made — it names the flow, the loop, its
+   coordinates and the exact `alter … replace loop … with …` remedy — but the
+   protection defends something a generated project does not have: these 13
+   flows were written by MDL and never opened in Studio Pro, so the only thing
+   the rebuild would reset is layout mxcli itself computed. The effect is that a
+   script set which provisions a fresh project cannot update an existing one.
+   mxcli knows which element IDs it wrote: either rebuild when no element in the
+   flow was authored by Studio Pro, or take an explicit opt-in
+   (`exec --rebuild-flows`, or a `Rebuild:` property) instead of requiring the
+   author to restate the loop body in a second statement form. Workaround that
+   keeps idempotency, measured in §91: one-off `drop microflow` then re-exec —
+   37 units written once, and a full second pass byte-identical. **Filed
+   upstream as ako/mxcli#1106**, with the narrow case named: `mfmutator`'s own
+   comments call this a gap rather than a decision ("alter does not splice
+   inside a loop *yet*", `splice.go:234`), and a same-shape body differing in
+   one activity's expression needs no re-layout at all.
+24. ~~**`mxcli playwright check` reports OK for a URL that resolves to no page**~~
+   — **fixed, verified in §95** with the remedy this entry proposed: the verdict
+   prints the resolved URL and fails on a mismatch ("the browser ended on
+   /p/narrate, not on /p/no-such-page-xyzzy", exit 1). Original text:
+   (§91) — `/p/no-such-page-xyzzy` and a deep link whose key does not resolve
+   both returned `title="Mendix - Narrate"  text=2122  console-errors=0`,
+   `OK 1 page(s)`, exit 0: the app's fallback page rendering cleanly. The help
+   anticipates the substitution problem for sign-in ("a sign-in form instead of
+   the page" fails the check) but not for navigation fallback, and exit status
+   is what CI and an agent key off. With `-p` the project's page/URL table and
+   each page's `Title` are already in hand, and the verdict already prints the
+   rendered title — comparing the two and failing on a mismatch is mechanical.
+   Everything else about the command held up: a failed `--assert-count` exits 1,
+   and the assertions are what caught a page reporting OK with every chart
+   missing from the DOM. **Not re-testable in §92** — reaching a nonexistent URL
+   needs explicit-URL mode, which issue 29 broke, so its FAIL on `020f4572b`
+   says nothing either way. Still open, still unmeasured on the current build.
+25. **MDL-JSONNUM01 is lexical, so one variable hop hides the bug** (§91) — the
+   rule catches `formatDecimal(…)` without a locale inside a `set $Json = …`
+   statement and found 25 real instances here. It does not follow a String
+   variable: `DSJ_TrackMap` builds `$FirstX`/`$FirstY` with `formatDecimal` four
+   lines above a line the rule flagged, then concatenates them into `$Json`
+   twenty lines later, and that pair was not reported. Same defect, same
+   microflow, invisible. Following a String variable whose value reaches a JSON
+   assignment would close it.
+26. **MDL-WIDGET15 ignores complementary `visible:` expressions** (§91) — it
+   flagged `stripPos` and `stripDnf` on the Driver page as adjacent inline
+   `dynamictext` whose text concatenates. Their conditions are exact
+   complements (`finishPosition != empty` and `finishPosition = empty`), so they
+   can never both render. The rule already suppresses on `class` — which is why
+   the adjacent `stripRound` was not flagged — and negated conditions on the
+   same term are the same kind of suppression.
+27. **`fmt --upgrade` writes a property list `fmt` will not tidy** (§91) — the
+   DEPR720 rewrite is correct and semantically identical (proved by `mxcli diff`
+   before and after), but it lands as a dangling `(` at the end of the previous
+   line, properties at that line's indent rather than one level in, a trailing
+   comma, and the closing `)` dedented *below* the properties. `--upgrade`
+   deliberately does not reformat, which is right; the problem is that running
+   plain `fmt` afterwards does not normalise it either — it lowercased `RETURNS`
+   and left the indentation alone. So the untidy layout is what reaches the
+   repository. Retidied by hand here.
+28. ~~**`make build` requires rsync, which nothing declares** (§92, ako/mxcli#1217)~~
+   — **fixed in code, verified in §95** (the issue is still open): `sync-mods`
+   now carries its siblings' `cp -R` fallback, verified with a stub rsync that
+   exits 1 — `make sync-mods` exits 0 and honours every exclusion. rsync is
+   still absent from CONTRIBUTING's prerequisites. Original text: — `sync-mods`
+   (PR #1213, one commit old when measured) is the third rsync target in the
+   Makefile and the only one without a `cp -R` fallback; its two siblings,
+   `sync-skills` and `sync-skill-packs`, both carry one for exactly this case.
+   `build` depends on `sync-all`, so on a machine without rsync the build stops
+   at `make: rsync: No such file or directory … Error 127`, and rsync is not in
+   CONTRIBUTING's prerequisite list (Go, Git, Make, ANTLR4, a JDK). Copying the
+   siblings' fallback fixes it; so would naming rsync as a prerequisite.
+29. ~~**`mxcli playwright check <url>` fails a page it has just signed into and
+   rendered** (§92, ako/mxcli#1216)~~ — **fixed, verified in §95:** explicit-URL
+   mode signs in and renders; `check <url> --role Enthusiast` on 127.0.0.1
+   reports `console-errors=0`, `OK`, exit 0, with `svg.marks>=1` passing.
+   Original text: — with an explicit URL the verdict is "the sign-in form is
+   showing, not the page" and exit 1; the same command with the URL omitted
+   passes. Deterministic, 6/6 each way on a freshly restarted runtime. The
+   sign-in it reports as absent demonstrably happened: `System.User.LastLogin`
+   advances on every failing run, the credentials return 200 and a session
+   cookie when posted to `/xas/` by hand, and the runtime log records 48
+   client-side Vega warnings inside the failing run's window — the signed-in
+   page drawing its charts. The verdict is computed against a login page the
+   browser has already left. Two confounds ruled out by measurement: stale
+   credentials (disproved by the direct POST) and the trial runtime's session
+   cap (real, documented, and absent — zero cap markers written during the
+   reproduction). Second half of the same issue: `loginFailureHint` exists for
+   that cap and never fires here, because it is only appended when
+   `opts.RuntimeLogPath` is set and the `playwright check` path does not set it
+   — so the command most likely to exhaust the cap is the one that cannot
+   explain it, and the marker sat 1,215 bytes from EOF, 29 times over. Breaks
+   this project's whole §91 verification path, which used explicit URLs
+   throughout.
+30. ~~**A bare `create or modify module role` silently drops the role's
+   description** (§92, ako/mxcli#1218)~~ — **fixed, verified in §95:**
+   `Unchanged module role`, description intact, nothing written. Original text: — `create or modify module role Formula1Backend.ApiUser;`
+   reported `Modified module role` and erased the stored description (unit
+   616 → 527 bytes). Bounded before reporting: grants are untouched (they live
+   on the entity, keyed by role name — `describe entity` byte-identical across
+   the write) and `describe module role` emits the description, so describe →
+   exec round-trips safely. Only the hand-written minimal form loses it, which
+   is exactly the "ensure this role exists" idiom `create module role` pushes
+   you towards by erroring when the role exists. Either keep an unstated
+   description, as the 0.26.0 DateTime-Localize fix did for `alter entity`, or
+   say what was cleared in the output.
+
+31. **Version support info is hard to find, and absent from the syntax pages**
+   (§92 follow-up, ako/mxcli#1367) — `show features`, with its `for version X`
+   and `added since X` forms, answers "what does Mendix N support" completely,
+   and `checkFeature` enforces the same registry at 26 statement sites. But it
+   is not a `mxcli syntax` topic and does not appear in `syntax --json`, while
+   narrower statements (`SHOW STRUCTURE`, `MOVE`, `SEARCH`) each have one — so
+   the index that the generated CLAUDE.md names as the first stop for writing
+   MDL implies the statement does not exist. Found by reading
+   `mdl/executor/cmd_features.go`. Separately, the syntax entries carry a
+   `min_version` on **8 of 115** (3 domain-model, 5 workflow, hand-written in
+   two of the seven `features_*.go` files) where `sdk/versions/*.yaml` holds
+   68 for Mendix 11, 55 for 10 and 19 for 9 — and the two tables have drifted
+   apart in both directions: `workflow.boundary-event` has `MinVersion
+   "10.6.0"` in the syntax table and no feature at all in the YAML, so
+   `show features` never mentions boundary events; `data-transformer` is the
+   reverse, 11.9.0 in the YAML and no version on its syntax page. `exec`/
+   `check` gate on the YAML, so they and `syntax` disagree about what is
+   version-gated. Proposed fix in the issue: one registry, with an
+   `area`/`name` pair on each syntax entry — the 26 `checkFeature` call sites
+   already encode that mapping.
+
+32. ~~**A relative `MetadataUrl` is stored as an absolute `file://` URL, so the
+   model carries the authoring machine's path** (§93) — `01-odata-clients.mdl`
+   writes `MetadataUrl: './contracts/f1-live-metadata.xml'`, which is portable,
+   but the stored client holds
+   `file:///workspaces/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml`
+   — resolved against the working directory of whichever container ran the
+   script. The committed model therefore names a path that exists on no other
+   machine, and re-executing the same unchanged script in a different checkout
+   rewrites all five clients (`/workspaces/…` → `/home/user/…`), which is 5 of
+   the 20 writes a full re-exec produces. The build does not care, because the
+   file is only read when the contract is refreshed, so this stays invisible
+   until the environment moves. If Mendix requires an absolute URL in that
+   property, the narrower ask is enough: leave the stored value alone when it
+   resolves to the same file, so re-exec is idempotent across checkout paths.
+   **Filed upstream as ako/mxcli#1499 — fixed, verified in §95:** a full
+   re-exec now writes 15 documents, not 20, and touches 19 files, not 23. The
+   arithmetic matches the number this entry reported.**~~
+
+33. **QUAL004 does not count a navigation menu item** (§94, ako/mxcli#1639 —
+   **half fixed, verified in §95**; closed as completed). The substantial half
+   landed: `ReadMode:`/`Authentication:` microflows are edges in the reference
+   graph now (`Read_Drivers` → `Found 1 reference`, `AuthenticateApiClient` →
+   `Found 6`), which took the backend's QUAL004 from 43 findings to 3. The
+   narrow half did not: the four `NAV_` microflows are still "not called from
+   anywhere" while `refs` finds each one's `NAVIGATION … menu_item`. Original
+   text, both halves:
+   — two gaps, one rule and one graph. `NAV_Season`, `NAV_Weekend`,
+   `NAV_Constructor` and `NAV_Driver` are each the target of
+   `menu item '…' ( OnClick: call microflow … )`; `refs` reports the reference
+   as `NAVIGATION … menu_item` and QUAL004 still says "is not called from
+   anywhere". Deeper: a published service's `ReadMode: microflow X` and
+   `Authentication: (microflow X)` are not edges in the catalog's reference
+   graph at all, so `refs` and `impact` report nothing for the 34 `Read_`
+   microflows behind the six services and for `AuthenticateApiClient` — 35 of
+   the backend's 43 findings, with the rule advising "Remove if unused". Filed
+   with a wider claim that **was wrong**: the page-action half was measured
+   against stale bundled rule copies in this repo, and the current rule does
+   count page actions. Retitled and corrected by comment; what the correct rule
+   gives back is seven genuinely unreferenced `DS_`/`DSJ_` microflows, plus
+   `MyFirstLogic` from `mxcli new`.
+
+34. ~~**`playwright check` fails a rendering page because mxcli's own dev-tools
+   channel 502s on one hostname** (§95, ako/mxcli#1800)~~ — **fixed, verified in
+   §97**, and root-caused better than I had it: not the runtime but the HTTPS
+   proxy, which Chromium sends `ws://` to while `no_proxy` listed only loopback
+   names. `console-errors=0` on `frontend.local` now. Original text: — on `frontend.local:8180`, which is
+   this app's *configured* root URL, the page renders correctly
+   (`url=/p/narrate`, `title="Mendix - Narrate"`, `text=2021`) and the check
+   still exits 1 on `2 console error(s)`, both of them
+   `WebSocket connection to 'ws://frontend.local:8180/mxdevtools/' failed … 502`.
+   The identical check on `127.0.0.1:8180` reports `console-errors=0` and
+   passes. So a failure is reported against the app under test for mxcli's own
+   instrumentation, on the hostname the app is configured with. Either the
+   check should not count its own dev-tools channel as an app console error, or
+   `run --local` should serve `/mxdevtools/` on the configured host.
+35. **A source catalog build describes a pluggable widget by its generic form at
+   random** (§95, ako/mxcli#1799; **still open, and now persistent — §97**) — `refresh catalog full source force` on an unchanged project
+   sometimes renders a widget as `vegachart chartReplayWin (…)` and sometimes as
+   `pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin (…)`.
+   Measured over six runs of each of two builds: 3 of 6 and 4 of 6 runs had
+   between one and two occurrences, on one page, out of twenty such widgets.
+   Present on main, so not PR 1798's doing — but it means `catalog.source` is
+   not reproducible, which is what `search` and `show references` read, and it
+   undercuts any byte-identity claim about the source text measured from a
+   single run. The build describes up to eight documents in parallel while the
+   widget definitions are themselves catalog rows, which is the shape of a race.
+
+36. ~~**`fix property-sets` reports seven MIXED property names on Mendix 11.14.0**
+   (§96, ako/mxcli#1805)~~ — **fixed, verified in §97:** the seven unfillable
+   names became 3 units and 34 keys that the command now fills, and `describe`
+   prints the four entity-set modes. Original text: — the new check (ako/mxcli#1505) finds property names
+   that some elements of a type carry and others lack, where the previous build
+   reported this project complete. Five are on the backend's domain model unit
+   (`LocalizeDate` and the four `NoGeneralization.Has*Attr`), two on published
+   OData services — including `PublishedMicroflow.Parameters` on 2 of 5, a
+   published OData *action*, which MDL could not author at all before `715bac5`
+   (§47, §48), so these documents may be the first of their kind. Reported with
+   the Mendix version because the command asks for exactly that; mxcli will not
+   fill a key it has not measured Studio Pro writing. Frontend clean.
+
+37. **A DuckGraphLake build from source cannot start with default flags** (§99,
+   ako/DuckGraphLake#27) — `server/build.sh` links cleanly, but the binary exits 1
+   before serving: three of its four `LOAD iceberg` sites lack the `INSTALL avro`
+   guard that the fourth one has, and the build enables DuckDB's
+   `local_extension_repository` so Iceberg's implicit auto-install of `avro`
+   resolves against `server/build/repository/`, which the build never creates.
+   `main.cpp:532` runs an unguarded load whenever `--kafka-port` is set, which is
+   the default. Workarounds: `--kafka-port 0`, or install `avro` into
+   `~/.duckdb/extensions/v2.0.0/<platform>/`. This is the one non-mxcli entry in
+   this list, kept here because it blocked §99 outright.
+
+
+38. **A folder of unrelated datasets becomes one unattributable view**
+   (§99, ako/DuckGraphLake#31) — discovery merges every file in a folder with
+   `read_csv(..., union_by_name = true)` and no `filename`, so `data/f1db`'s 47
+   distinct tables become one view of 151 columns and 248,287 rows in which no row
+   can be traced to its file. A CSV gets its own view only if it sits at the served
+   root, and some of this project's queries reach across sibling folders, so the
+   server must be pointed at the parent. Documented behaviour, not a contradiction;
+   `--init` with 62 generated view statements is a clean workaround, and
+   `filename = true` on the glob would make the merge recoverable. The second of
+   two non-mxcli entries here.
+
+39. **`Security$UserRole.Guid` reads back empty from every real document**
+   (§100, not yet filed — `ako/mxcli`) — gen binds key "Guid" as
+   `Primitive[string]`; documents store `GUID` as BSON binary, so both axes are
+   wrong and the accessor returns "" while the rest of the element decodes. The
+   key ledger accepts it because it compares case-insensitively, and
+   `initEntity`/`initIndex` escape the ledger entirely via type names
+   (`DomainModels$EntityImpl`, `DomainModels$EntityIndex`) that have no
+   metamodel struct. There is no type audit at all, though the metamodel already
+   records `model.ID`.
+
+40. ~~**MPR017 treats a database-query result mapping as no assignment**~~ (§102,
+   ako/mxcli#2501) — **fixed, verified in §103** (6→1 on the backend, 1→0 on the
+   frontend; see issue 43 for the mechanism that remains) — it reports `Stg_DriverStanding.ChampionshipWon` and two others as
+   "can only ever be false, so the branch it guards is unreachable", when all three are
+   set by an `execute database query` result mapping, and the source data holds 77 true
+   rows. The frontend's fourth finding is a second mechanism: `F1Admin.Narrative.major`
+   is an attribute of an external entity, which the remote service supplies and no local
+   activity assigns. Acting on the advice would delete working logic.
+
+41. ~~**MPR019 asks for an index on an external entity**~~ (§102, ako/mxcli#2502) —
+   **fixed, verified in §103** (39→0 on the frontend, 5→5 on the backend) — all 39
+   frontend findings name external entities, which have no local table and cannot carry
+   an index. The backend's 5 findings are on local entities and are sound, so the rule
+   needs an external-entity guard, not rework.
+
+42. ~~**`report all` panics with a nil context**~~ (§102, ako/mxcli#2500) — **fixed,
+   verified in §103**, along with two symptoms I had not reported — `panic: cannot
+   create context from nil parent` in the dependencies stage, after four reports have
+   been computed and with nothing written to disk. `report all` calls each kind with a
+   `reportKinds` command that never got `SetContext`, and the dependencies collector is
+   the only one reading `cmd.Context()`. Triggered by any project with a Mendix token
+   and at least one Marketplace module or widget; `--offline` is the workaround.
+
+43. **MPR017 cannot see a Java action's writes** (§103, residual on
+   ako/mxcli#2501) — `ODataPushdown.Query.WantsCount` is reported as "can only ever be
+   false" although `QueryObject.java:55` sets it via `o.setValue(context,
+   "WantsCount", …)` on the object the Java action returns. A third mechanism beyond
+   the two #2501 fixed, and the one finding of seven that survives the fix.
 
 ### Fixed upstream in `715bac5`
 Verified against the reproduction each was filed with; §48 records how.
@@ -6935,3 +7240,2200 @@ minute, and neither was done before writing the section.
 Where this leaves the migration: nothing is migrated, no script carries the
 header, and the whole thing is now one `fmt --upgrade -w` per file plus a
 re-exec and a verification pass. It is a windowed job, not a difficult one.
+
+## 90. `603aeb42`: five of nine filed issues fixed, two partly, and one pack landed
+
+*Verified 2026-08-20 against `ako/mxcli` main at `603aeb42` — 828 commits after
+`a8dc083`, the build §54 and §56 were written on. Every row below was executed
+against this project or a throwaway worktree of it, not read from a commit
+message. Nine issues checked: the ones §53, §54 and §56 filed.*
+
+**Numbered 90, written as 57.** This section was committed on the PR #7 branch
+after that PR had already merged, so it never reached `main` while §57–§89 were
+written against it. It is carried over here unchanged and renumbered; its
+measurements are August's, on a build 33 sections of findings behind the current
+one. Where a later section revisits the same issue, the later section wins.
+
+### Fixed, and measured
+
+| # | Was | Now |
+|---|---|---|
+| 16 | `mx module-import` rewrote MPR v2 as v1 | `mxcli marketplace install` transplants units with mxcli's own writer. Installing MCP Server into a pristine worktree: `.mpr` **94,208 bytes unchanged**, 466 → **485 units**. No collapse |
+| 17 | A module flagged `IsThemeModule` could not be installed at all | Conversational UI 7.2.0 installs — **363 units copied, 65 bundled files**, v2 intact. `e351ee4a` clears the flag on a throwaway copy rather than refusing |
+| 19 | No mxcli equivalent for `update-widgets` / `rename-design-properties` | `mxcli fix widgets` (CE0463) and `mxcli fix design-properties` (CE6087). Both report the thing that was wrong: *"851 .mxunit file(s), unchanged from 851 before (MPR v2 preserved)"* |
+| 21 | Agent doctypes absent from the version registry | `show features` lists **agent**, **agent model**, **agent knowledge base**, **agent consumed mcp service**, all gated 11.9.0 |
+| 22 | A skill pack could not carry Java source | `installs.java` shipped — and the pack §54 drafted **landed upstream** as `mendix-odata-pushdown`, credited in `11b7f4ed` to "the formula1 project's findings §54" |
+
+The §56 second instance of 16 is closed with it: `mxcli fix widgets` and
+`fix design-properties` leave the unit count untouched where `mx update-widgets`
+took 469 units to 0.
+
+**The pack, end to end.** `skill add mendix-odata-pushdown --module Pushdown`
+placed the three helper classes into `javasource/pushdown/` with
+`{{MODULE_PATH}}` substituted and no token left behind, and reported *"4 action
+class(es) not placed — mxcli generates those from the MDL"* — which is exactly
+the branch §54 flagged as "a real branch, not an obvious one", resolved the way
+it argued for. Applying the MDL created the module, entity, role and four
+actions under the new name, and `mx check` reports nothing about `Pushdown`. The
+manifest also gained the `verify:` script §54 said the pack wanted more than the
+other two.
+
+One interface change: `--apply` is gone from `skill add`. The MDL is applied with
+`mxcli exec .claude/skills/<pack>/mdl/module.mdl` instead, which the install
+output prints. Copy and apply are still separate, which was the point.
+
+### Fixed in part
+
+**13 — page-widget properties.** `PageSize: 40` now round-trips through
+`DESCRIBE PAGE`, closing the half of this §51 had already corrected once.
+`OnClick` on a listview still does not: the page writes and checks clean, and
+comes back without it. Still a silent drop, still no warning.
+
+**15 — expression traps.** `mxcli check -p` now runs expression type checking,
+and `/` used as division is caught as **MDL045** with the fix in the message:
+
+```
+✗ set 'Pct' uses '/' as a division operator, which Mendix rejects (CE0117
+  "Error(s) in expression") — '/' navigates associations, it does not divide
+  → Use 'div' for division …
+```
+
+That is the trap that previously only `mx check` saw. Two of the four are still
+invisible, each isolated in its own probe and each returning `Check passed!`:
+
+- assigning a Decimal to an Integer variable, which Mendix rejects;
+- comparing a possibly-unset number (`$R/points > 0`) — the one that passes every
+  static check and throws in the browser at render.
+
+`not contains(…)` is still a parse error rather than a diagnosis, which at least
+fails loudly.
+
+### Still open, re-confirmed
+
+**18 — a marketplace install resolves no dependencies.** Installing Conversational
+UI alone leaves **717 × CE1613**: GenAICommons (602), AgentCommons (114),
+CommunityCommons (5). The install knows the content id and prints a "next steps"
+block; naming the dependency set there would remove the read-the-errors loop
+§53 described.
+
+**20 — `CREATE MODEL` can author only `MxCloudGenAI`.**
+`agenteditor_write.go:70` and `:90` still assign the provider unconditionally,
+and `mxcli syntax agents model` still documents one. Four of the five providers
+Agents Kit 2 supports remain unauthorable in MDL.
+
+### The upgrade itself is not free, once
+
+Re-running the frontend script set on the new build changed **17 microflow
+units** against a tree that was byte-clean on `a8dc083`. That looks exactly like
+the churn §50 described and §52 closed, so it was worth measuring rather than
+assuming:
+
+```
+pass 1 vs HEAD      17 files
+pass 2 vs pass 1     0 units changed bytes
+```
+
+Idempotency holds — the second pass wrote nothing. The 17 are a one-time
+convergence, and describing three of them before and after shows the only
+difference is `@position` coordinates:
+
+```
+-  @position(5110, 200)
++  @position(4740, 200)
+```
+
+That is `443e80de`, which sizes loop boxes from their contents. The activities,
+the expressions and the order are identical; the editor coordinates moved. Worth
+knowing before the next upgrade: **a build that changes layout produces a
+one-time diff across every document it touches**, and the way to tell it from a
+regression is the second pass, not the first.
+
+### What this says about the loop
+
+Five fixes, two partial fixes and a pack shipped, from findings filed four days
+earlier — and the pack landed with the design decision this project could only
+identify, not make. The two that did not move are also the two that were filed
+as observations rather than with a proposed mechanism. Worth remembering next
+time: **an issue that names the target closes faster than one that names the
+symptom.**
+## 91. `1a4dce0`: a splice that will not edit inside a loop, and lint that found 25 real bugs
+
+*Verified 2026-10-11 against `ako/mxcli` main at `1a4dce0` — 443 commits (226
+non-merge) after `0cac3621`, the build §89 ran on. Everything below was executed
+against this project or a throwaway `git worktree` of it. Where a measurement
+needed a second pass to mean anything, the second pass is quoted.*
+
+The branch was 45 commits behind `main` and PR #7 had merged, so this starts
+with a rebase onto `main`; §90 is the one commit that had not landed, carried
+over and renumbered.
+
+### The deprecation migration works, and the project is now `mdl 2`-ready
+
+`mxcli check` over the 25 backend scripts reported **11 deprecations in 7
+files**, both "Refused from `mdl 2`":
+
+| Code | × | What |
+|---|---|---|
+| MDL-DEPR139 | 6 | a published OData service's trailing `authentication microflow M.F` clause becomes the last property, `Authentication: (microflow M.F)` |
+| MDL-DEPR720 | 5 | `call rest service`'s trailing `header`/`body`/`timeout` clauses become one property list, `(Headers: …, Body: …, Timeout: …)` (ADR-0013) |
+
+`mxcli fmt --upgrade` rewrote all 11, named each on stderr
+(`rewrote MDL-DEPR720 x5`) and left nothing un-rewritable. §89 predicted the
+whole migration was "one `fmt --upgrade -w` per file plus a re-exec". Measured
+here, that is true.
+
+What makes it trustworthy is the equivalence check rather than the absence of
+errors. For each of the 7 files, `mxcli diff` before and after:
+
+```
+model/backend/02-live-service.mdl    0 new, 0 modified, 0 removed -> identical
+model/backend/05-cached-service.mdl  0 new, 0 modified, 0 removed -> identical
+model/backend/14-weekend.mdl         0 new, 0 modified, 0 removed -> identical
+model/backend/15-live.mdl            1 unit -> same 1 unit
+model/backend/16-ops-procedures.mdl  2 units -> same 2 units
+model/backend/19-live-sync.mdl       1 unit -> same 1 unit
+model/backend/21-admin-resources.mdl 1 unit -> same 1 unit
+```
+
+The only textual difference between the two diffs was the deprecation warnings
+disappearing. Three of the seven would write nothing at all, which is the
+stronger case: a wrong rewrite would have shown up as a modification.
+
+Then verified past the model, because `AuthTypes` is the kind of property that
+can be present and wrong:
+
+- both apps rebuilt and booted, **0 CE codes** in either run log;
+- `show odataservices` reports `AuthTypes: Microflow` on all six;
+- all six `$metadata` endpoints return **200** with the `x-api-key` header, and
+  `GET /odata/f1/Seasons?$top=2` returns real rows.
+
+One wrinkle, filed as issue 27: the DEPR720 rewrite lands as a dangling `(`,
+properties at the previous line's indent, a trailing comma, and the closing `)`
+dedented below them. `--upgrade` deliberately does not reformat — that is right,
+it is what keeps the diff reviewable — but plain `fmt` afterwards does not tidy
+it either; it lowercased `RETURNS` and left the indentation alone. Retidied by
+hand, and `diff` confirmed the tidy was also semantically neutral.
+
+### `create or modify microflow` is a splice now, and it will not edit inside a loop
+
+This is the finding that matters most for how this project works.
+
+Thirty-four expression edits across 13 `DSJ_*` microflows (below) produced 13
+refusals, all the same shape:
+
+```
+✗ exec would refuse this statement: create or modify microflow
+  Formula1Frontend.DSJ_Career: this change cannot be spliced into the stored
+  flow: the Loop at (1295, 200) changes inside its body; the splice does not
+  edit inside a loop, and replacing the whole loop would rebuild every node it
+  holds. Nothing was written.                            [MDL-V1-REBUILD]
+```
+
+`mxcli help MDL-V1-REBUILD` says it is deliberate and version-gated:
+
+```
+Before mdl 1:  rebuilds the whole stored flow when the change cannot be spliced
+               in, which resets curves, drops merges and renumbers element IDs
+From mdl 1:    a refusal that names the change the splice cannot make, with
+               nothing written
+```
+
+So this is §88's phenomenon a second time — *a header that changes the meaning
+of text that did not change*. Every `DSJ_` microflow in this project builds its
+JSON inside a `LOOP`, so under `mdl 1;` **none of them can be edited by
+re-exec**. There is no override: `--no-check` does not bypass it (the refusal is
+in exec's write path, not the pre-flight), and `create or replace` is a
+deprecated alias with the same meaning.
+
+The refusal itself is excellent — it names the flow, the loop, its coordinates,
+and the exact remedy, down to the variable:
+
+```
+alter microflow Formula1Frontend.DSJ_Career {
+  replace loop $S in $Seasons with begin loop $S in $Seasons begin … end loop; end; };
+```
+
+But what it protects is layout mxcli itself computed. These 13 flows were
+written by MDL and have never been opened in Studio Pro; the curves and element
+IDs the rebuild would reset are generated too. The cost is concrete: a script
+set that provisions a fresh project can no longer update an existing one, which
+is the property §52 was written to establish.
+
+The route that keeps idempotency — one-off `drop microflow` ×13, then re-exec
+the three defining scripts and the security script:
+
+```
+13 dropped, 37 units written
+second full pass: sha256 over every .mxunit + .mpr unchanged
+```
+
+`drop` is careful about the consequence, which is worth quoting because it is
+the kind of warning that saves a session:
+
+> Removed its execute grants to Formula1Frontend.Enthusiast. A create of
+> Formula1Frontend.DSJ_Career later in this script or session carries them; a
+> create in a later run does not — do the drop and the create in one script, or
+> re-grant.
+
+Filed as issue 23, with the target named rather than the symptom: mxcli knows
+which element IDs it wrote, so either rebuild when no element came from Studio
+Pro, or take an explicit opt-in.
+
+### New lint found 25 real bugs in shipped code
+
+**MDL-JSONNUM01** — *`set 'Json' builds JSON with formatDecimal(…) and no
+locale: it formats in the user's language, so a Dutch user gets '12,50' and the
+JSON is invalid for them only.* Twenty-five instances across 13 `DSJ_*`
+microflows, 20 of them in `05-chart-data.mdl`, the script that feeds every Vega
+chart.
+
+This is a real defect that no previous check could see, and the reason it
+survived is instructive: both apps are `en_US`-only, so it cannot fire today.
+It would fire the first time anyone enabled a second language — and it would
+fire as *every chart on every screen is empty, for some users*.
+
+Fixed all 34 call sites: `formatDecimal($x, '0.##')` → `toString(round($x, 2))`,
+with the precision read off the old format string (`'0'`→0, `'0.#'`→1,
+`'0.##'`→2, `'0.###'`→3, `'0.0000'`→4). That is the remedy the rule names and
+the one the upstream Vega pack itself now uses. Verified after: 0 JSONNUM01,
+the apps rebuild clean, and the charts still render.
+
+**The rule is lexical, and this file shows what that costs** (issue 25).
+`DSJ_TrackMap` assigns `$FirstX`/`$FirstY` with `formatDecimal` four lines above
+a line the rule *did* flag, then concatenates them into `$Json` twenty lines
+later to close the track outline. Same bug, same microflow, not reported —
+because the `formatDecimal` call is not lexically inside a `set $Json`
+statement. After the automated pass the file was briefly inconsistent: every
+point locale-independent except the closing one. Fixed by hand.
+
+**MDL-WIDGET15 is a false positive here** (issue 26). It flagged `stripPos` and
+`stripDnf` on the Driver page as adjacent inline `dynamictext` whose text
+concatenates. Their conditions are exact complements —
+`visible: finishPosition != empty` and `visible: finishPosition = empty` — so
+they can never both render. The page was left alone. The rule already suppresses
+on `class`, which is why the equally adjacent `stripRound` was not flagged;
+negated conditions on the same term are the same kind of suppression.
+
+Also new and firing: **MDL-PERF01**, 31 times, on `create … commit` inside a
+loop ("one database round trip per iteration"). Correct, and left as-is — the
+refresh microflows it names are a bulk import where the cost is understood, and
+changing them is a performance task, not this one.
+
+### `playwright check` replaces the hand-written browser walk — with one gap
+
+`mxcli playwright check /p/narrative /p/replay /p/narrate -p app.mpr` signs in
+by itself and prints one line per page. Three pages verified in one call, no
+script, no screenshot to read:
+
+```
+login demo_administrator (demo user)
+page /p/narrative  title="Mendix - Race narrative"  text=1388  console-errors=0
+page /p/replay     title="Mendix - Replay"          text=1363  console-errors=0
+page /p/narrate    title="Mendix - Narrate"         text=2027  console-errors=0
+OK 3 page(s)
+```
+
+This is what earlier sessions built by hand out of `playwright-cli` sequences
+and screenshot reads. `--assert-count 'svg.marks>=1'` is the precise
+chart-rendering test — `svg.marks` is Vega's own root class — and it is what
+proved the 20 Vega charts still render after the number-format change.
+
+**The gap** (issue 24): a URL that resolves to no page still reports OK.
+
+```
+/p/no-such-page-xyzzy  title="Mendix - Narrate"  text=2122  console-errors=0  OK  exit 0
+/p/season/2023         title="Mendix - Narrate"  text=2122  console-errors=0  OK  exit 0
+```
+
+Both are the app's fallback page rendering cleanly, with identical text length.
+The help anticipates exactly this problem for sign-in — "a sign-in form instead
+of the page" fails the check — but not for navigation fallback, and exit status
+is what CI and an agent key off. With `-p`, the page/URL table and each page's
+`Title` are in hand and the verdict already prints the rendered title.
+
+Two corrections to my own first reading, both caught by re-measuring:
+
+- I first recorded a failed assertion as exiting 0. That was `tail`'s status
+  through a pipe. Measured without the pipe, a failed assertion exits 1, exactly
+  as documented. The OK-for-a-missing-page result survived the same re-check.
+- I guessed the fallback was a role redirect, since the Season page is granted
+  only to `Enthusiast` and the check had signed in as `demo_administrator`.
+  Re-run with `--role Enthusiast` it still landed on the fallback, so the
+  hypothesis was wrong: the deep link itself does not resolve. The page's
+  parameter is an **external** entity (`F1Cached.Seasons`), which is probably
+  §86's territory and is not chased here.
+
+The assertions also told the truth where the default verdict did not:
+`/p/narrative` reported OK with **no chart in the DOM at all** — zero elements
+whose class contains `chartNar`. Not a defect: `LiveNarrative` and `LiveLap` are
+empty in a freshly created database (`SELECT count(*)` = 0 on both, while
+`Season` has 77 and `Driver` 917), so the data views have no object and their
+contents never mount. A correct empty state that the one-line verdict cannot
+distinguish from a working page.
+
+### `run --local --detach` retires the process-management hack
+
+Both apps started detached and returned once serving — backend 119s, frontend
+44s — with `run-state.json` recording the arguments:
+
+```
+running: http://127.0.0.1:8080/ (pid 12601, up 54s, no watch, build #1 (boot))
+running: http://127.0.0.1:8180/ (pid 13229, up  3s, no watch, build #1 (boot))
+```
+
+`run restart` stopped in 300–500 ms and came back on the same ports, which is
+how both apps picked up the model changes above. This replaces the
+`setsid`/nohup/`pkill` handling earlier sessions used, and the generated
+`run-local` skill now says so in as many words: *use it "whenever you would
+reach for nohup, a sleep/grep poll loop or pkill"*. Whether a detached app
+survives the container idling is a property of this environment, not of mxcli,
+and is not tested here.
+
+### Open issue 9 closed, and the skills arrived mid-session
+
+`mxcli init --sync-skills` refreshed **100 files across 74 skills** plus
+`.ai-context/`, stamped the version, and the skills became visible to this
+session immediately — `run-local` and `test-app`, the two that document the
+features above, among them. Issue 9 was "`.ai-context/skills/` does not follow a
+binary upgrade"; it does now, by one command, and the command refuses when the
+binary is older than the stamp.
+
+They are left untracked and gitignored: they are reproducible from the binary,
+and the two hand-written packs under `.claude/skills/` stay tracked.
+
+### Issues re-verified by execution
+
+| # | Verdict |
+|---|---|
+| 9 | **fixed** — `init --sync-skills`, 100 files / 74 skills |
+| 13 | **narrowed to one case** — listview `OnClick` round-trips (back as `Action: call microflow …`) and so does `sort by` on a database datasource; a **GALLERY's `PageSize` is still dropped silently** |
+| 14 | **fixed** — `PageSize: 30` written and read back |
+| 15 | **unchanged** — `SET $N = 12.5` on an Integer, and `IF $S/raceCount > 0` on a possibly-unset Long, both still `Check passed!` |
+| 18 | **still open** — `marketplace install` has no dependency flag. But the destructive path is now opt-in and labelled: `--allow-format-change` reads *"use the legacy `mx module-import` path, which rewrites an MPR v2 project as v1 (one-way)"*, which hardens §90's issue-16 fix |
+| 20 | **fixed at the language level** — the writer now *defaults* `Provider` when empty rather than assigning it; the grammar takes any identifier; `Provider: OpenAI` parses and checks clean. `mxcli syntax agents model` still documents one value |
+
+`mxcli fix hashes` is new and clean on both apps — 519/519 and 541/541 units, 0
+mismatches, 0 missing, 0 orphans — checked before and after every write above.
+
+### Two smaller things
+
+`mxcli check` now simulates the set in order: *"Checking 15-narrative.mdl
+against a scratch copy of the project holding what the 14 file(s) before it
+write"*, and when one file would be refused it says so and carries on without
+it. That ordering is how all 13 MDL-V1-REBUILD refusals surfaced before exec
+touched anything. The side effect is that `mxcli check model/<app>/*.mdl` exits
+1 on this project's canonical set, because `CREATE DEMO USER` and the foundation
+entity scripts are deliberately not re-runnable — so the set is not a bare CI
+gate without excluding those files.
+
+And §90's one-time convergence recurred from a different fix. `keep interior
+blank lines in /** */ doc comments` means a re-run re-adds the blank comment
+lines the old writer dropped: 6 backend units on pass 1, then byte-identical.
+Worth repeating because it is now twice: **after an upgrade, the first pass is
+not the measurement — the second one is.**
+
+### What this round says about the loop
+
+Of the six issues this project had open and testable, four moved, and the two
+that moved furthest were the two that named a mechanism — issue 9 asked for the
+sync to follow the binary and got `--sync-skills`; issue 20 pointed at two
+specific lines and those two lines changed. Issue 18, filed as an observation,
+is where it was.
+
+The new finding is the other direction. MDL-V1-REBUILD is a *good* change —
+version-gated, loudly reported, with the remedy spelled out — that is wrong for
+this project specifically, because it protects hand-drawn layout in a project
+with none. That is not a bug report so much as a missing distinction, and it is
+the first thing in 91 sections where the right fix is for mxcli to notice
+something about itself: it wrote every element ID in these flows, so it already
+knows nothing would be lost.
+
+## 92. `020f4572b`: the loop splice landed, and a browser check that fails a page it just rendered
+
+Built from `ako/mxcli` main three days after §91: **292 commits, 160 non-merge**,
+spanning release 0.26.0 and the work after it. §91's headline issue was filed
+upstream as ako/mxcli#1106 and is **closed**, by PR #1110 — so this section
+starts by testing the fix I asked for, then works outward through the release.
+
+### The build needs rsync now, and does not say so
+
+`make build` failed before anything could be tested:
+
+```
+make: rsync: No such file or directory
+make: *** [Makefile:79: sync-mods] Error 127
+```
+
+`sync-mods` is one commit old (PR #1213, the companion-mod embed). It is the
+third rsync target in the Makefile and the only one without a fallback — its two
+siblings both carry `|| { rm -rf …; cp -R …; }` for exactly this case:
+
+```make
+sync-skills:      @rsync … || { … cp -R .claude/skills/mendix/. cmd/mxcli/skills/; }
+sync-skill-packs: @rsync … || { … cp -R .claude/skills/packs/. cmd/mxcli/skillpacks/; }
+sync-mods:        @rsync …          # no fallback
+```
+
+`build` depends on `sync-all`, so this is a hard stop, and rsync is not in
+CONTRIBUTING's prerequisites (Go, Git, Make, ANTLR4, a JDK). `apt-get install
+rsync` fixed it. Filed as issue 28 (ako/mxcli#1217).
+
+Worth recording separately: the build script reported success anyway, because
+its exit code was read through a pipe to `tail`. That is the same mistake §91
+caught itself making with `playwright check`, in this repo's own script rather
+than in a measurement — fixed by capturing `$?` before the pipe.
+
+### MDL-V1-REBUILD: the splice now edits inside a loop, and it is a real splice
+
+The test was the exact case #1106 described — one expression inside one `SET`
+inside a `LOOP`, in `DSJ_Career`, `round($S/points, 2)` to `3`:
+
+```
+check:  no flow change exec would refuse
+diff:   1 modified — exec would write 1 unit(s)
+exec:   Modified microflow: Formula1Frontend.DSJ_Career (spliced: 1 replaced)
+        17 documents already in sync (unchanged, not listed)
+```
+
+Where §91 got 13 refusals and "Nothing was written", this writes one unit and
+says what it did. `spliced: 1 replaced` is the useful part: it names the
+operation, so a caller can tell a splice from a rebuild without inspecting the
+model.
+
+And it is genuinely a splice. `describe … with handles` before and after differs
+in exactly two lines — the changed expression and the handle comment that quotes
+it. All 13 layout annotations survive byte-for-byte, including `@merge(820, 130)`
+on the `if` *inside* the loop body and the loop's own `@anchor(from: right, to:
+left)` — the two things `mxcli help MDL-V1-REBUILD` says a rebuild destroys.
+
+One measurement went further than needed and is worth keeping because it
+disproved a suspicion. Reverting the edit and re-exec'ing left the unit
+semantically identical (`describe` byte-identical to the pre-edit baseline) and
+stable (a third exec wrote nothing), but **not** byte-identical to the committed
+file. A `bson dump` diff across the round trip showed three values moved: the
+replaced activity's `$ID`, its nested `Action` `$ID`, and the `SequenceFlow`
+`OriginPointer` rewritten to match. My first reading was that the new in-loop
+path renumbers where it should carry identity. The control says otherwise —
+splicing a statement *outside* any loop in the same flow churns the same way
+(2 `$ID`s plus both its pointers):
+
+```
+in-loop splice:    96 identities before, 96 after — 3 re-minted
+top-level splice:  96 identities before, 96 after — 4 re-minted
+```
+
+So re-minting the replaced element is how `replace` has always worked, not
+something #1110 introduced; the identity count is conserved, every pointer is
+rewritten in the same pass, and no `GUID` appears in the diff at all. Not a
+defect. The only consequence is that an edit and its revert leave a three-value
+binary diff in the MPR with no semantic content.
+
+### `playwright check` fails a page it has just signed into and rendered
+
+This is the find that cost the most and matters most, and the first two
+explanations I reached for were both wrong.
+
+With an explicit URL, on a freshly restarted runtime:
+
+```
+$ mxcli playwright check http://frontend.local:8180/ -p Formula1Frontend.mpr --role Enthusiast
+  ERR    [Startup] Could not create a session because the server responded with 401
+  HTTP   401 POST /xas/
+  FAIL   the sign-in form is showing, not the page (pass --user/--password or --role)
+FAIL 1 of 1 page(s)                                                      exit 1
+```
+
+The same command with the URL removed, same role, same runtime:
+
+```
+$ mxcli playwright check -p Formula1Frontend.mpr --role Enthusiast
+page home  title="Mendix - Narrate"  text=2021  console-errors=0
+OK 1 page(s)                                                             exit 0
+```
+
+Six runs of each, deterministic: **project mode 6/6 pass, explicit URL 6/6
+fail.** And the sign-in the explicit-URL run says did not happen *did* happen —
+`System.User.LastLogin` for `fan` advances during every failing run (11:27:15 →
+11:28:36 on the run quoted above), the credentials are independently valid
+(`POST /xas/` with them by hand returns 200 and a session cookie), and the
+runtime log records 48 client-side Vega warnings inside the window of a failing
+run, which is the signed-in page drawing its charts. The verdict is computed
+against the login page the browser has already left. Filed as issue 29 (ako/mxcli#1216).
+
+Two wrong turns on the way there, both worth recording because each looked
+conclusive:
+
+- **"The credentials are stale."** Disproved by the direct `POST /xas/` (200 +
+  session) and by `LastLogin` advancing.
+- **"The trial runtime's session cap."** mxcli has an excellent hint for exactly
+  this — "the unlicensed local runtime allows only a handful of concurrent
+  sessions, and the login page reports that as *Sign in failed* as if the
+  password were wrong" — and the marker was in the log 40 times, so for a while
+  this looked like the whole answer. It was a genuine confound, not the cause: my
+  own hand-rolled curl login held a slot it never released, and once I restarted
+  the runtime the explicit-URL failure reproduced 6/6 with **zero** cap markers
+  written during the run. The cap is real, it is documented, and it was not this.
+
+The hint is worth a note of its own. It never printed, although
+`loginFailureHint` reads the last 64 KB of the runtime log and the marker sat
+1,215 bytes from EOF, 29 times over. It is only appended on the
+`login failed: %w` path and only when `opts.RuntimeLogPath` is set, which the
+`playwright check` path does not set — so the one command most likely to exhaust
+the cap is the one that cannot explain it. Folded into issue 29.
+
+Consequences for this project. `playwright check` was §91's replacement for the
+hand-written browser walk, and §91 used explicit URLs throughout, so that
+verification path is down until this is fixed; project mode covers the home page
+only (`OK 1 page(s)` — the page/URL table yields one entry). Charts are still
+verified, by assertion rather than by eye, and the assertion is live rather than
+silently passing:
+
+```
+--assert-count 'svg.marks>=1'      OK, exit 0
+--assert-count 'svg.marks>=9999'   FAIL … got 5, exit 1
+```
+
+Five Vega roots on the home page, and a failed assertion still exits 1 as §91
+corrected itself to say. **Issue 24 could not be re-tested at all** — a
+nonexistent URL is only reachable in explicit-URL mode, so its FAIL this time
+says nothing about whether that gap was fixed. It stays open and unmeasured.
+
+### `fix property-sets` had real work to do here, and it was all ours
+
+New in 0.26.0 (mendixlabs/mxcli#1373): every element must carry the property
+*names* Studio Pro writes for the project's Mendix version, or Studio Pro's
+merge engine throws the first time it saves the document — while `mx check`, the
+build and the runtime all stay green. This project has been written by a dozen
+mxcli builds, so it is exactly the population the command is for:
+
+```
+Formula1Backend   8 of 519 units: 26 key(s) added, 0 stripped
+Formula1Frontend  4 of 541 units:  4 key(s) added, 0 stripped
+```
+
+All 12 are microflows, and all 12 are the narrative family — `Narrative_Sweep`,
+`Nar_Pits`, `Nar_Swings`, `DS_NarrativeHead` and their siblings — the newest
+code in the repo. Nothing was stripped, both apps re-report "Every unit already
+has the property names Studio Pro writes", both are `fix hashes`-clean, unit
+counts are unchanged at 519 / 541, and both still build and boot with no CE
+codes. All six published OData services return 200 with real rows through the
+`x-api-key` microflow auth, so the rewrite did not disturb the services.
+
+A detail that cost a false hypothesis: the property-set repair is **not** why
+the spliced unit differed from its committed bytes. Restoring the committed
+bytes and re-running `--dry-run` reported the same 4 units, `DSJ_Career` not
+among them.
+
+### The breaking change does not break this project
+
+0.26.0 stops mxcli creating a module role on its own (mendixlabs/mxcli#1474) and
+flags it breaking for scripts that granted to `<Module>.User` without creating
+it. Checked across all 40 scripts: nothing here relies on it. The only `.User`
+references are `System.User`, which is Mendix's own, and
+`ODataPushdown.User`, which the pack creates explicitly. The full set still
+checks with 0 errors; the only two files that fail are the two that always have
+— `03-persistent-entities.mdl` (bare `create entity` on entities that exist) and
+`07-demo-users.mdl` — for the documented reason, not a new one.
+
+Worth noting the auto-created role from the old behaviour is still sitting in
+this project: `Formula1Backend.User`, described "Auto-created default role for
+mxcli document access". The change is correctly not retroactive, so it stays
+until someone removes it.
+
+### Two of this project's own long-standing warts are now fixable
+
+**`07-demo-users.mdl` is re-runnable.** Its header has said since §31 that
+`CREATE DEMO USER` has no `or modify` form, so the file halts on a second run and
+needs `--continue-on-error`. Both forms exist now:
+
+```
+CREATE OR MODIFY DEMO USER 'f1api' (…)   ->  Unchanged demo user: f1api
+```
+
+Idempotent, writes nothing on a second run. Migrated both statements and
+rewrote the header, which was stale twice over: it also claimed 06 is not
+re-runnable for want of `create or modify module role`, and 06 has used that
+form for some time.
+
+**A bare `create or modify module role` silently drops the role's
+description.** Found by accident while testing the above.
+`create or modify module role Formula1Backend.ApiUser;` reported
+`Modified module role` and erased "Read the published OData services. Nothing
+else. This is who Formula1Frontend logs in as." — unit 616 → 527 bytes. Bounded
+by measurement before reporting: the role's **grants are untouched** (they live
+on the entity, keyed by role name — `describe entity` byte-identical across the
+write), and `describe module role` emits the description, so describe → exec
+round-trips safely. Only the hand-written minimal form loses it, and "ensure
+this role exists" is exactly when you would write it. Filed as issue 30 (ako/mxcli#1218).
+
+### MPR007 finds a broken landing in both apps
+
+New lint rule: a user role none of whose module roles may open the home page it
+lands on. It fires once per app, and both are real:
+
+- **Backend**: `ApiConsumer` lands on `MyFirstModule.Home_Web`, the stock page
+  from `mxcli new`, which it was never granted. Harmless in practice — the
+  backend is an OData provider nobody browses — but it is CE2729 per widget the
+  moment the app moves to Production security.
+- **Frontend**: `User` lands on `Formula1Frontend.Narrate` with none of its four
+  module roles granted it. My first guess was that `User` is an unused leftover;
+  it is not — there is a stock `demo_user` mapped to it, and
+  `playwright check --role User` signs in as exactly that account. So a real
+  demo account lands on a page it cannot populate.
+
+Both are left as found: they are security configuration, and this round was
+about testing the build. Flagged rather than changed.
+
+### Re-measured, and the rest of the release
+
+`CONV011` still reports 31 commit-in-a-loop warnings on the backend after the
+rule was widened to count `change … commit` as well as `create … commit`, so
+this project had no instances of the newly covered form. Lint totals: backend
+685 issues (0 errors, 285 warnings), frontend 432 (0 errors, 121 warnings).
+
+The reference-set trap behind the new `add $X to $Obj/Module.Assoc` — where
+`change $Obj (Assoc = $X)` in a loop keeps only the last row, with no complaint
+from `check`, `mx check` or the runtime — **cannot occur here**, and that is
+measured rather than assumed: every `ReferenceSet` in both apps belongs to the
+`System` module, and `select count(*) … where AssociationType = 'ReferenceSet'
+and ModuleName != 'System'` returns 0 for both. A read-only historical dataset
+never needed a many-to-many. The one candidate a grep turned up,
+`CHANGE $H (RaceWinners = $Winners)`, assigns a `Long` counter.
+
+`playwright close` fails with `exec: "playwright-cli": executable file not found
+in $PATH`. Not a defect — `open`/`close`/`status`/`verify` drive the separate
+`playwright-cli` session tool, while `check` carries its own browser. Recorded
+because the error reads like a broken install when it is a different tool.
+
+## 93. PR 1497: a 309-file driver swap, tested against its own base
+
+PR [ako/mxcli#1497](https://github.com/ako/mxcli/pull/1497) removes the
+deprecated v1 BSON driver (`go.mongodb.org/mongo-driver` v1.17.10, flagged
+CVE-2026-107325 with no fix on that line) and leaves mxcli on v2 alone. 309
+files, +1,381/−1,100, five commits.
+
+It is a refactor whose whole claim is that nothing changes, and its own
+description names the way that claim could fail:
+
+> A failed type assertion is not an error, so the value is silently dropped and
+> the next write emits a document with a property missing — which Studio Pro
+> refuses to merge.
+
+That is a claim about **written bytes**, which is the one thing this project is
+set up to measure. Tested at head `36f8cc426` against base `4c0e494e8` (main),
+both built here, with the base as a control throughout — because a refactor's
+output has to be compared with something, and §92's measurements were taken on
+a different build.
+
+### The premise, confirmed on both builds
+
+```
+go version -m mxcli   (PR head)   dep go.mongodb.org/mongo-driver/v2 v2.9.2
+go version -m mxcli   (base/main) dep go.mongodb.org/mongo-driver     v1.17.10
+                                  dep go.mongodb.org/mongo-driver/v2  v2.9.2
+```
+
+Zero v1 import paths anywhere in the tree, and `go.mod` requires only v2. The
+control build downloading v1.17.10 while the PR build does not is the clearest
+form the claim could take.
+
+The PR's three regression guards pass, and the one that matters most is written
+so it cannot pass vacuously — the trap subtest `t.Fatal`s *if the driver ever
+starts behaving*, with the reason:
+
+> plain Unmarshal now nests bson.M in a bson.M — the driver changed and
+> UnmarshalDocM may no longer be needed; re-measure before removing it
+
+The two tests the PR says caught the original breakage — `scheduledevents` and
+`TestNoopRerun_ReportsUnchanged` — also pass here.
+
+### The project-level test: identical output, where output is deterministic
+
+Re-exec the whole set (the odatapushdown module, 25 backend scripts, 15
+frontend scripts, `12-folders` last) against the already-provisioned project,
+with each build, from the same committed starting bytes.
+
+```
+                        writes   files touched
+base run 1 (main)          20          23
+base run 2 (main)          20          23
+PR head                    20          23
+```
+
+The write lists are **identical**, line for line, between main and the PR. Then
+the byte comparison, which needs a noise floor first, because two runs of the
+*same* binary do not produce the same bytes:
+
+```
+same binary, two runs:   7 of 23 files differ
+PR vs base:              7 of 23 files differ — exactly the same 7
+```
+
+So every file whose content is deterministic at all — 16 of 23 — is
+byte-identical between the PR and main, and the 7 that differ are the 7 that
+differ anyway. For the failure mode the PR names, the direct detector is
+`fix property-sets`, and after the PR build had done its writes:
+
+```
+Formula1Backend   Checked 519 unit(s) … Every unit already has the property names Studio Pro writes.
+Formula1Frontend  Checked 541 unit(s) … Every unit already has the property names Studio Pro writes.
+```
+
+Nothing dropped. Both apps `fix hashes`-clean, unit counts unchanged.
+
+### The three areas the PR says broke, round-tripped
+
+Each `describe`d and the output re-executed:
+
+- **Scheduled event** (the PR's "13 properties where Studio Pro writes 14"):
+  `Unchanged scheduled event: Formula1Backend.SE_NarrativeBuild`.
+- **Settings** (the PR's *"refusing to write a settings document that would drop
+  every part"* guard): `4 documents already in sync`, guard not tripped.
+- **Icon and image lookups**: `Unchanged navigation profile 'Responsive'`, with
+  all 8 menu items keeping their `Atlas_Core.Atlas.*` icons — including the
+  hyphenated ones that need quoting (`"time-clock"`, `"org-chart"`,
+  `"user-neutral-group"`, `"layout-list"`). Image collections read back fine,
+  though all 7 belong to marketplace modules rather than this project.
+
+Beyond that: both script sets `check` with 0 errors (only the two known
+non-re-runnable files fail, `03-persistent-entities.mdl` and the frontend's
+`12-demo-user.mdl`, which still uses the bare `CREATE DEMO USER` that §92
+migrated in the backend's `07`), both apps build and boot at build #1 with no
+CE codes, all six published OData services return 200 with real rows through
+the `x-api-key` microflow auth, and `playwright check` passes in project mode
+with `svg.marks>=1`.
+
+**Verdict: no regression found.** The one thing a project this size can add to
+106 green test packages is that the bytes it writes into a real 1,060-unit
+model are the same bytes, and they are.
+
+### What the test turned up about this project instead
+
+The re-exec was supposed to write nothing. It writes 20 documents — on main as
+much as on the PR, so this is ours, not the driver swap's. Three causes, two of
+them real:
+
+1. **Five OData clients carry an absolute path.** `MetadataUrl` is stored as
+   `file:///workspaces/mxcli-formula1/Formula1Frontend/contracts/f1-metadata.xml`
+   and this container mounts the repo at `/home/user/mxcli-formula1`, so every
+   re-exec rewrites all five. The committed value is from the devcontainer. A
+   model that cannot be re-executed in a different checkout path without
+   churning is a portability bug in the scripts, and it has been invisible
+   because the path only changed when the environment did.
+2. **Five pages are `Replaced`, not spliced.** `Season`, `Weekend`,
+   `Constructor`, `Driver` and `Admin` are rebuilt on every run, which
+   renumbers their element IDs — and those four of the five are exactly the
+   self-referencing screens `model/README.md` documents as needing two passes.
+   This is where the 7-file noise floor comes from: a rebuild is deterministic
+   in meaning and not in bytes. The flow splice (§91, §92) has no page
+   equivalent in these scripts.
+3. **One microflow write is a genuine improvement landing late.**
+   `Fcst_RaceLength` gains interior blank lines in its `/** */` documentation —
+   the stored unit was written by a build that stripped them, and the current
+   one preserves them (mendixlabs/mxcli#1300). It will write once and then
+   settle.
+
+The consequence worth keeping: **this project cannot be byte-verified across
+runs** the way §91 and §92 verified single statements. Those measurements were
+sound because they re-exec'd one script and compared one unit; a full-set
+re-exec has a 7-file floor, and any future byte claim has to establish that
+floor first rather than assume zero.
+
+### Corrected twice, both mine
+
+Two grep patterns gave me wrong numbers, and both were caught by looking at the
+data rather than the summary:
+
+- `grep "icon\|ICON"` found nothing in the navigation describe and briefly
+  looked like the PR dropping icon lookups. The stored spelling is `Icon:` —
+  neither pattern matches, and `-i` finds all eight.
+- My write-counting pattern was `^(Created|Modified|Dropped|Moved) `, which
+  misses `Replaced`. The real count is 20, not the 15 I first recorded, and the
+  five missing lines were the page rebuilds that explain the whole noise floor.
+  The PR-vs-base comparison was re-run with the complete verb set before being
+  believed.
+
+Unrelated and still open: issue 29 (ako/mxcli#1216) reproduces unchanged on
+this build — `playwright check` with an explicit URL still fails a page it has
+signed into and rendered, so project mode remains the only working form.
+
+## 94. `a059cb3c7`: a lint option that needed its rules refreshed first, and a correction
+
+PR 1497 is merged, so §93's subject is now in main. All five issues this project
+filed upstream — #1216, #1217, #1218, #1367, #1499 — are **still open**, so the
+targets this round are other people's fixes. 107 issues were closed in the four
+days before this build, most of them `[up#NNN]` mirrors of the older tracker.
+
+### The regression floor from §93 paid off immediately
+
+§93 had to establish that a full re-exec of this project is not byte-stable:
+7 of the 23 files it touches differ between two runs of the *same* binary,
+because five pages are `Replaced` rather than spliced and a rebuild renumbers
+element IDs. That measurement was stored, so this round cost one command:
+
+```
+                            writes   files touched
+§93, PR 1497 head              20          23
+§94, main a059cb3c7            20          23
+
+new main vs §93's recorded output:  7 of 23 files differ
+the known non-deterministic set:    the same 7, exactly
+```
+
+The write lists are identical line for line, and every file whose content is
+deterministic at all is byte-identical to what §93 recorded three days earlier.
+That is the whole regression answer for the model-writing path, and it took
+minutes rather than the two control builds §93 needed.
+
+### The page-rewrite refusal does not fire here, and the reason matters
+
+mendixlabs/mxcli#1622 now refuses `create or modify` / `create or replace` of a
+stored page holding a widget MDL cannot author — a classic data grid, reference
+selector, drop-down or reference set selector — because executing a `describe`
+of such a page used to rebuild it *without* them and report only
+`Replaced page M.P`.
+
+This project replaces five pages on every re-exec, so it was the obvious thing
+to break. It does not: all five scripts check clean. The refusal is for a widget
+**the statement does not declare by name**, and these pages declare their grids
+(`datagrid dgStandings (…)`, eight of them across five scripts). So the
+distinction the fix draws is exactly the right one, and a project that authors
+its pages in MDL rather than describing them is unaffected.
+
+### CONV020 finds nothing here, and the zero is real
+
+The new rule reports an object created in a microflow and never committed,
+returned or passed on — in the field, a seed microflow that logged "Seeded 20"
+against a table with 0 rows. Both apps: **0 findings.**
+
+A zero from a rule you have just met is worth one more command, so the rule was
+given something to find:
+
+```
+create or modify microflow Formula1Backend.TmpConv020Probe () returns Boolean as $Ok
+begin
+  $S = create Formula1Backend.Season ();
+  ...
+```
+```
+⚠ Microflow 'Formula1Backend.TmpConv020Probe' creates $S (Formula1Backend.Season)
+  without committing it, and never commits, returns or passes it on: the object is
+  discarded when the microflow ends. [CONV020]
+  → Commit $S (or create it with commit), return it, or pass it on; if it is only
+    a temporary value, use a non-persistent entity.
+```
+
+It fires, names the variable, the entity and three remedies. So the zero is a
+real clean bill rather than a rule that never ran — which it would have been
+worth knowing either way, because the backend's whole job is bulk loading and
+every create there is committed.
+
+### The prefix options work — after the rules are current
+
+mendixlabs/mxcli#1509 makes CUSTOM002's valid prefixes and QUAL004's entry-point
+prefixes `lint-config.yaml` options. This project is exactly the reported case:
+its conventions are `DS_`, `DSJ_`, `Read_`, `Nar_`, `ASU_`, `SE_`, `Fcst_` and a
+dozen more, and it was carrying **160 findings** that said so.
+
+Configured both apps, re-ran lint, and nothing changed. Counts identical to the
+digit. The obvious reading was that the feature does not work.
+
+It was not that. A control settled whether the file was even read:
+
+```
+QUAL002: {enabled: false}   ->   685 issues -> 533, QUAL002 findings 0
+```
+
+Read, and `enabled` honoured. The options were ignored because **the rules
+themselves were stale**. This project commits its `.claude/lint-rules/*.star`,
+they were written by an older mxcli, and `orphaned_elements.star` still had
+
+```python
+ENTRY_POINT_PREFIXES = ["ACT_", "SCH_", "WS_", "REST_", "OData_"]
+```
+
+hardcoded, with no `get_list_option` anywhere in any of the 29 files. I had
+diagnosed a rule from its output without checking which version of the rule was
+running. `mxcli init --sync-skills` refreshed 14 bundled rules and added two
+(`conv018`, `conv019`), and then:
+
+| | before | after |
+|---|---|---|
+| Backend CUSTOM002 | 99 | **4** |
+| Frontend CUSTOM002 | 61 | **1** |
+| Backend QUAL004 | 60 | **43** |
+| Frontend QUAL004 | 82 | **19** |
+
+The four CUSTOM002 survivors are all genuine, and one is a find:
+`AuthenticateApiClient` and `RecordPrediction` are honestly unprefixed,
+`Probe_DynamicSql` is a leftover probe deliberately left out of the config so it
+keeps being reported, and **`MyFirstLogic`** is the stock microflow from
+`mxcli new` that has been sitting in this project unnoticed since §1.
+
+### Issue 33, filed and then substantially corrected
+
+The QUAL004 residue looked like a reference-graph bug, and ako/mxcli#1639 was
+filed claiming 78 of 142 findings were referenced elements — page datasources,
+navigation menu items, the after-startup microflow, a scheduled event, and a
+page. Then the rules were refreshed, and most of that claim evaporated: the
+current rule **does** count page actions. `DSJ_Career` and `DS_DriverSeasons`
+are no longer flagged; the `Admin` page, `ASU_LoadCacheIfEmpty` and
+`Narrative_Sweep` are no longer flagged.
+
+Re-measured on current rules, asking `refs` about every single finding:
+
+```
+Formula1Backend   QUAL004 = 43, of which refs finds references for  0
+Formula1Frontend  QUAL004 = 19, of which refs finds references for  4
+```
+
+The four are `NAV_Season`, `NAV_Weekend`, `NAV_Constructor`, `NAV_Driver` —
+each the target of `menu item '…' ( OnClick: call microflow … )`, which `refs`
+reports as `NAVIGATION … menu_item` and QUAL004 does not count. That half
+stands, and so does the other half, which the rule refresh cannot touch because
+`refs` is wrong about it too:
+
+```
+$ mxcli refs Formula1Backend.Read_Drivers -p Formula1Backend.mpr
+(no references found: nothing in the catalog's reference graph points at …)
+```
+
+against `02-live-service.mdl:373`, `ReadMode: microflow Formula1Backend.Read_Drivers`.
+34 such microflows here, plus `AuthenticateApiClient` named by
+`Authentication: (microflow …)` on all six services — 35 of the backend's 43.
+Because that gap is in the graph rather than the rule, `refs` and `impact` are
+wrong about them, which are the two commands you would consult before deleting
+one. The issue was retitled and the correction posted as a comment rather than
+quietly edited.
+
+What the corrected rule gives back is worth more than the complaint: seven
+`DS_`/`DSJ_` microflows with **no references at all** — `DSJ_Retirements`,
+`DSJ_SeasonTeams`, `DS_SeasonFact`, `DS_SeasonLeaders`, `DS_ConstructorFact`,
+`DS_SeasonConstructorStandings`, `DS_TeamLatestStanding` — plus the `Cached_`,
+`Live_` and `Count_` Senna pairs, `MyFirstLogic`, and the `TmpLv` probe page
+§91 already flagged. That is real dead code this project had been dismissing as
+rule noise, and it is the reason the config deliberately does **not** whitelist
+`DS_`/`DSJ_`.
+
+### Open issue 9, the app-level half
+
+§91 closed issue 9 by gitignoring the root `/.ai-context/` and `/.claude/skills/`,
+because `init --sync-skills` writes them from the running binary. The two app
+folders have the same trees and they were not covered: this run produced **426
+generated files** of churn across them — 103 skill files and 5 companion files
+per app, plus 124 retired flat `.md` skills superseded by the `<name>/SKILL.md`
+layout. Ignored them the same way, keeping the two genuinely project-specific
+skills (`mendix-bulk-oql-dml`, `widgets`) tracked.
+
+`.claude/lint-rules/` and `lint-config.yaml` stay tracked on purpose. They are
+configuration, mendixlabs/mxcli#1615 refreshes a bundled rule only while its
+content is a version mxcli shipped, and having them current is precisely what
+made the prefix options work.
+
+### Not exercised, and said so
+
+Four of this release's clusters have no footprint here, and it is worth naming
+them rather than implying coverage: the consumed-REST work (list markers,
+`Response: json` parsing, `alter consumed rest service`, the operation-drop
+warning) — this project has **no** consumed REST service documents, only five
+inline `CALL REST SERVICE` calls; the non-persistent specialization fix — no
+entity here uses `extends`; MDL-CHANGE01 and the `System.owner` XPath refusal —
+no script names `System.owner` or `System.changedBy`; and `marketplace package`,
+which was not run.
+
+### Regression, verified
+
+Both apps: `fix property-sets` reports every unit complete, `fix hashes` matches
+every unit file, both build and boot at build #1 with no CE codes, all six
+published OData services return 200, and `playwright check` passes in project
+mode with `svg.marks>=1`. Lint totals moved 685 → 635 and 432 → 423, which is
+the prefix configuration less the two new rules.
+
+ako/mxcli#1216 reproduces unchanged: `playwright check` with an explicit URL
+still fails a page it has signed into and rendered, so project mode remains the
+only working form.
+
+## 95. PR 1798: a 70–93× read reduction, verified — and five of this project's own issues fixed
+
+PR [ako/mxcli#1798](https://github.com/ako/mxcli/pull/1798) makes
+`refresh catalog full source` read each unit file once instead of once per
+describe per lookup. 12 files, +341/−10. Tested at head `3259bba5b` against its
+base `9a8cf0bdd` (main), both built here.
+
+Two claims to check, and the PR is explicit about which matters: *"Count file
+opens, not seconds: the platform gap is per open."* An open costs microseconds
+on a warm Linux or macOS cache and about a millisecond under Windows Defender,
+so wall time on one platform says nothing about another.
+
+### The headline claim, reproduced independently
+
+`.mxunit` opens counted with `strace -e trace=openat`, which needs no
+instrumented build:
+
+| app | units | base opens | head opens | ratio | base time | head time |
+|---|---|---|---|---|---|---|
+| Formula1Backend | 519 | 36,521 | **524** | 70× | 4.2 s | 3.6 s |
+| Formula1Frontend | 541 | 50,900 | **546** | 93× | 7.2 s | 6.0 s |
+
+The head's open count is the unit count plus five — "at most one read per unit",
+exactly as claimed, on a project the author never saw. Wall time barely moves
+(14% and 17%), which is the PR's own point rather than a contradiction: on Linux
+with a warm cache the opens were never the wall-clock cost. A reviewer measuring
+seconds on this project would have concluded the change does almost nothing.
+
+### The correctness claim: every catalog table identical
+
+Ten tables dumped as sorted JSON with only snapshot-metadata keys stripped
+(`SnapshotDate`, `SnapshotId`, …; never content), base against head, both apps:
+
+```
+source 298 · strings 1665 · refs 1504 · permissions 669 · xpath_expressions 48
+microflows 128 · activities 1768 · entities 124 · pages 16 · objects 589   (backend)
+source 322 · strings 2157 · refs 1538 · permissions 1139 · xpath_expressions 91
+microflows 153 · activities 1533 · entities 114 · pages 25 · objects 713   (frontend)
+```
+
+All identical — **with one exception that turned out not to be the PR's.**
+
+### The exception: a pre-existing race in the source text
+
+One of the frontend's 322 source rows differed. In the base's text the Replay
+page's chart widget is described by its own keyword:
+
+```
+vegachart chartReplayWin ( spec: '{"$schema":...
+```
+
+and in the head's, by the generic fallback:
+
+```
+pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartReplayWin ( spec: '{"$schema":...
+```
+
+Two of the project's twenty `vegachart` widgets, on one page. That is the wrong
+shape for a lookup that has broken — all twenty would fall back — so it was
+worth a second run before reporting. It did not reproduce. Sampling six runs of
+each binary, counting generic fallbacks per run:
+
+```
+base:  0 2 0 2 1 0   -> 3 of 6 runs affected
+head:  1 0 0 2 2 1   -> 4 of 6 runs affected
+```
+
+**So it happens on main too, and PR 1798 did not introduce it.** My first
+reading was an artifact of comparing one run against one run — the §93 lesson
+(establish the noise floor before claiming byte-identity) applied to someone
+else's claim this time, and it cuts both ways: the PR's "its source text is
+byte-identical" rests on one comparison, and the source text is not stable
+run-to-run on either side. The real defect is upstream of this PR: a source
+catalog build non-deterministically describes a pluggable widget by its generic
+`pluggablewidget '<id>'` form instead of its keyword, varying between runs of
+one unchanged project. The build describes up to eight documents in parallel,
+and the widget definitions are themselves catalog rows, which is the shape of a
+race. Filed separately.
+
+### Five of this project's own findings are fixed
+
+More of this round's value than the PR itself. Verified by re-running each
+original reproduction:
+
+- **Findings 24 — `playwright check` reported OK for a URL that resolves to no
+  page.** Fixed, and with the remedy §91 proposed. The verdict now prints the
+  resolved URL and compares it:
+  ```
+  page .../p/no-such-page-xyzzy  url=/p/narrate  title="Mendix - Narrate"  text=2116
+    FAIL   the browser ended on /p/narrate, not on /p/no-such-page-xyzzy      exit 1
+  ```
+- **Issue 29 / ako/mxcli#1216 — explicit-URL mode failed a page it had signed
+  into.** Fixed. `check <url> --role Enthusiast` on `127.0.0.1:8180` now gives
+  `url=/p/narrate title="Mendix - Narrate" text=2021 console-errors=0`, `OK`,
+  exit 0, with `svg.marks>=1` passing. §92 and §94 could only use project mode;
+  explicit URLs work again.
+- **Issue 30 / ako/mxcli#1218 — a bare `create or modify module role` erased the
+  description.** Fixed: `Unchanged module role: Formula1Backend.ApiUser`, the
+  description intact, nothing written.
+- **Issue 32 / ako/mxcli#1499 — a relative `MetadataUrl` stored as an absolute
+  `file://` URL.** Fixed, and the arithmetic matches the number this project
+  reported: a full re-exec now writes **15** documents, not 20, and touches 19
+  files, not 23. The five OData clients no longer churn.
+- **Issue 28 / ako/mxcli#1217 — `make build` needed rsync.** Fixed in code
+  (still open on GitHub): `sync-mods` has the `cp -R` fallback its siblings had.
+  Verified by control — with a stub `rsync` that exits 1 on PATH, `make
+  sync-mode` exits 0, populates the directory, and honours every exclusion
+  (`tests/`, `*.test.ts`, `tsconfig.json` all absent). rsync is still not in
+  CONTRIBUTING's prerequisites, which was the alternative fix.
+
+**Issue 33 / ako/mxcli#1639 is half fixed**, and was closed as completed. The
+substantial half landed: a published service's `ReadMode: microflow X` and
+`Authentication: (microflow X)` are now edges in the reference graph —
+`Read_Drivers` reports `Found 1 reference` where it reported none, and
+`AuthenticateApiClient` reports `Found 6`, one per service. That cleared the
+backend's QUAL004 from 43 findings to **3**, the 34 `Read_` microflows included.
+The narrow half did not: QUAL004 still reports the four `NAV_` microflows as
+"not called from anywhere" while `refs` finds each one's
+`NAVIGATION … menu_item`. Frontend QUAL004 is unchanged at 19.
+
+Only ako/mxcli#1367 (version support info absent from `mxcli syntax`) is
+untouched.
+
+### Regression
+
+Both apps: `fix property-sets` reports every unit complete, `fix hashes` matches
+every unit file, both build and boot at build #1 with no CE codes, all six
+published OData services return 200, `playwright check` passes in project mode
+with `svg.marks>=1`.
+
+One new observation, not a regression: on the `frontend.local` hostname —
+which is the app's own configured root URL — `playwright check` fails a page
+that renders perfectly, because mxcli's own dev-tools channel 502s and counts
+as app console errors:
+
+```
+page http://frontend.local:8180/  url=/p/narrate  title="Mendix - Narrate"  text=2021  console-errors=2
+  ERR    WebSocket connection to 'ws://frontend.local:8180/mxdevtools/' failed: … 502
+  FAIL   2 console error(s)                                                      exit 1
+```
+
+The same check on `127.0.0.1:8180` reports `console-errors=0` and passes. So the
+page is fine and the failure is mxcli's own instrumentation on one of the two
+hostnames this project deliberately uses. Recorded as issue 34 (ako/mxcli#1800).
+
+### Corrected
+
+Three of my own greps misled me this round, all caught by looking at the data:
+the catalog dumps that came back as four-row files were `select` hitting the
+10,000-line output limit, not tables differing; a frontend QUAL004 count of 37
+over 19 unique names was the rule's new suggestion text mentioning
+`rules.QUAL004.options.entry_point_prefixes`, so every finding matched the
+pattern twice; and the one-run source-text difference above.
+
+## 96. Main's `#1791` and PR 1802: the incremental cache makes §95's race permanent
+
+Two performance changes, the last of the trio that began with #1789 (§95).
+`#1791` — every v2 command opening most unit files — is **on main** at
+`e3f7f061e`. `#1790` — every source rebuild re-describing everything — is
+[PR 1802](https://github.com/ako/mxcli/pull/1802) at `3e6025894`. PR 1798 merged.
+The "before" measurements use `3259bba5b`, the build §95 verified.
+
+### `#1791`: per-command opens, on two projects (reported as ako/mxcli#1806)
+
+`.mxunit` opens counted with `strace -e trace=openat`, steady state (see the
+caveat below), with each command's output diffed between builds:
+
+| command | Formula1Backend (519 units) | Formula1Frontend (541 units) |
+|---|---|---|
+| `show modules` | 342 → **72** | 383 → **100** |
+| `describe microflow` | 239 → **35** | 251 → **171** |
+| `describe page` | 118 → **28** | 261 → **51** |
+
+**Every output byte-identical.** The claim holds on both apps. The ratios are
+smaller than the 8.9×/32×/11.6× reported on a 4,753-unit project, which is what
+fixed overhead does at a tenth the size.
+
+One outlier worth naming rather than averaging away: the frontend's
+`describe microflow` improves only 1.5×, against the backend's 6.8× for the same
+command. `DSJ_Career` still opens 171 of 541 units. The two projects differ in
+that the frontend's flows are referenced by pages carrying pluggable widgets, so
+something in that path still reads broadly. Not a defect — just the one cell
+where the win is thin.
+
+**A caveat the headline numbers hide.** The first run on the new build is
+*dearer* than the old one: `show modules` on the frontend measured 383 → **641**
+before settling at 100. The index moves to `unit-index-2.idx`, so the first
+command after an upgrade builds it from scratch by reading everything. Both
+index files then coexist (45,729 and 35,926 bytes here), which the changelog
+says is deliberate so an older mxcli keeps its own. Worth knowing because the
+first command an agent runs after an upgrade pays it, and on Windows — the
+platform this whole trio is for — that one run costs more than the version it
+replaced.
+
+### Main's `fix property-sets` now reports mixed property sets, and this project has seven
+
+New on main (ako/mxcli#1505): the command also reports a property name that some
+elements of a type carry and others lack, as `MIXED`, and exits 1. §95 had both
+apps reporting "Every unit already has the property names Studio Pro writes" —
+and `3259bba5b` still says exactly that, so this is the new check finding what
+the old one could not, not a regression:
+
+```
+MIXED  DomainModels$DateTimeAttributeType.LocalizeDate: on 15 of 16 element(s)
+MIXED  DomainModels$NoGeneralization.HasChangedByAttr:   on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasChangedDateAttr: on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasCreatedDateAttr: on 81 of 84 element(s)
+MIXED  DomainModels$NoGeneralization.HasOwnerAttr:       on 81 of 84 element(s)
+MIXED  ODataPublish$EntitySet.ReadMode:          on 42 of 60; without it: F1AdminApi
+MIXED  ODataPublish$PublishedMicroflow.Parameters: on 2 of 5; only on: F1OpsApi
+7 property name(s) left as they are.
+```
+
+Backend only; the frontend is clean. Five of the seven are on one unit,
+`bf8b2a01` — the backend's domain model, which is also one of the seven files
+§93 found non-deterministic. The other two are on published OData services, and
+`PublishedMicroflow.Parameters` is a published OData *action*, which this project
+was the first thing to author at all (§47, §48) — so it is unsurprising that
+mxcli's measured table does not cover it. The command asks for these to be
+reported with the Mendix version, so they were (ako/mxcli#1805).
+
+### PR 1802: the incremental rebuild works
+
+Frontend, 322 source rows:
+
+```
+refresh catalog full source force                 7.9 s   322 described
+refresh catalog, nothing changed                  0.1 s   no work at all
+refresh catalog, after one microflow edit         4.5 s   320 reused, 2 described
+```
+
+Two reused, two described — the edited `DSJ_Career` and the page that names it,
+which is the dependency rule working. 1.8× here rather than the 3.4× reported on
+FactoryManagement, again a size effect.
+
+### The interaction: reuse makes §95's race permanent
+
+This is what this project could contribute that the PR's own tests cannot, and
+it needed §95's finding to even look for.
+
+The PR's safety argument is *"Anything the plan can't vouch for is described
+again, so reuse can only make a build faster; it can't change the result."* That
+is true for a describe that is a function of its input. §95 established that one
+describe here is not: a pluggable widget renders as `vegachart …` or as
+`pluggablewidget 'f1.widget.web.vegachart.VegaChart' …` depending on the run,
+in 3 to 4 of 6 runs (ako/mxcli#1799).
+
+First, the correctness claim, with the control that makes it readable:
+
+```
+incremental vs forced full run 1   IDENTICAL
+incremental vs forced full run 2   differs in 2 lines
+forced full run 1 vs run 2         differs in the same 2 lines   <- control
+```
+
+The two *forced full* builds disagree with each other, and the incremental
+matches one of them. The differing row is `Formula1Frontend.Constructor`: two
+`vegachart` keywords in one, two generic forms in the other. So the PR's
+byte-identity holds as far as it can be measured — but it is measured against a
+moving target, and a single comparison can pass or fail by luck.
+
+Then the consequence. With the cache holding the generic form for `Constructor`:
+
+```
+plain refresh #1   source: 320 reused, 2 described   generic form still there
+plain refresh #2   no work at all                    generic form still there
+plain refresh #3   no work at all                    generic form still there
+forced full ×4                                       generic form gone, 4 for 4
+```
+
+**A racy wrong describe is now sticky.** Before PR 1802 every rebuild
+re-described everything, so a bad row had a fresh chance of coming out right —
+roughly even odds each time. Now the row is reused for as long as its unit is
+unchanged, and the rebuilds that `search` and `show references` trigger after
+every save are exactly the plain ones that reuse it. Only `FORCE` clears it, and
+nothing tells the user to run it.
+
+So the right fix is still #1799, not anything in this PR — but #1799 stops being
+intermittent and cosmetic and becomes persistently wrong once cached, and the
+caching is what makes it so. Reported on both (PR 1802 and ako/mxcli#1799).
+
+### Regression
+
+The full re-exec writes the same **15** documents as §95, item for item (1
+constant, 1 database connection, 4 entities, 3 Java actions, 1 microflow, 5
+replaced pages), touching 18 files against §95's 19 — inside the seven-file
+non-determinism §93 measured. Both apps `fix hashes`-clean, both build and boot
+at build #1 with no CE codes, all six published OData services 200.
+`playwright check` with an **explicit URL** passes on loopback
+(`url=/p/narrate`, `console-errors=0`, `svg.marks>=1`, exit 0), so #1216 stays
+fixed. The splice now reports `spliced: 1 edited in place` where §92 saw
+`spliced: 1 replaced`.
+
+## 97. `5897690cd` (0.29.0): the full script set finally writes nothing
+
+Release 0.29.0, built from main after PRs 1798 and 1802 both merged. Much of it
+is this project's own lineage, and one result has never been true before.
+
+### The whole script set is idempotent
+
+Three consecutive full re-execs of all 41 scripts, from a converged state:
+
+```
+converged tree hash: 52a3fa4c2b4e0be3
+  pass 1: 0 writes, tree hash 52a3fa4c2b4e0be3
+  pass 2: 0 writes, tree hash 52a3fa4c2b4e0be3
+  pass 3: 0 writes, tree hash 52a3fa4c2b4e0be3
+```
+
+**Zero writes, byte-identical.** The arc, each step measured in its own section
+and each drop explained:
+
+| | writes per full re-exec |
+|---|---|
+| §93, §94 | 20 |
+| §95 (after ako/mxcli#1499) | 15 |
+| §97, first pass on this build | 12 |
+| §97, every pass after | **0** |
+
+Where the 12 went: two `Modified OData service` writes were the one-time
+property-set completion (#1805, below) — applying `fix property-sets` first
+removes them, which is how 15 became 12 and also what stopped three entity
+writes. The remaining 12 are one-time convergence. The three Java actions and
+the one microflow rewrite their documentation to add the blank comment lines the
+MDL source has and an older build stripped:
+
+```
+  /**
+   * Run a statement and report what happened instead of throwing.
++  *
+   * Returns 'OK rows=N' or 'ERR <exception>: <message>'. …
+```
+
+And the five `Replaced page` writes — the ones that made §93's noise floor —
+stop, because 0.29.0 gave MDL a spelling for the page and widget settings a
+rewrite used to reset (`DesignProperties`, a scroll container's `LayoutMode`, a
+tab page's `Badge`, a text area's `NumberOfLines`, and the rest). A rewrite that
+resets nothing writes nothing.
+
+**So §93's seven-file non-determinism floor is gone.** §93 had to establish it,
+§95 reasoned around it to read PR 1798, and §96 used it to read PR 1802. A
+future byte claim about this project no longer needs it — which is worth saying
+plainly, because three sections' worth of careful hedging just became
+unnecessary.
+
+A prediction of mine was wrong on the way: §96 expected the Java-action javadoc
+fix (ako/mxcli#1700) to stop those three writes outright. They still wrote, once.
+Right in effect, wrong in mechanism — the write is the documentation converging,
+not the javadoc header.
+
+### Two more of this project's issues fixed
+
+**ako/mxcli#1800 — `playwright check` failing a page over the dev-tools
+channel.** Fixed, and root-caused better than I had it. I reported it as the
+runtime serving `/mxdevtools/` on one hostname and not the other; it was the
+**HTTPS proxy**: Chromium sends `ws://` to `https_proxy`, and `no_proxy` here
+lists only loopback names, so `frontend.local` went through the proxy and got a
+502. This container is exactly that environment —
+`https_proxy=http://127.0.0.1:33545`, `no_proxy=localhost,127.0.0.1,::1,…` with
+no `frontend.local`. Verified on the hostname that failed:
+
+```
+page http://frontend.local:8180/  url=/p/narrate  title="Mendix - Narrate"  text=2021  console-errors=0
+OK 1 page(s)                                                                            exit 0
+```
+
+The fix's other half — "no console error is ignored: the channel connects, and a
+genuine console error still fails the page" — is **not** verified here, because
+this project has no page that logs a real console error to test it with.
+
+**ako/mxcli#1805 — the seven MIXED property names.** Fixed. What the previous
+build could only report, this one fills:
+
+```
+NEEDS  F1OpsApi               +3 key(s)
+NEEDS  bf8b2a01 [DomainModel] +13 key(s)
+NEEDS  F1AdminApi             +18 key(s)
+Would complete 3 unit(s): 34 key(s) added, 0 stripped.
+```
+
+Applied: re-check clean, exit 0, and `describe odata service` now prints the four
+entity-set modes with the values Mendix was already reading the absent ones as
+(`ReadMode: ReadFromDatabase`, `InsertMode/UpdateMode/DeleteMode: NotSupported`).
+All six published services still return 200, F1AdminApi included — the one that
+gained 18 keys.
+
+### The `#1106` lineage closes
+
+§91's headline was that `create or modify microflow` refused any change inside a
+loop body. §92 verified the in-place half (ako/mxcli#1106 → #1110). ako/mxcli#1693
+does the structural half:
+
+```
+insert a LOG statement inside the DSJ_Career loop  ->  spliced: 1 inserted
+remove it again                                    ->  spliced: 1 dropped
+```
+
+And it is a splice, not a loop rebuild. The two `SET`s keep `@position(210, 130)`
+and `(370, 130)`, the `if` keeps its merge; the loop box widens from
+`@position(1225, 200)` to `(1298, 200)` to make room, and two `@curve`
+annotations appear for the new node's flows. Exactly the local adjustment an
+insert should cause.
+
+One wrinkle, measured before being believed: the drop does **not** give the room
+back — the loop box stays at 1298 and the downstream nodes stay shifted. That
+looked like it might drift without bound, so three further insert-and-drop
+cycles were run:
+
+```
+after cycle 1: loop @position 1298, 200
+after cycle 2: loop @position 1298, 200
+after cycle 3: loop @position 1298, 200
+```
+
+Stable. The freed room is reused by the next insert rather than accumulating. A
+one-off widening, semantically neutral, not worth filing.
+
+### `#1804`: incremental everywhere, and the race that now sticks
+
+The incremental rebuild PR 1802 brought to the source index now covers every
+catalog table. Measured on the frontend's 322 documents:
+
+```
+refresh catalog full source force      5.3 s
+refresh catalog after one edit         2.4 s
+```
+
+2.2× against the reported 8× on 4,753 documents — a size effect, as with every
+other figure in this trio.
+
+But **ako/mxcli#1799 still reproduces**, and the consequence §96 warned about on
+PR 1802 is now shipped. Six forced full builds, counting generic
+`pluggablewidget '<id>'` forms where the `vegachart` keyword belongs:
+
+```
+0 1 2 0 1 1      -> 4 of 6 runs affected
+```
+
+And with a bad row in the cache, three plain refreshes in a row keep it:
+
+```
+plain refresh 1: generic forms = 1
+plain refresh 2: generic forms = 1
+plain refresh 3: generic forms = 1
+```
+
+So a racy describe is now persistent in the tables `search` and `show references`
+read, on released code rather than a branch. Re-reported on the issue.
+
+### Regression, and what was not exercised
+
+Both apps: `fix hashes` clean, `fix property-sets` clean, both build and boot at
+build #1 with no CE codes, all six OData services 200, `playwright check` green
+on `frontend.local` with `svg.marks>=1`. Backend lint 635 → 596 issues, frontend
+unchanged at 423, 0 errors both.
+
+Not exercised, stated rather than implied: the self-reference retrieve rule
+(ako/mxcli#1793) — no association here goes from an entity to itself; the new
+`split` reference edge — no script uses `split type`; MDL-WF20 and the workflow
+work — this project has no workflow; and the return-value-mapping, admin-password
+and `extra code` additions, none of which this project uses.
+
+ako/mxcli#1367 and #1806 remain open, as does the `NAV_` half of #1639.
+
+## 98. The published nightly, against a build from source
+
+Asked to upgrade to the latest mxcli nightly. Worth stating what that changes,
+because this project deliberately does not use it: `scripts/build-mxcli.sh`
+builds `ako/mxcli` main instead of downloading the prebuilt binary, so every
+section from §1 to §97 measured a source build.
+
+```
+source build (was installed)  mxcli version c4666c2 (2026-11-18T06:43:47Z)
+latest nightly                mxcli version nightly-20261117-b7dc2f863 (2026-11-17T11:04:39Z)
+```
+
+`mxcli setup mxcli --tag nightly` fetches it from `mendixlabs/mxcli` releases,
+105.8 MB. The nightly is **~20 hours behind** what was installed: `c4666c2` is
+`ako/mxcli` main's head, and `b7dc2f863` is a commit on the same line a day
+earlier ("Merge pull request #1878 from ako/main"). My shallow checkout did not
+have that commit, which briefly looked like the nightly coming from a different
+lineage; the GitHub API settled it before it reached this file.
+
+**Still works.** Both script sets `check` with 0 errors (only the two documented
+non-re-runnable files fail), both apps build and boot at build #1, all six
+published OData services return 200 with real rows, and `playwright check`
+passes on `frontend.local` with `svg.marks>=1` and `console-errors=0`.
+
+### One thing to know: the older binary rewrites three documents
+
+§97's result was that a full re-exec writes nothing. On the nightly, the first
+pass writes three — two database connections and a constant — and every pass
+after writes nothing:
+
+```
+nightly   pass 1: 3 writes   tree 3efac5589819930d
+nightly   pass 2: 0 writes   tree 3efac5589819930d
+```
+
+The three are semantically identical before and after (`describe database
+connection` byte-for-byte unchanged), so nothing is lost; it is the older
+binary's byte form. The question that matters is whether the two builds then
+fight over them, so the source build was put back and the set re-run:
+
+```
+c4666c2   pass 1: 0 writes   tree 3efac5589819930d
+c4666c2   pass 2: 0 writes   tree 3efac5589819930d
+```
+
+**No ping-pong.** The newer build accepts the nightly's form, so the three
+writes are a one-time cost of the switch, not churn between the two. Committed,
+because leaving them uncommitted would mean a dirty tree after every nightly
+run, and both builds treat the committed state as converged.
+
+### Two incidental confirmations
+
+**A new git-state warning is accurate.** Booting printed:
+
+> Warning: git branch "claude/mendix-app-provisioning-gvqxpg" has no upstream.
+> Studio Pro 11.13 fails to open a project in this state … run: git push -u origin …
+
+The branch *has* been pushed in every earlier section, so this looked like a
+false positive. It is not — this container was recycled, and
+`git rev-parse --abbrev-ref '@{upstream}'` answers `fatal: no upstream
+configured`. The check caught a real state that would have broken Studio Pro.
+
+**The boot failure was the environment, not the nightly.** The first boot died
+on `FATAL: password authentication failed for user "mendix"`, which reads like a
+regression. It was not: the SessionStart hook had reported "Database ready", but
+`run --local --setup --ensure-db` then said `Creating role "mendix"` — the role
+did not exist, so the hook's claim was stale against a recycled container.
+Re-running the project's own setup fixed both apps. Worth recording because the
+first instinct on a boot failure right after a binary swap is to blame the
+binary.
+
+### Note for later
+
+The scratchpad had been cleared, so the re-exec harness §93–§97 relied on was
+gone and had to be rewritten from scratch — not for the first time. It belongs
+in `scripts/` beside `fingerprint.sh` rather than in a temporary directory.
+
+## 99. DuckGraphLake: the read path verified query by query
+
+The datalake proposal's Stage 1 claimed the 44 `F1Warehouse` queries could read from
+served views instead of re-parsing CSVs. That was an argument, not a measurement. This
+section records the measurement.
+
+### Method
+
+Both variants run against the **same** DuckGraphLake connection, over the PostgreSQL
+wire endpoint: variant A is the query's SQL exactly as the MDL stores it, with
+`{dataDir}` bound to `data/f1db`; variant B is the same SQL with every `read_csv(...)`
+call — balanced parens, so the explicit-spec form too — replaced by a view name. The
+Mendix model was never modified. The comparison is full result text, not row counts,
+and distinguishes "identical rows and order" from "same rows, different order".
+
+### Result: 19 identical, and the condition that makes it true
+
+| Outcome | Queries |
+| --- | --- |
+| Identical, rows and order | 19 |
+| Non-deterministic in both variants | 1 (`GetDriverSeasons`) |
+| Untested — input not generated in this container | 2 (`GetCircuitOutlines`, `GetCircuitPoints`) |
+
+`GetRaceResults` matched at 27,731 rows, `GetDriverStandings` at 1,683,
+`GetLiveTrace` at 1,437.
+
+The first pass was **not** clean: all five live queries failed on the view side with
+`Cannot mix values of type VARCHAR and ...`. Eight queries read with an explicit
+`columns = {...}` spec, and DuckDB's inference does not reproduce it —
+`live-order.csv` declares `sessionKey` as `VARCHAR`, inference yields `BIGINT`.
+Regenerating those seven views *from the model's own declared specs* turned all five
+into identical results. The specs are load-bearing; a migration that lets the server
+infer types breaks queries that work today.
+
+### Discovery is per-folder, not per-file
+
+Pointed at `data/`, discovery produced one glob view per folder — all 47
+different-schema CSVs in `data/f1db/` collapsed into a single view `f1db`. Pointed at
+`data/f1db/`, it produced one view per file, hyphens converted to underscores
+(`f1db_seasons`, not `f1db-seasons`). So whether a CSV gets its own view depends only on
+whether it sits at the served root or one level below it.
+
+I called the merged view unusable before measuring it, and that was wrong: it is
+`read_csv(..., union_by_name = true)`, 151 columns, 248,287 rows, and it answers queries
+without error. The defect is specific — no `filename`, so no row can be traced to its
+file, and `name` mixes 3,624 constructor, circuit, driver, engine and chassis names in
+one column. Filed as ako/DuckGraphLake#31. Neither layout works unaided, because eight
+queries reach out with `/../` into `facts`, `live` and `circuits` while `{dataDir}`
+stays `data/f1db`. The server's `--init` flag — a SQL script run after discovery —
+resolves it: 62 generated `CREATE OR REPLACE VIEW` statements, 55 per-file plus 7
+carrying declared specs.
+
+### What running the queries surfaced
+
+**`GetDriverSeasons` returns an arbitrary row.** It ends `GROUP BY rr.year,
+rr.driverId ORDER BY rr.year DESC LIMIT 1`; 25 drivers tie on the latest year. Across
+four cold starts the unmodified `read_csv` version returned `pierre-gasly` ×3 and
+`kimi-antonelli` ×1, the view version `pierre-gasly` ×3 and `george-russell` ×1. Both
+unstable, so the query needs a tiebreaker.
+
+This one nearly became a false report. It first showed as a csv-vs-view difference,
+and a csv-vs-csv control run came back clean across 19 queries — which looked like
+confirmation that the views were at fault. Five further runs were clean, an isolated
+repeat was clean, and only deliberate cold starts reproduced it. The control had been
+stable by luck: within one warm process the scan order does not change, so repeating a
+variant in the same process cannot detect this class of instability at all. The noise
+floor has to be established across process restarts, not within a process.
+
+**`GetCircuitOutlines` and `GetCircuitPoints` had no data to read** — but this is an
+environment gap, not a defect. They reference `/../circuits/f1db-circuit-paths.csv` and
+`/../circuits/f1db-circuit-points.csv`, which `scripts/fetch-circuit-outlines.py`
+generates from OpenStreetMap. `data/circuits/` is gitignored exactly like `data/f1db`,
+`data/facts`, `data/laps` and `data/live`; the difference is that the other four are
+fetched during setup and this one is not, so it was simply absent in this container. I
+first recorded these as queries reading files that do not exist, which was wrong: they
+are two of the 21, and they stayed unverified here only because their input had never
+been generated. The verified count is 19 of 21, with 2 untested rather than broken.
+
+Generating it here failed for a second, unrelated reason: the script queries the
+OpenStreetMap Overpass API, and all three of its hosts are unreachable through this
+environment's network policy (`ws_closed_mid_exchange` from the agent proxy, then a
+timeout). Closing those last two needs `overpass-api.de` on the allowlist, or a run in
+an environment with open egress.
+
+### Building the server
+
+`server/build.sh` succeeds (736 targets, 87 MB binary) but the result **exits 1 before
+serving**, on a folder holding nothing but CSV and JSON: Iceberg's initialiser cannot
+auto-install its `avro` dependency. Filed as ako/DuckGraphLake#27.
+
+My first write-up of this was shallow — "it loads Iceberg, and a source build ships
+neither extension" — and that would have made a vague issue. Reproducing it properly
+changed the diagnosis twice. Removing `avro` did **not** reproduce the failure under
+the flags I had been using (`--kafka-port 0`), which killed the first explanation. The
+trigger is the Kafka port, and not the CDC logic: `--no-kafka-cdc` still fails,
+`--kafka-port 0` starts cleanly. `main.cpp:532` explains both — `if (config.kafka_port)
+{ INSTALL iceberg; LOAD iceberg; }`, with no `INSTALL avro` first.
+
+The root cause was already documented in the source. `setup.cpp:229` comments that the
+build's `local_extension_repository` makes *auto*-installs resolve against the build's
+own repository directory — which `build.sh` never creates — while an explicit `INSTALL
+avro` goes to the core repository and works. That call site has the guard; the other
+three (`main.cpp:534`, `setup.cpp:263`, `kafka_lake.cpp:272`) do not. So this is a
+dropped guard, not a missing dependency, and the useful report names the three sites
+rather than the symptom.
+
+Workarounds: `--kafka-port 0`, or install `avro` (8.6 MB from
+`extensions.duckdb.org`) into `~/.duckdb/extensions/v2.0.0/<platform>/`. No flag
+disables Iceberg itself.
+
+### What this does not cover
+
+CDC, the ontology, SPARQL and OData were not exercised — Stage 1 needs none of them,
+and the 15 JSON-parameter queries stay on the PostgreSQL endpoint either way. Stage 2
+remains unproven.
+
+## 100. PR 2395 (CDC baseline GUIDs): verified, and the guard that let it through
+
+`ako/mxcli` main `8da40b5a` plus PR 2395. The PR retypes three CDC GUID properties
+from `Primitive[string]` to `ByIdRef` so they decode from BSON binary, and adds four
+properties the vendored gen was missing.
+
+### The PR itself holds
+
+- **Its control reproduces exactly.** Reverting `entityGuid` to
+  `NewPrimitive[string](..., property.DecodeString)` makes the guard fail with
+  `EntityGuid = "", want "057964e1-…"` — the symptom as reported, not a near miss.
+- **Merges cleanly** onto main (ahead of the PR's base `bf71d920`); 19 modelsdk
+  packages pass, 0 failures. The full `go build ./...` needs generated grammar that
+  is not in-tree, which is unrelated.
+- **The encode claim is true, and I checked it one level deeper than the PR does.**
+  The PR pins `codec.BinaryToUUID` against `mpr.IDToBsonBinary` at the codec level.
+  Setting both GUIDs through the accessors and encoding the element writes BSON
+  **binary subtype 0, 16 bytes**, and decodes back byte-exact. An *unset* GUID is
+  **omitted** from the document rather than written as an empty string — I expected
+  the latter from `encoder.go:356` (`ok && id != ""` falls through) and was wrong;
+  dirty-tracking drops it first.
+- **Nothing consumes it yet.** No CLI surface, no MDL grammar, and zero non-test
+  callers of `EntityGuid()`, `PropertyGuid()`, `AssociatedEntityGuid()` or
+  `AppName()`. The PR is preparatory, exactly as its body says. There is nothing to
+  exercise end to end, and the live-fixture check cannot be repeated here because
+  `ako/TestApp` is outside this session's repository scope.
+
+### The same defect is live on `Security$UserRole`, and provably so
+
+The PR's own insight says to grep gen for `Primitive[string]` on any property whose
+name ends in `Guid`. Doing that across all of gen, then comparing against
+`generated/metamodel` (which the **in-tree** generator produces and which records
+`model.ID` for a GUID), leaves **6** properties: `DataStorageGuid` on
+`Association`, `Attribute`, `CrossAssociation`, `Entity` and `Index`, plus
+`UserRole.Guid`.
+
+`DataStorageGuid` is already known — the key ledger lists three of them and
+`issue657_guid_test.go:48` says outright that the GUID "lives in the raw BSON under
+the `GUID` key (binary), not in the misnamed DataStorageGuid property". I nearly
+reported it as new; checking in-tree first is what stopped that.
+
+`UserRole.Guid` is not. Real documents store it under key **`GUID`** as binary — 982
+occurrences across this project's backend units, 890 in the frontend, and
+`Security$UserRole` is one of the types carrying it. Read through the gen:
+
+| key in document | value type | `Guid()` returns |
+| --- | --- | --- |
+| `GUID` | binary | **`""`** ← what a real document has |
+| `Guid` | binary | `""` |
+| `GUID` | string | `""` |
+| `Guid` | string | the GUID |
+
+Only the one combination that never occurs works. `Name()` on the same element
+decodes fine, so it is as invisible as the CDC case was.
+
+### Why the audit did not catch any of this
+
+`keyaudit_test.go` is a careful 121-entry ledger, and it passes. Three reasons it
+cannot see these:
+
+1. **It compares key names case-insensitively** (`storage[strings.ToLower(key)]`),
+   so gen's `"Guid"` is accepted against storage name `GUID`. BSON lookup is
+   case-sensitive, so the audit's "match" is a runtime miss. This is the whole
+   reason `UserRole.Guid` is absent from the ledger.
+2. **It skips types whose `SetTypeName` has no metamodel struct.** `initEntity` sets
+   `DomainModels$EntityImpl` and `initIndex` sets `DomainModels$EntityIndex`;
+   neither struct exists in `generated/metamodel`, so both are skipped in silence —
+   the exact failure its own comment describes for `Forms$` types and fixed there
+   with an alias. 711 of 930 gen types are checked; these two are among the 219 that
+   are not.
+3. **It audits key names only, never types.** The CDC defect was a type mismatch
+   with a correct key, so no key audit could have found it. The data for a type audit
+   is already in-tree: `generated/metamodel` records `model.ID`, and comparing that
+   against `Primitive[string]` bindings is what produced the 6 above.
+
+Worth proposing upstream: a case-sensitive comparison, an alias (or a fallback on
+the Go type name) for the `*Impl`/`EntityIndex` type names, and a type audit
+alongside the key audit. The last would have caught PR 2395's defect without anyone
+printing a GUID.
+
+### Not a finding
+
+`AppStoreGuid` and `AppStoreVersionGuid` are `Primitive[string]` in gen and genuinely
+stored as **string** in real units (10 occurrences in the backend, 14 in the
+frontend). Correctly typed; a grep on the name alone would have flagged them.
+
+## 101. Main `c152c8c3`: PR 2395 merged, and PR 2394's batch measured against this project
+
+PR 2395 is merged; its head is unchanged from the `edb32b25` §100 verified, so there is
+nothing new in it. What arrived with it is PR **2394** — seven commits, three of which
+touch what this solution actually does.
+
+### `fix(odata)` #2354: this project has the exact pattern, and nothing churned
+
+`create external entities` named a colliding navigation property with a numeric
+suffix; it now uses `<Parent>_<Nav>`. This solution's frontend is built from five
+`create external entities` calls, and it carries the old spelling:
+`F1Cached.season_2` and `F1Cached.season_3`, from three entities (`Races`,
+`DriverStandings`, `ConstructorStandings`) each exposing a `season` navigation.
+
+Two things needed checking, and the diff answered neither.
+
+**Does it rewrite what exists?** No. Re-executing `02-external-entities.mdl` on the new
+binary writes **nothing**, so the existing names stand and the §97/§98 idempotence
+property survives. Had it renamed in place, `impact` reports no references to either
+association, so it would have been safe here anyway — but silently renaming a published
+association is the kind of change that breaks a consumer, and it does not happen.
+
+**Does the new naming actually work on a real service?** Yes, and I checked it against
+the old binary side by side rather than trusting the unit test. Creating the same
+`F1Cached.CachedApi` contract into a scratch module with each binary:
+
+| binary | association names |
+| --- | --- |
+| nightly `b7dc2f863` | `circuit`, `constructor`, `driver`, `season`, **`season_2`**, **`season_3`** |
+| main `c152c8c3` | `circuit`, `constructor`, `driver`, `season`, **`DriverStanding_season`**, **`ConstructorStanding_season`** |
+
+Non-colliding names are untouched in both — `uniqueAssocName` returns early on
+`!collides(base)`. I had misread the diff as renaming every navigation property,
+because the `+` lines show the `<Parent>_<Nav>` branch without that leading guard; the
+guard is in the unchanged context above it. Reading the whole function corrected it
+before the claim went anywhere.
+
+### `fix(run)` #2365: flag-first, so no change here
+
+`run --local` took its ports only from flags, ignoring the configuration. Now the
+configuration supplies them and the flags override. The precedence is explicit —
+`app, admin = appFlag, adminFlag`, then the configuration fills only what is still 0 —
+so this project's `--app-port 8180 --admin-port 8190` still wins, silently. The backend,
+which passes no port flags, now announces:
+
+```
+Ports from configuration "Default": app 8080, admin 8090 (override with --app-port / --admin-port)
+```
+
+The Default configuration happens to declare exactly the old hard-coded defaults, so
+the behaviour here is unchanged and only the message is new.
+
+### `fix(run)` #2360: measurable on this project's own diagnostics
+
+`run` and `run status/stop/wait/restart` exited through `os.Exit`, skipping the session
+close, so `diag loop-report` counted every call as a vanished process with no time.
+This project's history showed the symptom exactly — **`run status`: 5 calls, 5
+unclosed, 0.0s total**. Three `run status` calls on the new binary:
+
+| | calls | unclosed | failed | median |
+| --- | --- | --- | --- | --- |
+| before | 5 | 5 | 0 | 0.0s |
+| after 3 new calls | 8 | **still 5** | 3 | 8ms |
+
+The three new calls closed and were counted with their time and exit code instead of
+adding to "did not close", which stayed at 42. Fix confirmed, not inferred.
+
+### Regression check: the set is still idempotent
+
+The re-exec harness is now `scripts/reexec-all.sh`, in the repository rather than the
+scratchpad, which has lost it twice (the §98 note asked for this). All 41 scripts on
+both binaries:
+
+- **0 writes on each**, and the per-script tables are **byte-identical** between
+  `b7dc2f863` and `c152c8c3`. No regression, no behaviour drift.
+- Three scripts exit non-zero on **both** binaries, so pre-existing and project-side,
+  not the binary's: `00-dependencies.mdl` (`add jar dependency` without the
+  `if not exists` form, 2 statements), `03-persistent-entities.mdl` (`create
+  association` without `or modify`, 14 statements), and `12-demo-user.mdl`
+  (`create demo user`, 2 statements). None writes anything, and
+  `--continue-on-error` carries past them.
+
+The last one is worth fixing: the **backend's** demo users were migrated to
+`CREATE OR MODIFY DEMO USER` in §92, which reports "Unchanged demo user" and writes
+nothing. The frontend's `12-demo-user.mdl` was never migrated and still halts on
+"demo user already exists". Same for the other two, which now have idempotent forms
+available.
+
+### Incidentally re-verified
+
+`rsync` is absent in this container, and `make build` completed — `sync-mods` synced 31
+lint rule files through the `cp -R` fallback. That is ako/mxcli#1217, which §95 verified
+with a stub `rsync` that exits 1; this is the real condition.
+
+### Both apps boot and serve on the new binary
+
+Given that two of the three relevant commits touch `run`, the dev loop was worth
+exercising rather than reasoning about. Both apps built cold and served: backend
+`200` on `:8080`, frontend `200` on `:8180` — the frontend on its flag-given port, not
+the configuration's. End to end, the backend's published OData service still answers
+through the BYOD DuckDB warehouse:
+
+```
+GET /odata/f1/Drivers?$top=3   ->  real rows from f1db-drivers.csv
+```
+
+My first attempt returned `401` and I nearly wrote it up as an authentication
+regression. The header was mine: the service authenticates through
+`AuthenticateApiClient`, which reads `x-api-key`, and I had sent `ApiKey` — one of the
+spellings the *frontend's* consumed-service configuration uses for its own constants.
+Checking the microflow before reporting is what caught it.
+
+## 102. Main `cda86262`: 198 commits, a storage-format change, a new gate, and a crash
+
+Three days after §101, main carries 198 commits. The bulk is two new surfaces — `mxcli
+verify` (a gate over check, lint and mx check) and a large `report` suite — plus four
+new lint rules, seven new check rules, and a change to how every unit is stored.
+
+### The storage-format change is the one that could have hurt, and does not (#2467)
+
+`f3a524b0` makes mxcli write `$ID`, `$Type`, then an element's remaining keys sorted
+case-insensitively, which is what Studio Pro does. mxcli wrote metamodel order, so a
+Studio Pro open rewrote every unit mxcli had touched. For this project the risk was the
+§97/§101 idempotence property: if existing units were reordered on contact, re-exec
+would rewrite everything.
+
+It does not. The commit says the comparison path deliberately stays order-insensitive,
+and that holds here — all 41 scripts re-exec with **0 writes**, git reports **0 files
+touched**, and the key-order census is unchanged to the element (2,003 out-of-order
+elements, 41 types, 22 units, before and after).
+
+The write path does sort, verified on identical input rather than read from the diff:
+
+| binary | the probe microflow's unit | its module unit |
+| --- | --- | --- |
+| `c152c8c3` (old) | 7 in order, **8 out** | 0 in order, **1 out** |
+| `cda86262` (new) | **15 in order, 0 out** | **1 in order, 0 out** |
+
+**This solution's standing exposure, measured:** 4,954 elements across 50 units are in
+the old order — 2,003 in 22 backend units, 2,951 in 28 frontend units. Some types are
+wholly affected, including `DatabaseConnector$QueryParameter` (135/135) and
+`DatabaseQuery` (47/47), i.e. the entire BYOD warehouse. Because re-exec writes
+nothing, none of it normalises on its own: each unit converts only when it next really
+changes. A Studio Pro open would rewrite all 50 at once.
+
+### `mxcli verify`: both apps pass, and mx check finds nothing
+
+With no baseline recorded, every finding counts as new:
+
+| | lint | of which | mxcheck | result |
+| --- | --- | --- | --- | --- |
+| backend | 610 new | 310 warning, 300 info, **0 error** | **0 findings** | passed |
+| frontend | 469 new | 225 warning, 244 info, **0 error** | **0 findings** | passed |
+
+`mx check` reporting nothing on either app is the strongest single statement about this
+model's health so far, and it is the authority — the help text is explicit that check
+and lint cannot predict everything it rejects.
+
+### Four new lint rules: no drift, and two false-positive classes
+
+Across 30 pre-existing rules the counts are **identical** on both binaries — no drift.
+Three of the four new rules fire: MPR016 (5 backend / 6 frontend), MPR017 (3 / 1),
+MPR019 (5 / 39). MPR018 fires nowhere here.
+
+**MPR017 is wrong on every finding it makes here, by two different mechanisms.** On the
+backend it reports an attribute "tested by a decision but can only ever be false, so the
+branch it guards is unreachable" for `Stg_ConstructorStanding.ChampionshipWon`,
+`Stg_DriverStanding.ChampionshipWon` and `Stg_ProcedureResult.Accepted`. All three are
+populated by **database query result mappings** (`ChampionshipWon = championshipWon`,
+`Accepted = accepted`), not by a Change activity, so the rule does not see the
+assignment. The values are real: the source data holds 77 rows with
+`championshipWon = true` against 1,606 false.
+
+The frontend's single finding is a *different* cause, which I only found by reading it
+rather than assuming it matched — I had recorded all four as one mechanism, and that was
+wrong. `F1Admin.Narrative.major` is reported as "nothing ever assigns it and it has no
+default", and `F1Admin.Narrative` is an **external entity**: no local activity ever
+assigns any of its attributes, because the remote OData service supplies them. So MPR017
+needs the same external-entity guard MPR019 does, on top of understanding query
+mappings.
+
+Either way the advice — "remove the flag and the decision that reads it" — would delete
+working logic.
+
+**MPR019 fires 39 times on the frontend, and all 39 are impossible to act on.** It asks
+for an index whose first attribute is the filtered one; all 28 entities it names are
+**external entities**, which have no local table and cannot carry an index. The
+backend's 5 findings are on local persistable entities (`LiveForecast`, `LiveLap`,
+`LivePayload`) and are legitimate, so the rule needs an external-entity guard rather
+than rework.
+
+MPR016 (65 overlapping entities in three clusters) is real and cosmetic, and names its
+own fix, `mxcli layout --only-overlapping`.
+
+### `report all` panics (every project, given a token)
+
+```
+panic: cannot create context from nil parent
+```
+
+`report all` completes quality, architecture, security and configuration, then dies in
+`dependencies`. **Nothing is written** — the output folder is empty, so all four
+finished reports are lost.
+
+`report dependencies` on its own succeeds (exit 0), which locates it: cobra sets the
+context during `Execute`, but `report all` calls each kind through `rk.spec.collect(rk.cmd, …)`
+with a pre-built command out of the `reportKinds` registry that never gets `SetContext`.
+`cmd_report_dependencies.go:88` is the only collector that reads `cmd.Context()`, and it
+hands the nil straight to `checkMarketplace`.
+
+The trigger is a Mendix token plus at least one Marketplace module or widget — without a
+token the code takes the "no Marketplace token" branch and never calls, which is
+presumably why it survived CI. `MENDIX_PAT` is set in this environment and the backend
+has 7 modules.
+
+**Workaround:** `report all --offline`, which skips the Marketplace check and completes,
+writing 17 files.
+
+### The reports themselves are sober
+
+`readiness` returns **not ready** for this project, and every reason is a missing input
+rather than a defect: no requirements in `docs/brain/plan`, no test results read, no
+journeys measured, release not assessed. It distinguishes "not given" from "failed",
+which is the right distinction to make. One of its gaps is self-inflicted —
+"vulnerabilities were not checked: --offline" is there because `--offline` is the
+workaround for the panic above.
+
+### Filed
+
+ako/mxcli#2500 (the `report all` panic, with the nil-`SetContext` cause, the
+token-plus-module trigger and the `--offline` workaround), #2501 (MPR017, both
+mechanisms) and #2502 (MPR019 on external entities). #2501 and #2502 cross-reference
+each other, since a shared "is this entity external?" guard would close half of each.
+
+### Not exercised here
+
+The OData batch does not touch this solution: #2477 (import enum-typed properties) has
+nothing to import, since the published contracts expose no enumeration-typed property at
+all, and #2497's attribute mapping leaves `02-external-entities.mdl` writing nothing.
+
+## 103. The three §102 issues are fixed — and §102 undercounted MPR017
+
+`244dbcc4`. ako/mxcli#2500, #2501 and #2502 are all closed, and all three fixes hold up.
+Two commits carry them: `fa34f157` (report all) and `105c5fa9` (the lint rules).
+
+### A correction first: MPR017 was 7 findings, not 4
+
+§102 said MPR017 fired 3 times on the backend and once on the frontend. The backend
+count was **6**. My own rule-by-rule table from that run said 6; I transposed it with
+MPR016's 5 when writing the section, then read only the first three findings because the
+output was truncated, and reported those three as the whole set. ako/mxcli#2501 carries
+the same wrong count.
+
+Reading all seven changes the picture, because they are **three** mechanisms, not two:
+
+| mechanism | findings | fixed by #2501? |
+| --- | --- | --- |
+| database-connection query `Map:` target | 5 | yes |
+| an external entity's attribute | 1 | yes |
+| **a Java action's returned object** | **1** | **no** |
+
+The five are `Stg_ConstructorStanding.ChampionshipWon`, `Stg_DriverStanding.ChampionshipWon`,
+`Stg_ProcedureResult.Accepted`, `Stg_RaceResult.FastestLap` and
+`Stg_RaceResult.PolePosition` — all mapped, the last two confirmed at `dbc.txt:188-189`.
+The external one is `F1Admin.Narrative.major`.
+
+The third is `ODataPushdown.Query.WantsCount`. `ODataPushdown.Query` is a non-persistent
+entity with `WantsCount: Boolean default false`, returned by the Java action
+`ODataPushdown.Parse`, and `QueryObject.java:55` sets it:
+
+```java
+o.setValue(context, "WantsCount", r.wantsCount);
+```
+
+The model reads `$Q/WantsCount` in six places and assigns it nowhere, so MPR017 is right
+about the model and wrong about the program — it cannot see into Java source. Neither
+shipped guard addresses it.
+
+### Verified: the fixes do what they claim, and only that
+
+Predicted before measuring, from the mechanism breakdown above: MPR017 should fall to
+**1**, not 0, and the survivor should be `WantsCount`. It did.
+
+| | MPR017 | MPR019 |
+| --- | --- | --- |
+| backend | 6 → **1** (`ODataPushdown.Query.WantsCount`) | 5 → **5** |
+| frontend | 1 → **0** | 39 → **0** |
+
+MPR019 staying at 5 on the backend is the control that matters: those findings are on
+local persistable entities (`LiveForecast`, `LiveLap`, `LivePayload`), and an
+over-broad guard would have silenced them too. It did not.
+
+The implementation is also narrower than I feared. `mappedAttributeNames` collects into a
+flat `map[string]bool`, which I took for a bare-name set that would suppress any
+same-named attribute on another entity. It does not: the mappings store **qualified**
+names, and the rule's own new tests include `Shop.Line.Accepted` beside
+`Shop.Result.Accepted`, which is exactly that discrimination. Hypothesis checked against
+the code and dropped before it went anywhere.
+
+The fix also found a mechanism I had only speculated about — an **import mapping** that
+sets a Boolean from JSON `true`, reproduced on a real project — so the walk covers
+import mappings as well as database queries.
+
+### `report all`: all four parts, including two I did not report
+
+`report all` without `--offline`: **exit 0, no panic, 17 files**.
+
+My issue suggested the context fix, a `recover` around collectors, and incremental
+writes. `fa34f157` does all three, and adds two things I had missed:
+
+- **`report readiness -p` had the same nil call.** Verified: exit 0, no panic.
+- **The vulnerability check was separately failing** as `net/http: nil Context`, which
+  my `--offline` workaround had masked rather than avoided. Now
+  `marketplaceChecked: true`, `vulnChecked: true`, no `vulnNote`, zero occurrences of
+  "nil Context" or "the advisory database was not asked", and the readiness page no
+  longer carries "vulnerabilities were not checked: --offline". The Marketplace data is
+  real — per-module notes about withdrawn versions and widget name matches.
+
+Incremental writing tested by interrupting the run at 18s and 30s: **3 JSON files were
+already on disk** both times, with no `index.html`. Previously nothing was written until
+every kind had been collected. The panic-survival half I did not test — it needs an
+induced panic, and the one that used to occur is gone.
+
+### Regression: nothing moved that should not have
+
+148 commits since §102. The full 41-script re-exec writes **0** and leaves **0** files
+dirty, the same 3 pre-existing script-side failures, and the key-order census is
+unchanged to the element (2,003 / 41 types / 22 units). `verify` still passes both apps
+with **0 errors** and `mx check` still reports **nothing**.
+
+Lint moved only where it should, and the arithmetic closes exactly:
+
+- backend 610 → 611 = −5 MPR017 + 6 **MPR021**
+- frontend 469 → 435 = −1 MPR017 − 39 MPR019 + 6 MPR021
+
+MPR021 is new in this batch and reports an association line crossing entity boxes it
+does not connect — the same cosmetic family as MPR016, with the same remedy
+(`mxcli layout`), and legitimate here because this project's entities were never placed
+by hand.
+
+### Also landed
+
+Main's HEAD is `feat(cdc): author change data capture services in MDL (part C)` (#2567) —
+the lineage that began with the #2395 read fix §100 verified. That is the mxcli half of
+the datalake proposal's Stage 2, which §99 left as the unproven stage.
+
+## 104. Stage 2 proven: Mendix entity CDC into the lake, authored in MDL
+
+§99 left the datalake proposal's Stage 2 as the unproven stage — nothing had tested CDC,
+the ontology, SPARQL or OData, because Stage 1 needed none of them. mxcli
+`nightly-363-g244dbcc4` added `create or modify change data capture service` (#2567, the
+lineage that began with the read fix §100 verified), so the whole path is now testable.
+It works, first attempt, with no hand-written mapping anywhere.
+
+### Authoring it
+
+`model/backend/27-cdc-stream.mdl` declares one service over `LiveSyncState`:
+
+```
+create or modify change data capture service Formula1Backend.LiveStateCdc
+( ServiceName: 'LiveStateCdc' )
+{ entity Formula1Backend.LiveSyncState as 'LiveSyncState' ( RowId as 'RowId', … ); };
+```
+
+`LiveSyncState` was chosen because CDC tracks *committed* writes and most of this app's
+entities are the wrong shape for a first proof: the `Stg_*` rows are filled from a BYOD
+query result mapping and never committed (which is also what MPR017 misread — §103), and
+the big F1 entities are loaded once and then only read. `LiveSyncState` is one row that
+two paths write — `SE_LiveSync` every minute, and the published `Ops_LiveSyncSet` action
+on demand — so it is both self-driving and controllable.
+
+- `mxcli check`: passed.
+- `mx check` through `verify`: **0 findings**. The baseline mxcli computes satisfies
+  CE1585, and `AppName` is written from the project name, so no CE1577 either. Lint
+  unchanged at 611.
+- Re-exec: **"Unchanged change data capture service"**, 0 writes, twice, and the version
+  stays at 1.0 rather than bumping on a no-op modify. The full 41-script set still
+  writes nothing.
+- `describe` prints the topic template beside the revision, which is what the proposal
+  asked for: `cdc.Formula1Backend.LiveSyncState.1.{space}`.
+
+### The runtime half
+
+`mxcli run --local --runtime-setting Kafka.BootstrapServers=127.0.0.1:9092` — no model
+change needed for a dev loop. The lake had to run **with** Kafka this time rather than
+`--kafka-port 0`, which is only possible because the `avro` extension is installed
+(ako/DuckGraphLake#27); the broker came up on `:9092` and the topic list was empty before
+the app connected, which makes the before/after unambiguous.
+
+The runtime published to `cdc.Formula1Backend.LiveSyncState.1.local`, so `{space}`
+resolves to `local`, and every documented segment is real: app name, exposed name and
+*major* revision.
+
+### What the lake built from it, unprompted
+
+| | |
+| --- | --- |
+| schema | `formula1backend` |
+| current state | `formula1backend.livesyncstate` |
+| history | `formula1backend.livesyncstate_history` |
+| OData | entity set `Formula1Backend_LiveSyncState` |
+| SPARQL | class `…/Formula1Backend/Formula1Backend_LiveSyncState` |
+
+All 8 authored attributes arrive typed from the messages' own Debezium schema —
+`TelemetryCursor` and `LastRunAt` as `TIMESTAMP WITH TIME ZONE`, the counters as
+`BIGINT` — plus the implicit `id` (`BIGINT`), which comes from the runtime's schema and
+not from the model, exactly as the grammar's comment says.
+
+### The history is the part worth having
+
+Two events, which is precisely what should be there:
+
+```
+change_op  changed_at                   SessionKey     Enabled
+r          2026-11-24 18:49:55.32825                   f
+u          2026-11-24 18:50:36.712476   cdc-proof-1    t
+```
+
+The `r` is the startup snapshot; the `u` is one `POST /odata/f1-ops/LiveSyncSet` with
+`sessionKey=cdc-proof-1`. The current-state view shows only the latest, and SPARQL and
+OData both return the updated row through the generated mapping. That change record is
+something the Mendix database does not keep.
+
+### Two things to carry forward
+
+**A major bump starts a new topic.** `cdc.<AppName>.<ExposedName>.<Major>.<space>` means
+removing a member, renaming an exposed name or changing a type re-points the stream, and
+downstream that is a new table with no history. Renaming the *entity* does it too,
+because `ExposedName` defaults from the entity name. That is why the script writes every
+exposed name out explicitly rather than defaulting it — defaulting would make a later
+rename silently move the topic.
+
+**The lake writes into the folder it serves.** `data/.duckgraphlake/` (the Kafka log per
+topic) and `data/warpstream/` (the Iceberg tables) appeared as untracked files. Both are
+rebuilt from the topics and belong to the dev stack, so they are now gitignored.
+
+### Still untested
+
+Breadth, not mechanism: a service over the F1 entities at ~30k rows, associations (this
+one has none, so the `__<assoc>` link view was never exercised), and whether a major
+bump's new topic is manageable in practice.

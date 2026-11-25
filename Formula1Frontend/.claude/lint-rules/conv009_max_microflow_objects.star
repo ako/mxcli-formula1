@@ -18,15 +18,15 @@ def check():
     for mf in microflows():
         if mf.activity_count > MAX_ACTIVITIES:
             violations.append(violation(
-                message="Microflow '{}' has {} activities (convention max: {}). Split into sub-microflows.".format(
-                    mf.name, mf.activity_count, MAX_ACTIVITIES
+                message="{} '{}' has {} activities (convention max: {}). Split into sub-{}s.".format(
+                    mf.document_noun_title, mf.name, mf.activity_count, MAX_ACTIVITIES, mf.document_noun
                 ),
                 location=location(
                     module=mf.module_name,
-                    document_type="Microflow",
+                    document_type=mf.document_noun_title,
                     document_name=mf.qualified_name,
                 ),
-                suggestion="Extract logical sections into SUB_ microflows to keep each under {} activities".format(MAX_ACTIVITIES),
+                suggestion="Extract logical sections into SUB_ {}s to keep each under {} activities".format(mf.document_noun, MAX_ACTIVITIES),
             ))
 
     return violations

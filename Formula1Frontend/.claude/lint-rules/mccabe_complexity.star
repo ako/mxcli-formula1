@@ -18,12 +18,14 @@
 #   .name            - Simple name (e.g., "ProcessOrder")
 #   .qualified_name  - Full name (e.g., "MyModule.ProcessOrder")
 #   .module_name     - Module name
-#   .microflow_type  - "MICROFLOW" or "NANOFLOW"
+#   .microflow_type  - "MICROFLOW", "NANOFLOW" or "RULE"
 #   .description     - Documentation
 #   .return_type     - Return type
 #   .parameter_count - Number of parameters
 #   .activity_count  - Number of activities
 #   .complexity      - McCabe cyclomatic complexity
+#   .document_noun   - "microflow", "nanoflow" or "rule" (microflows() yields all three)
+#   .document_noun_title - the same, capitalised: use it for document_type=
 
 RULE_ID = "QUAL001"
 RULE_NAME = "McCabe Complexity"
@@ -45,14 +47,16 @@ def check():
         if mf.complexity > MAX_COMPLEXITY:
             loc = location(
                 module=mf.module_name,
-                document_type="Microflow",
+                document_type=mf.document_noun_title,
                 document_name=mf.qualified_name
             )
             v = violation(
-                message="Microflow '{}' has complexity {} (max: {}). Consider splitting into smaller microflows.".format(
+                message="{} '{}' has complexity {} (max: {}). Consider splitting into smaller {}s.".format(
+                    mf.document_noun_title,
                     mf.name,
                     mf.complexity,
-                    MAX_COMPLEXITY
+                    MAX_COMPLEXITY,
+                    mf.document_noun
                 ),
                 location=loc,
                 suggestion="Break down complex logic into sub-microflows. Extract decision branches into separate SUB_ microflows."

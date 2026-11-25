@@ -1,13 +1,13 @@
 mdl 1;
 /*
- * Demo users, split out of 06 because that script is not re-runnable —
- * `create module role` has no `or modify` form, so re-executing 06 stops at the
- * first existing role.
- *
- * This file is no better on a second run: `CREATE DEMO USER` has no `or modify`
- * form either, so it halts on "demo user already exists". Which is why the
- * setting below comes first — a statement after the users would never run on an
- * existing project. Re-run with `--continue-on-error` to get past them.
+ * Demo users, split out of 06 when neither file was re-runnable: `create module
+ * role` had no `or modify` form, so re-executing 06 stopped at the first
+ * existing role, and `CREATE DEMO USER` had none either, so this file halted on
+ * "demo user already exists". Both forms exist now — 06 was migrated to
+ * `create or modify module role`, and the two statements below use
+ * `CREATE OR MODIFY DEMO USER`, which reports "Unchanged demo user" on a second
+ * run and writes nothing (verified in FINDINGS §92). So the split is no longer
+ * load-bearing and neither file needs `--continue-on-error`.
  */
 
 /*
@@ -60,5 +60,5 @@ mdl 1;
  */
 
 /* A demo user per role, so both services can be exercised without a login page. */
-CREATE DEMO USER 'f1api' ( Password: 'F1apiConsumer!2345', UserRoles: (ApiConsumer) );
-CREATE DEMO USER 'f1admin' ( Password: 'F1adminAccess!2345', UserRoles: (Administrator) );
+CREATE OR MODIFY DEMO USER 'f1api' ( Password: 'F1apiConsumer!2345', UserRoles: (ApiConsumer) );
+CREATE OR MODIFY DEMO USER 'f1admin' ( Password: 'F1adminAccess!2345', UserRoles: (Administrator) );
