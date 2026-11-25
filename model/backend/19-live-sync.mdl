@@ -463,6 +463,24 @@ BEGIN
   DECLARE $Body String = '';
   DECLARE $Url String = @Formula1Backend.OpenF1BaseUrl + '/' + $Path;
 
+  /*
+   * Metrics, tagged by feed. Every OpenF1 request in the app comes through here
+   * -- some twenty call sites across 19, 20, 24 and 25 -- so this is the one
+   * place that can count them all. The feed is the path up to its query string
+   * (laps, position, car_data, ...): a handful of values, which is what a
+   * metric tag should be, where the full path would make one series per
+   * session key.
+   *
+   * The runtime reports these through Micrometer to whatever Metrics.Registries
+   * names; with the 'opentelemetry' registry pointed at DuckGraphLake they land
+   * in otel.metrics, and the lake-sync dashboard reads them. With no registry
+   * configured they cost nothing and go nowhere.
+   */
+  DECLARE $Feed String = $Path;
+  IF find($Path, '?') > 0 THEN
+    SET $Feed = substring($Path, 0, find($Path, '?'));
+  END IF;
+
   DECLARE $Gap Integer = 700;
   IF trim($Token) != '' THEN
     SET $Gap = 250;
@@ -486,6 +504,7 @@ BEGIN
       ON ERROR CONTINUE;
     SET $Body = $Plain;
   END IF;
+  increment counter 'f1.openf1.requests' (Tags: ('feed': $Feed));
 
   /*
    * An empty body is ambiguous, and the two things it means want opposite
@@ -497,6 +516,7 @@ BEGIN
    */
   IF trim($Body) = '' THEN
     $Backoff = CALL JAVA ACTION Formula1Backend.Sync_Sleep(Millis = 1500);
+    increment counter 'f1.openf1.retries' (Tags: ('feed': $Feed));
     IF trim($Token) != '' THEN
       $Retry = CALL REST SERVICE GET '{1}'
         WITH ({1} = $Url) (
@@ -525,7 +545,9 @@ BEGIN
    */
   IF trim($Body) = '' THEN
     SET $Body = '[]';
+    increment counter 'f1.openf1.empty' (Tags: ('feed': $Feed));
   END IF;
+  increment counter 'f1.openf1.chars' by length($Body) (Tags: ('feed': $Feed));
   LOG INFO NODE 'F1LiveSync' 'fetch ' + $Url + ' -> ' + toString(length($Body)) + ' chars';
   RETURN $Body;
 END;
@@ -615,6 +637,7 @@ BEGIN
   $State = CALL MICROFLOW Formula1Backend.Sync_State();
   IF $State/Enabled != true THEN
     SET $Result = 'disabled';
+    increment counter 'f1.sync.runs' (Tags: ('result': 'disabled'));
     RETURN $Result;
   END IF;
 
@@ -742,6 +765,16 @@ BEGIN
     LapsWritten = $Kept,
     RunCount = $State/RunCount + 1
   ) COMMIT;
+
+  /*
+   * The same run, as metrics. LiveSyncState already says this -- and CDC
+   * (27-cdc-stream.mdl) gives the lake its history -- but only for the last
+   * run of the row. Counters add up across runs and restarts, and the gauge is
+   * the size of the last derivation, which the state does not keep.
+   */
+  increment counter 'f1.sync.runs' (Tags: ('result': 'ok'));
+  increment counter 'f1.sync.laps_written' by $Kept;
+  set gauge 'f1.sync.rows_fetched' to $Fetched;
 
   LOG INFO NODE 'F1LiveSync' $Result;
   RETURN $Result;

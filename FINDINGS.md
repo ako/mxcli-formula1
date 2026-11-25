@@ -9437,3 +9437,82 @@ rebuilt from the topics and belong to the dev stack, so they are now gitignored.
 Breadth, not mechanism: a service over the F1 entities at ~30k rows, associations (this
 one has none, so the `__<assoc>` link view was never exercised), and whether a major
 bump's new topic is manageable in practice.
+
+## 105. The sync, watched from the lake: metrics activities, OTel logs, and a CDC event that lies
+
+§104 proved CDC on one entity. This puts the rest of the backend's own telemetry into the
+same lake and builds the dashboard the datalake proposal asked for. Run on DuckGraphLake
+`206c9e4` (the packaged release, which starts with Kafka on — ako/DuckGraphLake#27 does not
+apply to it), mxcli `1f6b9681`, Mendix 11.14.0, against `scripts/openf1-mock.py` so no
+request or credential left the machine.
+
+### What was built
+
+- **Metrics activities in the model** (`19-live-sync.mdl`). `Sync_Fetch` is the one place
+  every OpenF1 request passes through (~20 call sites in 19, 20, 24, 25), so it counts
+  `f1.openf1.requests`, `.retries`, `.empty` and `.chars`, tagged by feed — the path up to
+  its query string, computed into a variable. `Sync_Live` counts `f1.sync.runs` (tagged
+  `ok`/`disabled`) and `f1.sync.laps_written`, and sets the gauge `f1.sync.rows_fetched`.
+  `mxcli check` clean, exec spliced 7 activities into the two microflows, re-exec writes
+  nothing, `mx check` 0 findings — so a **variable as a tag value** builds, which the
+  MDL docs' wording left open.
+- **`scripts/run-lake.sh`** starts the lake over `data/` and uploads every
+  `lake/dashboards/*.json` (the lake's own copy lives in gitignored `data/.duckgraphlake/`).
+- **`scripts/run-backend-on-lake.sh [--mock]`** boots the backend with CDC, metrics, traces
+  and logs all pointed at the lake.
+- **`lake/dashboards/lake-sync.json`**: nine panels over the CDC history, `otel.metrics`,
+  `otel.spans` and `otel.logs`. Every query was run against live data, and the page was
+  screenshotted rendering all nine.
+
+### Verified
+
+- **Metric names arrive as written** — `f1.openf1.requests`, not renamed or unit-suffixed —
+  with `service_name = 'Formula1Backend'`, counters as cumulative sums, the gauge as a gauge.
+- **The counters are exact.** Up to one cut-off, the counters said 53 requests + 13 retries;
+  the traces held 66 client spans to the mock. 53 + 13 = 66.
+- **The gauge follows the runs** (692, then 253 after a session switch), although Micrometer
+  logs `This Gauge has been already registered … the registration will be ignored` once per
+  app start. Harmless; the runtime keeps updating the first registration.
+
+### Four things that were not obvious
+
+**1. A CDC event can carry stale values the transaction never wrote.** Setting the session
+key to `11344` five seconds into a sync run: the database row says `11344`, but the run's
+own CDC event, published when its transaction ends twenty seconds later, says `11343` — the
+value the run had read at its start. The runtime writes only changed columns to the
+database, but the CDC after-image is the whole in-memory object. So for one cycle the lake's
+current-state view (`formula1backend.livesyncstate`) disagreed with the database, and its
+history recorded a change back to `11343` that never happened. The next run's event healed
+it. Any entity written concurrently by two paths has this window; `LiveSyncState` has two
+(`SE_LiveSync` and the published `LiveSyncSet`). Reproduced on purpose after first seeing it
+by accident at 20:49.
+
+**2. OpenTelemetry logs need two things, and mxcli provides neither.** `--trace-otlp` sets
+`OTEL_LOGS_EXPORTER=none` unless it is already set, and even with it set to `otlp` nothing
+arrives: the runtime only hands log lines to OpenTelemetry through a log subscriber of type
+`opentelemetry` (`OpenTelemetryLogSubscriberConfig` in `com.mendix.appcontainer.jar`:
+name, levels, autoSubscribe, tags). Studio Pro creates it from App Settings › Configuration ›
+OpenTelemetry › Logs; MDL cannot author that part of a configuration, and `mxcli run` has no
+flag for it. `run-backend-on-lake.sh` creates it over M2EE (`create_log_subscriber`) after
+boot. Lines then arrive within seconds, with the log node as an attribute and the trace id
+of the span that wrote them. A `mxcli run --logs-otlp` would remove the workaround.
+
+**3. Mendix sends log levels as numbers only.** `severity_text` is NULL on every record;
+`severity_number` carries the level (9 for INFO, 13 for WARN). Filters must use the number,
+and the dashboard derives the name.
+
+**4. Two lake behaviours shaped the dashboard.** The `--init` script is fatal on error, and
+the `otel.*` views only exist after the first telemetry arrives, so an init view over
+`otel.metrics` stops the server on a fresh folder (a table macro does not help: DuckDB binds
+those at creation too). The counter-to-increase logic therefore lives in each panel's own
+CTE. And the dashboard renderer draws nothing for a `TIMESTAMP WITH TIME ZONE` axis —
+sparklines report `min ∞`, bars and small multiples stay empty, and table cells show
+`null` — while plain `TIMESTAMP` works, so every telemetry time is cast. Both are candidates
+for ako/DuckGraphLake issues.
+
+### Counting cumulative counters
+
+A point's increase is its value minus the series' previous value. Where there is no previous
+point, or the value dropped (an app restart resets the counter to zero), the increase is the
+value itself. Clamping those cases to zero instead, the first version, lost each series'
+first 30 seconds and every restart: it reported 26 requests in an hour that had 53.

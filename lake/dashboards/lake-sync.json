@@ -1,0 +1,125 @@
+{
+  "title": "Lake sync",
+  "description": "Is the backend getting OpenF1 data, and is the live sync healthy? CDC of LiveSyncState plus the backend's OpenTelemetry metrics, traces and logs.",
+  "refresh": 30,
+  "panels": [
+    {
+      "title": "Since last sync run",
+      "lang": "sql",
+      "view": "metric",
+      "width": 3,
+      "format": "integer",
+      "note": "Minutes, from the CDC'd sync state. Above 2 means the scheduled event has stopped.",
+      "query": "SELECT date_diff('minute', LastRunAt, now()) AS minutes FROM formula1backend.livesyncstate",
+      "y": "minutes"
+    },
+    {
+      "title": "Sync runs per hour",
+      "lang": "sql",
+      "view": "metric",
+      "width": 3,
+      "note": "Changes to the sync state. About 60 while it runs every minute.",
+      "query": "SELECT date_trunc('hour', changed_at) AS hour, count(*) AS runs FROM formula1backend.livesyncstate_history WHERE change_op = 'u' GROUP BY 1 ORDER BY 1",
+      "x": "hour",
+      "y": "runs"
+    },
+    {
+      "title": "Laps written, last run",
+      "lang": "sql",
+      "view": "metric",
+      "width": 3,
+      "note": "Flat at 0 during a session is a fault.",
+      "query": "SELECT changed_at, LapsWritten FROM formula1backend.livesyncstate_history WHERE change_op = 'u' ORDER BY changed_at",
+      "x": "changed_at",
+      "y": "LapsWritten"
+    },
+    {
+      "title": "OpenF1 requests per hour",
+      "lang": "sql",
+      "view": "metric",
+      "width": 3,
+      "note": "Every feed, from the f1.openf1.requests counter in Sync_Fetch.",
+      "query": "WITH d AS (SELECT time::TIMESTAMP AS time, attributes, CASE WHEN temporality = 'delta' THEN value WHEN lag(value) OVER w IS NULL OR value < lag(value) OVER w THEN value ELSE value - lag(value) OVER w END AS delta FROM otel.metrics WHERE name = 'f1.openf1.requests' WINDOW w AS (PARTITION BY service_name, CAST(attributes AS VARCHAR) ORDER BY time)) SELECT date_trunc('hour', time) AS hour, sum(delta) AS requests FROM d GROUP BY 1 ORDER BY 1",
+      "x": "hour",
+      "y": "requests"
+    },
+    {
+      "title": "Sync timeline",
+      "view": "composite",
+      "height": 360,
+      "note": "A rate-limit episode shows as retries rising while laps written flattens.",
+      "tracks": [
+        {
+          "label": "Laps written per run",
+          "height": 3
+        },
+        {
+          "label": "OpenF1 retries per minute",
+          "height": 1
+        }
+      ],
+      "layers": [
+        {
+          "name": "laps written",
+          "mark": "line",
+          "colour": "accent",
+          "lang": "sql",
+          "x": "changed_at",
+          "y": "LapsWritten",
+          "query": "SELECT changed_at, LapsWritten FROM formula1backend.livesyncstate_history WHERE change_op = 'u' ORDER BY 1"
+        },
+        {
+          "name": "retries",
+          "mark": "bar",
+          "track": 1,
+          "lang": "sql",
+          "x": "minute",
+          "y": "retries",
+          "query": "WITH d AS (SELECT time::TIMESTAMP AS time, attributes, CASE WHEN temporality = 'delta' THEN value WHEN lag(value) OVER w IS NULL OR value < lag(value) OVER w THEN value ELSE value - lag(value) OVER w END AS delta FROM otel.metrics WHERE name = 'f1.openf1.retries' WINDOW w AS (PARTITION BY service_name, CAST(attributes AS VARCHAR) ORDER BY time)) SELECT date_trunc('minute', time) AS minute, sum(delta) AS retries FROM d GROUP BY 1 ORDER BY 1"
+        },
+        {
+          "mark": "rule",
+          "span": "all",
+          "label": "what",
+          "lang": "sql",
+          "x": "changed_at",
+          "query": "SELECT changed_at, CASE WHEN Enabled THEN 'switched on' ELSE 'switched off' END AS what FROM (SELECT changed_at, Enabled, lag(Enabled) OVER (ORDER BY changed_at) AS prev FROM formula1backend.livesyncstate_history) WHERE prev IS DISTINCT FROM Enabled ORDER BY 1"
+        }
+      ],
+      "query": ""
+    },
+    {
+      "title": "Requests per feed",
+      "lang": "sql",
+      "view": "multiples",
+      "facet": "feed",
+      "note": "Per 10 minutes. A feed that drops to zero while the others carry on is a broken endpoint.",
+      "query": "WITH d AS (SELECT time::TIMESTAMP AS time, attributes, CASE WHEN temporality = 'delta' THEN value WHEN lag(value) OVER w IS NULL OR value < lag(value) OVER w THEN value ELSE value - lag(value) OVER w END AS delta FROM otel.metrics WHERE name = 'f1.openf1.requests' WINDOW w AS (PARTITION BY service_name, CAST(attributes AS VARCHAR) ORDER BY time)) SELECT time_bucket(INTERVAL 10 MINUTE, time) AS t, attributes['feed'] AS feed, sum(delta) AS requests FROM d GROUP BY ALL ORDER BY t",
+      "x": "t",
+      "y": "requests"
+    },
+    {
+      "title": "Slowest backend operations, last hour",
+      "lang": "sql",
+      "view": "bar",
+      "format": "integer",
+      "note": "Average span duration in ms, from the runtime's traces.",
+      "query": "SELECT name, round(avg(duration_ms)) AS avg_ms FROM otel.spans WHERE service_name = 'Formula1Backend' AND start_time > now() - INTERVAL 1 HOUR GROUP BY name ORDER BY avg_ms DESC LIMIT 10",
+      "x": "name",
+      "y": "avg_ms"
+    },
+    {
+      "title": "Last 20 sync results",
+      "lang": "sql",
+      "view": "table",
+      "query": "SELECT changed_at, SessionKey, LapsWritten, LastResult FROM formula1backend.livesyncstate_history ORDER BY changed_at DESC LIMIT 20"
+    },
+    {
+      "title": "Warnings and errors, last 24 h",
+      "lang": "sql",
+      "view": "table",
+      "query": "SELECT time::TIMESTAMP AS time, CASE WHEN severity_number >= 21 THEN 'CRITICAL' WHEN severity_number >= 17 THEN 'ERROR' ELSE 'WARNING' END AS level, body, attributes['node'] AS node, service_name FROM otel.logs WHERE severity_number >= 13 AND time > now() - INTERVAL 1 DAY ORDER BY time DESC LIMIT 50",
+      "note": "Mendix sends the level as a number only (OpenTelemetry's scale: 9 INFO, 13 WARN, 17 ERROR, 21 FATAL), so the name is derived here."
+    }
+  ]
+}
