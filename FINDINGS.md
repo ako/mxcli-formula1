@@ -9562,3 +9562,69 @@ lake: SessionKey '',    LastRunAt 21:51:06.677
 database kept the concurrent write, and the lake, applying `after` as a whole row, shows a
 combination the row never held. The prompts in `docs/datalake/prompts/` still apply as
 written, and the Mendix one can now say the behaviour holds on 11.14.0 and on 11.16.1.
+
+## 107. The first chart read from the lake: season progress
+
+The architecture in `docs/datalake/architecture.html` has the frontend read everything
+from DuckGraphLake. This is its first vertical slice: one chart, end to end, with the
+backend out of its path.
+
+### What changed
+
+- **Lake** (`lake/server.toml`, `lake/init.sql`): silver views `f1.races`,
+  `f1.race_results`, `f1.sprint_results`, `f1.drivers` and
+  `f1.season_driver_standings` over the f1db files. One gold view,
+  `gold.season_progress`, in long form: one row per (year, round, driver) for the five
+  who finished each season on top, for every season at once. It is materialized and
+  refreshes when a file it reads changes. `scripts/run-lake.sh` now starts the lake
+  with that config.
+- **Frontend** (`05-chart-data.mdl`): a `PostgreSQL` database connection `F1Lake`
+  to the lake's PostgreSQL endpoint, with the driver declared
+  `add jar dependency if not exists`, and one query, `GetSeasonProgress`, that returns
+  the chart's JSON array already built (`to_json(list({…} ORDER BY round, rk))`).
+  `DSJ_SeasonProgress` went from external entity → backend OData → five IFs per round
+  of string concatenation to one query and a `head`.
+
+### Verified
+
+- **Equal to the backend in all 77 seasons**, before the deliberate change below:
+  `scripts/datalake/compare-season-progress.py` unpivots the backend's `SeasonProgress`
+  the way the old DSJ did and compares round by round, driver by driver and seat by
+  seat. 77 of 77 were identical.
+- **The comparison can fail.** With sprint points added it reports exactly 2021–2026,
+  the sprint seasons, and in 2021 the first difference is round 10, the first sprint
+  weekend. Nothing earlier moves.
+- **Final totals now equal f1db's championship points**: 175 driver-seasons from 1991
+  to 2025, 0 mismatches. Earlier seasons counted only best results, so a sum can't
+  match them.
+- `mx check` 0 findings, and re-exec of the whole script set writes nothing.
+- **In the browser**, the 2026 Season page draws the chart from the lake. Its top two
+  lines end on 219 and 169, the champion's total and the runner-up's on the cards
+  above, which come from the official standings by another route.
+- **The page depends on the lake**: with the lake stopped, the chart's data source
+  fails (`Formula1Frontend.Season.dvProgress`) and the user gets a generic error
+  dialog. With the lake back, the page recovers without a restart.
+
+### Found on the way
+
+**The season progress chart never counted sprint points.** f1db keeps sprints in their
+own file (`f1db-races-sprint-race-results.csv`), and `Read_SeasonProgress` never read
+it. So from 2021 every curve fell short of the championship: 2021 ended Verstappen
+388.5 and Hamilton 385.5 against a real 395.5 and 387.5. The gold view counts sprints
+in the round they belong to.
+
+**The eight "shape stub" queries are not dead.** The datalake proposal's survey (§99)
+counted them as possible scaffolding. Each one declares the result shape for SQL that
+a `Read_*` microflow builds at run time and runs with `dynamic`, so there is more real
+SQL to migrate than the 21 counted. The proposal now carries the correction.
+
+**Init SQL resolves file paths against the server's working directory**, not the data
+folder, and SQL clients can't read files at all (lock_down). So views over files can
+only live in the init script, and `run-lake.sh` starts the server inside `data/`.
+
+### Still to decide
+
+The failure mode. A lake outage now shows the user an error dialog where the backend
+used to stand. That's acceptable in development, but for production a DSJ microflow
+could catch the error and return an empty chart. That is a choice to make once, for
+every chart, before most of them move.

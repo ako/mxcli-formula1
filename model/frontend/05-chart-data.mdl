@@ -47,6 +47,69 @@ create or modify non-persistent entity Formula1Frontend.Chart (
   json: string
 );
 
+
+/* ------------------------------------------------------------------ the lake -- */
+
+/*
+ * DuckGraphLake, read over its PostgreSQL endpoint: the frontend's own route to
+ * the data, without the backend in between (docs/datalake/architecture.html).
+ *
+ * Charts move here one at a time. Each one is a query that returns the chart's
+ * JSON array already built: the lake's gold.* views hold the rows in long form,
+ * and DuckDB serialises them, so the DSJ_ microflow that used to loop over an
+ * external entity and concatenate strings becomes one call. That also retires
+ * MDL-JSONNUM01's trap at the root -- no microflow formats a number into JSON.
+ *
+ * Type 'PostgreSQL', not BYOD: the lake speaks the PostgreSQL wire protocol,
+ * whatever runs behind it. The SQL dialect is DuckDB's, which Mendix does not
+ * parse -- it passes the text through.
+ *
+ * Every Mendix query parameter is a string, so the SQL casts.
+ */
+alter module Formula1Frontend
+  add jar dependency if not exists (
+    group    = 'org.postgresql',
+    artifact = 'postgresql',
+    version  = '42.7.4',
+    included = true,
+  );
+/*
+ * The driver, for the reasons the backend's 00-dependencies.mdl spells out: a
+ * 'PostgreSQL' connection fails the build (CE5278) without it, and the External
+ * Database Connector resolves drivers from the APP's classpath, so it has to be
+ * `included`.
+ */
+
+/** The lake's PostgreSQL endpoint. Override per environment. */
+create or modify constant Formula1Frontend.LakeUrl ( Type: string, DefaultValue: 'jdbc:postgresql://127.0.0.1:5433/lake?sslmode=disable' );
+/** Any user name works; the password is the lake's token. */
+create or modify constant Formula1Frontend.LakeUser ( Type: string, DefaultValue: 'frontend' );
+/** 'duckgraphlake' is the lake's default token on a loopback address. */
+create or modify constant Formula1Frontend.LakePassword ( Type: string, DefaultValue: 'duckgraphlake' );
+
+create or modify database connection Formula1Frontend.F1Lake (
+Type: 'PostgreSQL',
+ConnectionString: @Formula1Frontend.LakeUrl,
+Username: @Formula1Frontend.LakeUser,
+Password: @Formula1Frontend.LakePassword )
+{
+  /*
+   * A season's title fight as the Vega chart's rows: one {round, driver, pts}
+   * per round and driver, the five who finished on top, ordered by round and
+   * then by championship position -- the order DSJ_SeasonProgress used to emit.
+   * Always exactly one row: the aggregate over an unknown year is '[]'.
+   */
+  query GetSeasonProgress (
+    Sql: 'SELECT COALESCE(CAST(to_json(list(
+            {''round'': round, ''driver'': driver_name, ''pts'': round(points, 2)}
+            ORDER BY round, rk)) AS VARCHAR), ''[]'') AS json
+         FROM gold.season_progress
+         WHERE year = CAST({year} AS INTEGER)',
+    Parameters: ( year: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+};
+
 /* -------------------------------------------------------------- driver -- */
 
 /*
@@ -135,40 +198,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonProgress (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonProgress (Season = $Season);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $P IN $Rows BEGIN
-    IF $P/d1Name != empty AND $P/d1Points != empty THEN
-      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d1Name + '","pts":' + toString(round($P/d1Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $P/d2Name != empty AND $P/d2Points != empty THEN
-      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d2Name + '","pts":' + toString(round($P/d2Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $P/d3Name != empty AND $P/d3Points != empty THEN
-      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d3Name + '","pts":' + toString(round($P/d3Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $P/d4Name != empty AND $P/d4Points != empty THEN
-      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d4Name + '","pts":' + toString(round($P/d4Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $P/d5Name != empty AND $P/d5Points != empty THEN
-      SET $Json = $Json + $Sep + '{"round":' + toString($P/round)
-        + ',"driver":"' + $P/d5Name + '","pts":' + toString(round($P/d5Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * The first chart read from the lake. It used to retrieve F1Fan.SeasonProgress
+   * -- the backend computing one season per request and pivoting it into
+   * d1..d5 columns -- and then unpivot that here, five IFs per round, into the
+   * long form the spec wants. gold.season_progress is long form already, and
+   * the query returns the array built.
+   *
+   * Equal to the old chart in all 77 seasons, except that sprint points now
+   * count (lake/init.sql): from 2021 the old curves fell short of the
+   * championship. scripts/datalake/compare-season-progress.py is the check.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetSeasonProgress
+    (year = toString($Season/year));
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 

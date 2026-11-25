@@ -268,6 +268,8 @@ the server's README records that Quack does not forward bound parameters.
 
 ### The 8 stubs are a question for you, not a migration task
 
+> **Correction (FINDINGS §107).** These are not dead. Each one declares the *result shape* for SQL that a `Read_*` microflow builds at run time and runs with `execute database query … dynamic $Sql`. `GetSeasonProgress`'s real query is the 30-line window function in `Read_SeasonProgress` (`13-fan-resources.mdl`). So the warehouse has more real SQL than the 21 counted below, and these eight migrate like the rest: as gold views, one chart at a time.
+
 `GetSeasonProgress`, `GetRaceWeekend`, `GetRaceSessions`, `GetCalendar`,
 `GetWeekendShape`, `GetLapChart`, `GetTeamSeason`, `GetTeamH2H` all read one row of
 `f1db-seasons.csv` and return hard-coded constants — empty strings, zeros, a NULL

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Start DuckGraphLake over data/ and load this solution's dashboards.
+# Start DuckGraphLake over data/ with lake/server.toml (the silver and gold views
+# in lake/init.sql), and load this solution's dashboards.
 #
 #   scripts/run-lake.sh          # start (or reuse a running one), then load dashboards
 #   scripts/run-lake.sh stop
@@ -26,7 +27,10 @@ LOG="$ROOT/.mxcli-obs/lake.log"
 API=http://127.0.0.1:9495
 TOKEN=${DUCKGRAPHLAKE_TOKEN:-duckgraphlake}
 
-pids() { ps -e -o pid=,args= | grep "[d]uckgraphlake $ROOT/data" | awk '{print $1}'; }
+CONF="$ROOT/lake/server.toml"
+# Either way it may have been started: with this config, or (before it existed)
+# straight on the data folder.
+pids() { ps -e -o pid=,args= | grep -E "[d]uckgraphlake ($ROOT/data|-c $CONF)" | awk '{print $1}'; }
 
 if [ "$1" = "stop" ]; then
   for pid in $(pids); do kill "$pid"; done
@@ -44,11 +48,15 @@ if curl -sf -o /dev/null "$API/api/guide"; then
 else
   mkdir -p "$(dirname "$LOG")"
   # setsid, like run-observed.sh: survive the session that started it.
-  # No --init script: a failing statement in it stops the server, and the
-  # otel.* views only exist once telemetry has arrived, so anything over them
-  # fails on a fresh data folder. The dashboard queries carry their own
-  # counter-delta CTE instead.
-  setsid nohup duckgraphlake "$ROOT/data" > "$LOG" 2>&1 &
+  #
+  # lake/server.toml names the data folder and lake/init.sql, the silver and
+  # gold views. Started from inside data/ because init.sql's file paths
+  # resolve against the working directory, not the data folder.
+  #
+  # init.sql must never reference otel.* or a CDC schema: a failing statement
+  # stops the server, and those views only exist once data has arrived. The
+  # dashboard queries carry their own counter-delta CTE for that reason.
+  (cd "$ROOT/data" && setsid nohup duckgraphlake -c "$CONF" > "$LOG" 2>&1 &)
   i=0
   until curl -sf -o /dev/null "$API/api/guide"; do
     i=$((i + 1))

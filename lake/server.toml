@@ -1,0 +1,19 @@
+# DuckGraphLake configuration for this solution. scripts/run-lake.sh starts the
+# server with it, from inside data/ (see init.sql for why the working directory
+# matters). Relative paths in this file are relative to this file.
+#
+# Everything not set here keeps the server's default; `duckgraphlake help config`
+# prints the complete file.
+
+[data]
+directory = "../data"
+# Discovery stays on: CDC and telemetry views depend on the server's own
+# bookkeeping, and the views it makes over data/f1db (one 151-column union,
+# ako/DuckGraphLake#31) are harmless next to the f1.* views init.sql defines.
+init_sql = "init.sql"
+
+# gold.* is what the frontend reads: keep the results, and recompute a view
+# when a file it reads changes (a refreshed f1db release, for instance).
+[[materialize]]
+views = "gold.*"
+refresh = "on_change"

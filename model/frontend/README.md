@@ -13,7 +13,7 @@ for f in ../model/frontend/[0-9]*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.
 | `02-external-entities.mdl` | The external entities, generated from the cached contracts. |
 | `03-smoke.mdl` | Retrieval microflows behind `tests/external-entities.test.mdl` and `tests/name-mapping.test.mdl`. |
 | `04-datasources.mdl` | Every `DS_` and `ACT_` microflow, and the three view-model entities. Shared by all five screens, so it belongs to none of them. |
-| `05-chart-data.mdl` | `Formula1Frontend.Chart` and the `DSJ_` microflows that emit long-format JSON. Ahead of the pages, because every chart binds to one. |
+| `05-chart-data.mdl` | `Formula1Frontend.Chart`, the `F1Lake` connection to DuckGraphLake, and the `DSJ_` microflows that emit long-format JSON. Ahead of the pages, because every chart binds to one. Charts move to the lake one at a time; `DSJ_SeasonProgress` is the first, one query against `gold.season_progress`. |
 | `06-narrate.mdl` | Screen 1 — the race as it stands, from the OpenF1 snapshot. |
 | `07-season.mdl` | Screen 2 — a championship, from the title fight down to the calendar. |
 | `08-weekend.mdl` | Screen 3 — one Grand Prix, every session. |
