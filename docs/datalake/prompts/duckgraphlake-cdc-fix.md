@@ -4,7 +4,7 @@ You are working in the ako/DuckGraphLake repository, on the server in `server/`.
 
 ## Background: what Mendix actually sends
 
-The Mendix runtime (verified on 11.14.0) publishes CDC through a transactional outbox. Each change becomes one row in `mendixsystem$data_change_event`, written in the app's own transaction, and is published to `cdc.<App>.<Entity>.<major>.<space>` after commit. The message is a Debezium envelope with its schema embedded. The payload has the keys `before`, `after`, `op`, `source`, `ts_ms`, `ts_ns` and `ts_us`.
+The Mendix runtime (verified on 11.14.0 and 11.16.1) publishes CDC through a transactional outbox. Each change becomes one row in `mendixsystem$data_change_event`, written in the app's own transaction, and is published to `cdc.<App>.<Entity>.<major>.<space>` after commit. The message is a Debezium envelope with its schema embedded. The payload has the keys `before`, `after`, `op`, `source`, `ts_ms`, `ts_ns` and `ts_us`.
 
 Both `before` and `after` are full images of **every** attribute, and both come from the runtime's **in-memory copy of the object** in the committing transaction, not from the stored row. The runtime's SQL `UPDATE`, though, writes only the columns that transaction changed. When two transactions change the same object concurrently, an event's images can therefore carry stale values for the attributes it didn't touch.
 

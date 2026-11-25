@@ -15,7 +15,7 @@ A Mendix **solution**: two apps in one repo, provisioned and developed with
 >
 > **Who logs in:** the Formula 1 enthusiast.
 
-Theme `console` (dark), Mendix **11.14.0**, mxcli built from **ako/mxcli main** (`81595f6`).
+Theme `console` (dark), Mendix **11.16.1**, mxcli built from **ako/mxcli main** (`1f6b9681`).
 
 ## What it looks like
 

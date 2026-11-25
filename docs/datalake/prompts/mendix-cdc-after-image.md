@@ -10,7 +10,7 @@ Please investigate whether this is intended, whether it is documented, and wheth
 
 ## Environment
 
-- Mendix 11.14.0, PostgreSQL, runtime started standalone (no Studio Pro)
+- Mendix 11.14.0 and again after an upgrade to 11.16.1, with identical results; PostgreSQL; runtime started standalone (no Studio Pro)
 - One CDC service on one entity, `LiveSyncState`: eight attributes, no associations
 - `Kafka.BootstrapServers` pointed at a local Kafka-protocol broker. The broker isn't involved, because the payload below was read straight from the runtime's outbox table before publication.
 

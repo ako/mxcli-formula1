@@ -7,8 +7,8 @@ mxcli. Append, do not rewrite.
 
 | | |
 |---|---|
-| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30; §98 on the published **nightly `nightly-20261117-b7dc2f863`**, against a source build of main `c4666c2` |
-| Mendix | 11.14.0 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.14.0/`); upgraded from 11.13.0 on 2026-08-30, see §78 |
+| mxcli | built from source, `ako/mxcli` main. §1–§10 on `9236202`; §11–§13 on `1bdd46a`; §14–§33 on `45ae6a6`; §34 on `c76d4b7`; §41–§46 on `b4a825e`; §47–§49 on `715bac5`; §50–§51 on `38a1137`; §52–§53 on PR 125 head `9ab9afa`; §54 on `a8dc083`; §55 on `d53691b` (devcontainer, arm64); §56 on `a8dc083`; §57 on **PR 202 head `e50ddac`** against `48114de`; §58–§68 not recorded at the time and not recoverable — the `mxcli` binary is gitignored, so nothing in the repo pins which build those sections ran on; §69–§77 on `85c9708` (PRs 222–224 merged); §78–§79 on **`81595f63`** (`nightly-396`), built 2026-08-30; §80–§81 on **`a739d2e2`** (`nightly-465`), built 2026-09-01; §82–§85 on **`064fa4c7`**, built 2026-09-20 (458 commits on from `e6a83b5d`/v0.21.0); §86–§88 on **`5ccbd480`**, built 2026-09-30 (462 non-merge commits on from `064fa4c7`; releases v0.22.0, v0.23.0, v0.24.0); §89 on **`0cac3621`**, built 2026-10-04; §90 on **`603aeb42`** (2026-08-20 — written as §57 on the PR #7 branch after it merged, carried over and renumbered); §91 on **`1a4dce0`**, built 2026-10-11 (443 commits, 226 non-merge, on from `0cac3621`); §92 on **`020f4572b`**, built 2026-10-14 (292 commits, 160 non-merge, on from `1a4dce0`; release 0.26.0 and the work after it); §93 on **PR 1497 head `36f8cc426`** against its base `4c0e494e8`, both built 2026-10-20; §94 on **`a059cb3c7`**, built 2026-10-23 (PR 1497 merged; byte-compared against §93's recorded output); §95 on **PR 1798 head `3259bba5b`** against its base `9a8cf0bdd`, both built 2026-10-29; §96 on **main `e3f7f061e`** and **PR 1802 head `3e6025894`**, both built 2026-10-30, against `3259bba5b`; §97 on **`5897690cd`** (release 0.29.0), built 2026-10-30; §98 on the published **nightly `nightly-20261117-b7dc2f863`**, against a source build of main `c4666c2`; §105–§106 on **`1f6b9681`**, built 2026-11-25 (3,189 commits on from `0cac3621`) |
+| Mendix | 11.16.1 (MxBuild + runtime cached under `~/.mxcli/mxbuild/11.16.1/`); upgraded from 11.14.0 on 2026-11-25, see §106 (and from 11.13.0 on 2026-08-30, §78) |
 | Go / JDK / ANTLR | go1.26.5 / OpenJDK 21.0.12 / antlr4-tools 0.2.2 with ANTLR 4.13.2 *(Go and the JDK were go1.24.7 / 21.0.10 for §1–§77)* |
 | DuckDB JDBC | `org.duckdb:duckdb_jdbc` 1.5.5.1 (driver reports version "1.0") |
 | DuckDB CLI | 1.5.5 (`linux-arm64`) at `~/.local/bin/duckdb`, pinned to match the jar's engine; native, so it does **not** reproduce JDBC-only failures (the `regr_slope` NaN of §49 passed there and broke under JDBC) |
@@ -9516,3 +9516,49 @@ A point's increase is its value minus the series' previous value. Where there is
 point, or the value dropped (an app restart resets the counter to zero), the increase is the
 value itself. Clamping those cases to zero instead, the first version, lost each series'
 first 30 seconds and every restart: it reported 26 requests in an hour that had 53.
+
+## 106. 11.14.0 → 11.16.1, and the CDC after-image is unchanged
+
+Upgraded both apps to see whether a newer runtime fixes §105's stale CDC images. It does
+not. The upgrade itself followed §78–§79's procedure and was uneventful, which is worth
+recording because it is the second time that procedure has been used.
+
+### The upgrade
+
+- `mxcli setup mxbuild --version 11.16.1`: a 789 MB download.
+- **`_SchemaHash` decides** (§79): a blank 11.16.1 project (`mxcli new --version 11.16.1
+  --skip-build`) has `{SHA256}9lKjuwyR…`, and both apps had `{SHA256}o9B9S8lo…`. They
+  differ, so a conversion was required and relabelling was out.
+- **A copy first**: `mx convert --in-place` on a copy of the backend gave 0 errors, 65
+  warnings and 2 deprecations. Its 520 units stayed 520 `.mxunit` files, so MPR v2
+  survived, and its hash then matched the blank project's.
+- **Then both apps**: backend 0 errors, 65 warnings; frontend 0 errors, 52 warnings
+  (541 units, still v2). The conversion rewrote 59 units across the two.
+- **mxcli agrees with the result**: `scripts/reexec-all.sh` reports 0 writes across the
+  whole script set. The three non-zero exits are scripts written to run once
+  (`03-persistent-entities`, and the "already exists" refusals of `00-dependencies` and
+  the frontend's `12-demo-user`), not upgrade effects.
+- **`mx check`** through `mxcli verify`: 0 findings on both.
+- **Runtime**: the backend booted on 11.16.1 with 2 database synchronisation commands and
+  no ERROR lines. CDC, metrics, traces and logs all kept reaching the lake (§105). The
+  frontend booted cleanly, and `mxcli playwright check` rendered its home page with 164
+  rows from the backend and 0 console errors.
+
+Unlike §78's 11.13→11.14 step, nothing in the tooling had to change with the runtime.
+
+### The CDC test
+
+§105's reproduction, unchanged: `LiveSyncSet` sets the session key to `11344` five
+seconds into a sync run. Read from the raw Kafka messages:
+
+```
+u  SessionKey before/after: ''    / 11344   changed: [SessionKey]          (LiveSyncSet)
+u  SessionKey before/after: ''    / ''      changed: [LastRunAt, RunCount] (the run)
+DB:   SessionKey 11344, LastRunAt 21:51:06.677
+lake: SessionKey '',    LastRunAt 21:51:06.677
+```
+
+**Same as 11.14.0.** The run's event carries the key it loaded, in both images. The
+database kept the concurrent write, and the lake, applying `after` as a whole row, shows a
+combination the row never held. The prompts in `docs/datalake/prompts/` still apply as
+written, and the Mendix one can now say the behaviour holds on 11.14.0 and on 11.16.1.
