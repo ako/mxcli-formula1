@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+<title>Formula1 Lake Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one engineering note — a wide flow diagram, then reference sections for each lane and the dashboard. */
+:root {
+  --bg: #f5f7f8;
+  --panel: #ffffff;
+  --fg: #17212b;
+  --muted: #5a6773;
+  --line: #c3ccd4;
+  --accent: #0a7b74;
+  --accent-soft: #e3f2f0;
+  --code: #eef1f3;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171c; --panel: #182129; --fg: #e3e9ee; --muted: #98a5b0;
+    --line: #3a4753; --accent: #3cc2b6; --accent-soft: #15302e; --code: #1d2831; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171c; --panel: #182129; --fg: #e3e9ee; --muted: #98a5b0;
+  --line: #3a4753; --accent: #3cc2b6; --accent-soft: #15302e; --code: #1d2831; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 56px;
+}
+main { max-width: 1180px; margin: 0 auto; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; max-width: 72ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: 30px; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+h2 { font-size: 19px; margin: 0; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 15px; margin: 6px 0 0; font-weight: 600; }
+p { margin: 0; }
+.lede { color: var(--muted); font-size: 16px; }
+code { font-family: var(--mono); font-size: .88em; }
+pre { margin: 0; background: var(--code); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; }
+pre .cm { color: var(--muted); }
+
+figure { margin: 0; display: grid; gap: 12px; }
+.scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.scroll svg { display: block; width: 100%; min-width: 980px; height: auto; color: var(--fg); }
+figcaption { color: var(--muted); font-size: 14px; max-width: 82ch; }
+
+/* SVG roles, styled from the page tokens so both themes work */
+.c-zone { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.c-lake { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.c-box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.c-box-quiet { fill: var(--bg); stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; }
+.c-pill { fill: var(--accent); }
+.c-pill-t { fill: var(--panel); font-family: var(--mono); font-size: 11.5px; font-weight: 500; }
+.c-head { fill: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 600; }
+.c-layer { fill: var(--accent); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; }
+.c-t { fill: var(--fg); font-family: var(--sans); font-size: 13px; font-weight: 600; }
+.c-s { fill: var(--muted); font-family: var(--sans); font-size: 11px; }
+.c-lbl { fill: var(--muted); font-family: var(--mono); font-size: 10.5px; }
+.c-lbl-a { fill: var(--accent); font-family: var(--mono); font-size: 10.5px; }
+.c-line { fill: none; stroke: var(--fg); stroke-width: 1.4; }
+.c-live { fill: none; stroke: var(--fg); stroke-width: 1.4; stroke-dasharray: 6 4; }
+.c-read { fill: none; stroke: var(--accent); stroke-width: 1.8; }
+.c-ctl { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.c-head-fg { fill: var(--fg); }
+.c-head-ac { fill: var(--accent); }
+.c-head-mu { fill: var(--muted); }
+
+section { display: grid; gap: 12px; }
+section > p, section > ul { max-width: 78ch; }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 32px; }
+.cols > * { min-width: 0; }
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td:first-child { white-space: nowrap; }
+.tag { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.note { color: var(--muted); font-size: 14px; max-width: 78ch; }
+ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; max-width: 80ch; }
+ol li::marker { color: var(--accent); font-family: var(--mono); }
+
+/* dashboard sketch: the lake's own 12-column grid */
+.dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.p { grid-column: span 6; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.p.w3 { grid-column: span 3; } .p.w12 { grid-column: span 12; }
+.p b { font-weight: 600; font-size: 13.5px; }
+.p .k { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.p .src { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+.p .why { font-size: 13px; color: var(--muted); }
+@media (max-width: 760px) { .p, .p.w3 { grid-column: span 12; } }
+details { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+summary { cursor: pointer; padding: 10px 14px; font-weight: 500; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details pre { border-radius: 0 0 8px 8px; }
+</style>
+
+<main>
+  <header>
+    <span class="eyebrow">Formula1 solution · proposed architecture · Nov 2026</span>
+    <h1>The backend fetches, the lake shapes, the frontend reads</h1>
+    <p class="lede">The backend stops storing F1 data and becomes an ingest app. DuckGraphLake turns what lands into typed views, chart-ready views and a graph. The frontend reads everything from the lake, and a chat agent answers questions through the lake's MCP tools. Two smaller lanes watch the syncing itself: entity CDC on the sync state, and OpenTelemetry from both runtimes. They feed one dashboard in the lake.</p>
+  </header>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1290 840" role="img" aria-label="Data flows left to right through four lanes. The backend writes snapshot files and posts live events into the lake, and also streams its sync state by CDC and its metrics by OpenTelemetry. The lake refines the data lanes into gold views and a graph, and the monitoring lanes into a sync dashboard. The frontend reads only from the lake's SQL, OData, SPARQL, MCP and web UI ports, and sends control actions back to the backend.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c-head-fg"/></marker>
+        <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c-head-ac"/></marker>
+        <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="c-head-mu"/></marker>
+      </defs>
+
+      <!-- column headings -->
+      <text x="100" y="40" text-anchor="middle" class="c-head">External sources</text>
+      <text x="310" y="40" text-anchor="middle" class="c-head">Backend app · ingest only</text>
+      <text x="725" y="40" text-anchor="middle" class="c-head">DuckGraphLake · one binary</text>
+      <text x="1150" y="40" text-anchor="middle" class="c-head">Frontend app</text>
+
+      <!-- zones -->
+      <rect x="220" y="60" width="180" height="600" rx="10" class="c-zone"/>
+      <rect x="450" y="60" width="550" height="530" rx="10" class="c-lake"/>
+      <rect x="1040" y="60" width="220" height="500" rx="10" class="c-zone"/>
+
+      <!-- sources: snapshot lane -->
+      <rect x="20" y="70" width="160" height="38" rx="6" class="c-box"/>
+      <text x="100" y="86" text-anchor="middle" class="c-t">f1db releases</text>
+      <text x="100" y="101" text-anchor="middle" class="c-s">47 CSVs, 1950 to now</text>
+      <rect x="20" y="116" width="160" height="38" rx="6" class="c-box"/>
+      <text x="100" y="132" text-anchor="middle" class="c-t">Jolpica</text>
+      <text x="100" y="147" text-anchor="middle" class="c-s">lap-by-lap times</text>
+      <rect x="20" y="162" width="160" height="38" rx="6" class="c-box"/>
+      <text x="100" y="178" text-anchor="middle" class="c-t">Wikipedia</text>
+      <text x="100" y="193" text-anchor="middle" class="c-s">facts paragraphs</text>
+      <rect x="20" y="208" width="160" height="38" rx="6" class="c-box"/>
+      <text x="100" y="224" text-anchor="middle" class="c-t">OpenStreetMap</text>
+      <text x="100" y="239" text-anchor="middle" class="c-s">circuit outlines</text>
+      <path d="M180,89 L253,130" class="c-line" marker-end="url(#ah)"/>
+      <path d="M180,135 L253,138" class="c-line" marker-end="url(#ah)"/>
+      <path d="M180,181 L253,146" class="c-line" marker-end="url(#ah)"/>
+      <path d="M180,227 L253,154" class="c-line" marker-end="url(#ah)"/>
+      <text x="214" y="208" text-anchor="middle" class="c-lbl">GET</text>
+
+      <!-- source: live lane -->
+      <rect x="20" y="276" width="160" height="48" rx="6" class="c-box"/>
+      <text x="100" y="296" text-anchor="middle" class="c-t">OpenF1</text>
+      <text x="100" y="313" text-anchor="middle" class="c-s">live timing</text>
+      <path d="M180,300 L253,300" class="c-live" marker-end="url(#ah)"/>
+      <text x="214" y="292" text-anchor="middle" class="c-lbl">poll</text>
+
+      <!-- backend inner -->
+      <rect x="255" y="110" width="130" height="64" rx="6" class="c-box"/>
+      <text x="320" y="136" text-anchor="middle" class="c-t">Snapshot jobs</text>
+      <text x="320" y="154" text-anchor="middle" class="c-s">daily or on demand</text>
+      <rect x="255" y="268" width="130" height="64" rx="6" class="c-box"/>
+      <text x="320" y="294" text-anchor="middle" class="c-t">Live sync</text>
+      <text x="320" y="312" text-anchor="middle" class="c-s">SE_LiveSync · 60 s</text>
+      <rect x="255" y="388" width="130" height="64" rx="6" class="c-box"/>
+      <text x="320" y="414" text-anchor="middle" class="c-t">Mendix DB</text>
+      <text x="320" y="432" text-anchor="middle" class="c-s">LiveSyncState row</text>
+      <path d="M320,332 L320,386" class="c-line" marker-end="url(#ah)"/>
+      <text x="326" y="364" class="c-lbl">commits</text>
+      <rect x="255" y="498" width="130" height="64" rx="6" class="c-box"/>
+      <text x="320" y="524" text-anchor="middle" class="c-t">Metrics + traces</text>
+      <text x="320" y="542" text-anchor="middle" class="c-s">counters in Sync_*</text>
+      <rect x="255" y="590" width="130" height="50" rx="6" class="c-box"/>
+      <text x="320" y="611" text-anchor="middle" class="c-t">Control actions</text>
+      <text x="320" y="628" text-anchor="middle" class="c-s">start, stop, reload</text>
+      <path d="M255,615 L238,615 L238,318 L253,318" class="c-ctl" marker-end="url(#ahm)"/>
+
+      <!-- backend → lake, one arrow per lane -->
+      <path d="M385,142 L468,142" class="c-line" marker-end="url(#ah)"/>
+      <text x="426" y="134" text-anchor="middle" class="c-lbl">writes files</text>
+      <path d="M385,300 L468,300" class="c-live" marker-end="url(#ah)"/>
+      <text x="426" y="292" text-anchor="middle" class="c-lbl">POST /events</text>
+      <path d="M385,420 L468,420" class="c-live" marker-end="url(#ah)"/>
+      <text x="426" y="412" text-anchor="middle" class="c-lbl">CDC · Kafka</text>
+      <text x="426" y="436" text-anchor="middle" class="c-lbl">proven §104</text>
+      <path d="M385,530 L468,530" class="c-live" marker-end="url(#ah)"/>
+      <text x="426" y="522" text-anchor="middle" class="c-lbl">OTLP :4318</text>
+
+      <!-- lake layer labels -->
+      <text x="530" y="94" text-anchor="middle" class="c-layer">BRONZE</text>
+      <text x="670" y="94" text-anchor="middle" class="c-layer">SILVER</text>
+      <text x="815" y="94" text-anchor="middle" class="c-layer">SERVED</text>
+      <text x="945" y="94" text-anchor="middle" class="c-layer">PORTS</text>
+
+      <!-- bronze -->
+      <rect x="470" y="110" width="120" height="64" rx="6" class="c-box"/>
+      <text x="530" y="136" text-anchor="middle" class="c-t">data/ files</text>
+      <text x="530" y="154" text-anchor="middle" class="c-s">CSV, Parquet</text>
+      <rect x="470" y="268" width="120" height="64" rx="6" class="c-box"/>
+      <text x="530" y="294" text-anchor="middle" class="c-t">Topic tables</text>
+      <text x="530" y="312" text-anchor="middle" class="c-s">Iceberg, per feed</text>
+      <rect x="470" y="388" width="120" height="64" rx="6" class="c-box"/>
+      <text x="530" y="414" text-anchor="middle" class="c-t">CDC topic</text>
+      <text x="530" y="432" text-anchor="middle" class="c-s">LiveSyncState.1</text>
+      <rect x="470" y="498" width="120" height="64" rx="6" class="c-box"/>
+      <text x="530" y="524" text-anchor="middle" class="c-t">otel/ Parquet</text>
+      <text x="530" y="542" text-anchor="middle" class="c-s">hourly files</text>
+
+      <!-- silver -->
+      <rect x="610" y="110" width="120" height="64" rx="6" class="c-box"/>
+      <text x="670" y="136" text-anchor="middle" class="c-t">f1.* views</text>
+      <text x="670" y="154" text-anchor="middle" class="c-s">typed from the model</text>
+      <rect x="610" y="268" width="120" height="64" rx="6" class="c-box"/>
+      <text x="670" y="294" text-anchor="middle" class="c-t">live.* views</text>
+      <text x="670" y="312" text-anchor="middle" class="c-s">JSON → rows</text>
+      <rect x="610" y="388" width="120" height="64" rx="6" class="c-box"/>
+      <text x="670" y="414" text-anchor="middle" class="c-t">Sync state views</text>
+      <text x="670" y="432" text-anchor="middle" class="c-s">current + _history</text>
+      <rect x="610" y="498" width="120" height="64" rx="6" class="c-box"/>
+      <text x="670" y="524" text-anchor="middle" class="c-t">otel.* views</text>
+      <text x="670" y="542" text-anchor="middle" class="c-s">metrics, spans, logs</text>
+      <path d="M590,142 L608,142" class="c-line" marker-end="url(#ah)"/>
+      <path d="M590,300 L608,300" class="c-live" marker-end="url(#ah)"/>
+      <path d="M590,420 L608,420" class="c-live" marker-end="url(#ah)"/>
+      <path d="M590,530 L608,530" class="c-live" marker-end="url(#ah)"/>
+
+      <!-- served: gold, graph, dashboard -->
+      <rect x="755" y="110" width="120" height="90" rx="6" class="c-box"/>
+      <text x="815" y="140" text-anchor="middle" class="c-t">gold.* views</text>
+      <text x="815" y="158" text-anchor="middle" class="c-s">one per chart</text>
+      <text x="815" y="174" text-anchor="middle" class="c-s">materialized,</text>
+      <text x="815" y="189" text-anchor="middle" class="c-s">refresh on change</text>
+      <path d="M730,142 L753,142" class="c-line" marker-end="url(#ah)"/>
+      <path d="M730,290 L753,194" class="c-live" marker-end="url(#ah)"/>
+
+      <rect x="755" y="220" width="120" height="112" rx="6" class="c-box"/>
+      <text x="815" y="244" text-anchor="middle" class="c-t">Graph</text>
+      <text x="815" y="262" text-anchor="middle" class="c-s">mapping + ontology</text>
+      <text x="815" y="280" text-anchor="middle" class="c-s">Driver · Race ·</text>
+      <text x="815" y="295" text-anchor="middle" class="c-s">Constructor ·</text>
+      <text x="815" y="310" text-anchor="middle" class="c-s">Circuit · Season</text>
+
+      <rect x="755" y="388" width="120" height="174" rx="6" class="c-box"/>
+      <text x="815" y="452" text-anchor="middle" class="c-t">Lake sync</text>
+      <text x="815" y="469" text-anchor="middle" class="c-t">dashboard</text>
+      <text x="815" y="490" text-anchor="middle" class="c-s">9 panels from CDC</text>
+      <text x="815" y="505" text-anchor="middle" class="c-s">and telemetry</text>
+      <text x="815" y="520" text-anchor="middle" class="c-s">refresh 30 s</text>
+      <path d="M730,420 L753,420" class="c-line" marker-end="url(#ah)"/>
+      <path d="M730,530 L753,530" class="c-line" marker-end="url(#ah)"/>
+
+      <!-- ports -->
+      <rect x="900" y="122" width="90" height="40" rx="20" class="c-pill"/>
+      <text x="945" y="146" text-anchor="middle" class="c-pill-t">SQL :5433</text>
+      <rect x="900" y="220" width="90" height="40" rx="20" class="c-pill"/>
+      <text x="945" y="244" text-anchor="middle" class="c-pill-t">OData</text>
+      <rect x="900" y="290" width="90" height="40" rx="20" class="c-pill"/>
+      <text x="945" y="314" text-anchor="middle" class="c-pill-t">SPARQL</text>
+      <rect x="900" y="360" width="90" height="40" rx="20" class="c-pill"/>
+      <text x="945" y="384" text-anchor="middle" class="c-pill-t">MCP</text>
+      <rect x="900" y="455" width="90" height="40" rx="20" class="c-pill"/>
+      <text x="945" y="479" text-anchor="middle" class="c-pill-t">Web UI</text>
+
+      <!-- served → ports -->
+      <path d="M875,142 L898,142" class="c-line" marker-end="url(#ah)"/>
+      <path d="M875,240 L898,240" class="c-line" marker-end="url(#ah)"/>
+      <path d="M875,310 L898,310" class="c-line" marker-end="url(#ah)"/>
+      <path d="M875,326 L886,326 L886,380 L898,380" class="c-line" marker-end="url(#ah)"/>
+      <path d="M875,475 L898,475" class="c-line" marker-end="url(#ah)"/>
+
+      <!-- frontend inner -->
+      <rect x="1060" y="114" width="180" height="56" rx="6" class="c-box"/>
+      <text x="1150" y="137" text-anchor="middle" class="c-t">Chart pages</text>
+      <text x="1150" y="155" text-anchor="middle" class="c-s">Vega · External DB connector</text>
+      <rect x="1060" y="212" width="180" height="56" rx="6" class="c-box"/>
+      <text x="1150" y="235" text-anchor="middle" class="c-t">Browse and detail</text>
+      <text x="1150" y="253" text-anchor="middle" class="c-s">external entities</text>
+      <rect x="1060" y="282" width="180" height="56" rx="6" class="c-box"/>
+      <text x="1150" y="305" text-anchor="middle" class="c-t">Relationship views</text>
+      <text x="1150" y="323" text-anchor="middle" class="c-s">REST call</text>
+      <rect x="1060" y="352" width="180" height="56" rx="6" class="c-box"/>
+      <text x="1150" y="375" text-anchor="middle" class="c-t">Chat agent</text>
+      <text x="1150" y="393" text-anchor="middle" class="c-s">tool loop, read-only</text>
+      <rect x="1060" y="450" width="120" height="50" rx="6" class="c-box-quiet"/>
+      <text x="1120" y="471" text-anchor="middle" class="c-t">Admin page</text>
+      <text x="1120" y="488" text-anchor="middle" class="c-s">links the dashboard</text>
+
+      <!-- ports → frontend (the reads) -->
+      <path d="M990,142 L1058,142" class="c-read" marker-end="url(#aha)"/>
+      <text x="1024" y="134" text-anchor="middle" class="c-lbl-a">rows</text>
+      <path d="M990,240 L1058,240" class="c-read" marker-end="url(#aha)"/>
+      <text x="1024" y="232" text-anchor="middle" class="c-lbl-a">entities</text>
+      <path d="M990,310 L1058,310" class="c-read" marker-end="url(#aha)"/>
+      <text x="1024" y="302" text-anchor="middle" class="c-lbl-a">bindings</text>
+      <path d="M1058,380 L992,380" class="c-read" marker-end="url(#aha)"/>
+      <text x="1024" y="372" text-anchor="middle" class="c-lbl-a">tool calls</text>
+      <path d="M990,475 L1058,475" class="c-read" marker-end="url(#aha)"/>
+      <text x="1024" y="467" text-anchor="middle" class="c-lbl-a">opens</text>
+
+      <!-- LLM -->
+      <rect x="1150" y="600" width="100" height="48" rx="6" class="c-box"/>
+      <text x="1200" y="621" text-anchor="middle" class="c-t">Claude API</text>
+      <text x="1200" y="638" text-anchor="middle" class="c-s">the model</text>
+      <path d="M1210,408 L1210,598" class="c-line" marker-end="url(#ah)"/>
+      <text x="1204" y="584" text-anchor="end" class="c-lbl">messages</text>
+
+      <!-- control route frontend → backend -->
+      <path d="M1090,500 L1090,790 L330,790 L330,642" class="c-ctl" marker-end="url(#ahm)"/>
+      <text x="710" y="782" text-anchor="middle" class="c-lbl">published actions · the only frontend → backend edge</text>
+
+      <!-- legend -->
+      <path d="M20,822 L56,822" class="c-line"/><text x="64" y="826" class="c-lbl">files and views</text>
+      <path d="M190,822 L226,822" class="c-live"/><text x="234" y="826" class="c-lbl">events: POST, CDC, OTLP</text>
+      <path d="M420,822 L456,822" class="c-read"/><text x="464" y="826" class="c-lbl-a">reads from the lake</text>
+      <path d="M610,822 L646,822" class="c-ctl"/><text x="654" y="826" class="c-lbl">control</text>
+    </svg>
+    </div>
+    <figcaption>Two lanes carry F1 data (snapshot files, live events) and two carry information about the syncing (CDC of the sync state, OpenTelemetry). Everything the frontend shows crosses the lake's right edge. The backend writes into the lake and never serves reads; its only incoming edge is a few control actions.</figcaption>
+  </figure>
+
+  <section>
+    <h2>Four ways into the lake</h2>
+    <div class="tbl"><table>
+      <thead><tr><th></th><th>Snapshot</th><th>Live</th><th>CDC</th><th>Telemetry</th></tr></thead>
+      <tbody>
+        <tr><td>Carries</td><td>F1 history</td><td>F1 live timing</td><td>The sync state's history</td><td>Counts, durations, errors</td></tr>
+        <tr><td>Backend does</td><td>Downloads and overwrites the same files in <code>data/</code></td><td>Polls OpenF1 every 60 s and posts each response</td><td>Commits <code>LiveSyncState</code>, as it already does</td><td>Runs metrics activities; the runtime exports them and traces</td></tr>
+        <tr><td>Mechanism</td><td>Shared folder</td><td>HTTP <code>/events/&lt;topic&gt;</code></td><td>CDC service over Kafka</td><td>OTLP over HTTP</td></tr>
+        <tr><td>Lands as</td><td>Files</td><td>Iceberg topic table per feed</td><td><code>formula1backend.livesyncstate</code>, <code>_history</code></td><td><code>otel.metrics</code>, <code>otel.spans</code>, <code>otel.logs</code></td></tr>
+        <tr><td>Read by</td><td colspan="2">Gold views and the graph, then the frontend</td><td colspan="2">The lake sync dashboard</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">The live lane uses a plain REST call to the lake, so the backend needs neither the Business Events module nor a CDC service for F1 data. New files in <code>data/</code> need a lake restart; overwriting existing ones does not.</p>
+  </section>
+
+  <section>
+    <h2>CDC, once: the sync state</h2>
+    <p>Entity CDC stays off the F1 data path, but one example is kept to prove the mechanism and because it carries something nothing else does. <code>LiveSyncState</code> is one row that the live sync overwrites every minute. The Mendix database keeps only the latest version, and CDC keeps every one. This is already built and verified (FINDINGS §104, <code>model/backend/27-cdc-stream.mdl</code>).</p>
+    <pre><span class="cm">-- model/backend/27-cdc-stream.mdl (exists)</span>
+create or modify change data capture service Formula1Backend.LiveStateCdc
+( ServiceName: 'LiveStateCdc' )
+{ entity Formula1Backend.LiveSyncState as 'LiveSyncState' (
+    RowId as 'RowId', Enabled as 'Enabled', SessionKey as 'SessionKey',
+    TelemetryCursor as 'TelemetryCursor', LastRunAt as 'LastRunAt',
+    LastResult as 'LastResult', LapsWritten as 'LapsWritten', RunCount as 'RunCount' ); };
+
+<span class="cm"># run the backend against the lake's broker; no model change</span>
+./mxcli run --local -p Formula1Backend.mpr --runtime-setting Kafka.BootstrapServers=127.0.0.1:9092</pre>
+    <p>The lake builds the rest with no hand-written mapping. The topic is <code>cdc.Formula1Backend.LiveSyncState.1.local</code>. It produces a current-state view and a <code>_history</code> view with <code>change_op</code> and <code>changed_at</code>, an OData entity set <code>Formula1Backend_LiveSyncState</code>, and a SPARQL class of the same name. The dashboard reads the history: when each run happened, what it wrote, and when someone switched the sync on or off.</p>
+  </section>
+
+  <section>
+    <h2>Metrics from microflows</h2>
+    <p>The lake is an OpenTelemetry receiver. Traces give the duration of every microflow and REST call without changing the model. Metrics activities add the counts that traces cannot show: rows fetched, retries, and events posted to the lake, including in microflows that commit no state. MDL supports all three activities in the current mxcli build.</p>
+    <div class="cols">
+      <div style="display:grid;gap:10px;min-width:0">
+        <h3>In the model</h3>
+<pre><span class="cm">-- Sync_Fetch: every OpenF1 request passes here.
+-- $Feed is the path up to '?': laps, position, ...</span>
+increment counter 'f1.openf1.requests' (Tags: ('feed': $Feed));
+increment counter 'f1.openf1.retries'  (Tags: ('feed': $Feed));
+increment counter 'f1.openf1.empty'    (Tags: ('feed': $Feed));
+increment counter 'f1.openf1.chars' by length($Body)
+  (Tags: ('feed': $Feed));
+
+<span class="cm">-- Sync_Live: once per run</span>
+increment counter 'f1.sync.runs' (Tags: ('result': 'ok'));
+increment counter 'f1.sync.laps_written' by $Kept;
+set gauge 'f1.sync.rows_fetched' to $Fetched;</pre>
+      </div>
+      <div style="display:grid;gap:10px;min-width:0;align-content:start">
+        <h3>At run time</h3>
+<pre><span class="cm"># all of it: scripts/run-backend-on-lake.sh [--mock]</span>
+--runtime-setting Kafka.BootstrapServers=127.0.0.1:9092
+--runtime-setting 'Metrics.Registries=[{"type":"opentelemetry",
+  "settings":{"url":"http://127.0.0.1:4318/v1/metrics","step":"30s"}}]'
+--trace-otlp http://127.0.0.1:4318 --trace-service Formula1Backend
+OTEL_LOGS_EXPORTER=otlp
+<span class="cm"># then, after boot, over the admin API:</span>
+create_log_subscriber {"type":"opentelemetry", ...}</pre>
+        <ul class="note">
+          <li>Built and verified. Names arrive unchanged, and the counters match the traces exactly: 53 requests plus 13 retries against 66 HTTP calls.</li>
+          <li>Logs need the exporter and a runtime log subscriber. Studio Pro creates that subscriber from its OpenTelemetry settings; mxcli has no flag for it, so the script adds it after boot.</li>
+          <li>Counters are cumulative and reset when the app restarts. Each dashboard query turns them into increases, and the logic lives in the query because the lake's start-up SQL is fatal when <code>otel.*</code> does not exist yet.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Each lane answers a different question. CDC shows what the sync state was at each run, metrics show how much happened, traces show how long it took, and logs show what went wrong.</p>
+  </section>
+
+  <section>
+    <h2>Lake sync dashboard</h2>
+    <p>Built and running in the lake's own web UI at <code>:9495</code>. The definition is in the repo at <code>lake/dashboards/lake-sync.json</code>, and <code>scripts/run-lake.sh</code> uploads it, because the lake's own copy sits in a gitignored folder. Every panel was checked against live data from a sync running on the OpenF1 stand-in. The frontend's admin page would link to it. The layout below follows the lake's 12-column grid.</p>
+    <div class="dash" aria-label="Dashboard layout sketch">
+      <div class="p w3"><b>Since last sync run</b><span class="k">metric · minutes</span><span class="src">CDC</span><span class="why">Above 2 means the scheduled event stopped.</span></div>
+      <div class="p w3"><b>Sync runs per hour</b><span class="k">metric + sparkline</span><span class="src">CDC</span><span class="why">60 when it runs every minute.</span></div>
+      <div class="p w3"><b>Laps written, last run</b><span class="k">metric + sparkline</span><span class="src">CDC</span><span class="why">Flat at 0 during a session is a fault.</span></div>
+      <div class="p w3"><b>OpenF1 requests per hour</b><span class="k">metric + sparkline</span><span class="src">OTel metrics</span><span class="why">Every feed, counted in Sync_Fetch.</span></div>
+      <div class="p w12"><b>Sync timeline</b><span class="k">composite · two tracks</span><span class="src">CDC + OTel metrics</span><span class="why">Laps written per run on top, OpenF1 retries per minute underneath, and a rule each time the sync was switched on or off. A rate-limit episode shows as retries rising while laps flatten.</span></div>
+      <div class="p"><b>Requests per feed</b><span class="k">small multiples · per 10 min</span><span class="src">OTel metrics</span><span class="why">One sparkline per OpenF1 feed (13 of them); a feed that drops out stands out.</span></div>
+      <div class="p"><b>Slowest backend operations, last hour</b><span class="k">bar · avg ms</span><span class="src">OTel spans</span><span class="why">Where a slow cycle spends its time: Sync_Cycle about 20 s, Sync_Telemetry 7 s.</span></div>
+      <div class="p"><b>Last 20 sync results</b><span class="k">table</span><span class="src">CDC</span><span class="why">Session key, laps written, the result text.</span></div>
+      <div class="p"><b>Warnings and errors, last 24 h</b><span class="k">table</span><span class="src">OTel logs</span><span class="why">Newest first. Mendix sends levels as numbers only, so the name is derived.</span></div>
+    </div>
+    <p class="note">The full definition, with every query, is <code>lake/dashboards/lake-sync.json</code> in the repo. All telemetry times are cast to plain <code>TIMESTAMP</code>, because the lake's charts draw nothing on a time-zone-aware axis.</p>
+  </section>
+
+  <section>
+    <h2>Where today's pieces go</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Today</th><th>In this architecture</th></tr></thead>
+      <tbody>
+        <tr><td>21 queries reading CSV</td><td>Silver <code>f1.*</code> views, typed with the column specs the model already declares</td></tr>
+        <tr><td>15 queries parsing OpenF1 JSON per call</td><td>Silver <code>live.*</code> views over the topic tables: parsed once, with history for the window functions</td></tr>
+        <tr><td>68 data-source microflows</td><td>Gold views. Each microflow either disappears or becomes a single SQL call</td></tr>
+        <tr><td>8 placeholder queries</td><td>Still to decide: delete them, or build them as gold views</td></tr>
+        <tr><td>F1 entities in the backend</td><td>No longer needed. The backend keeps sync state and configuration only</td></tr>
+        <tr><td>6 published OData services</td><td>Retired for reads. The control actions stay</td></tr>
+        <tr><td>58 external entities in the frontend</td><td>Re-created from the lake's OData, or replaced by SQL where a page only charts</td></tr>
+        <tr><td>Entity CDC (<code>27-cdc-stream.mdl</code>)</td><td>Kept for the sync state only, feeding the dashboard</td></tr>
+        <tr><td><code>LOG INFO NODE 'F1LiveSync'</code></td><td>Kept, and now readable in <code>otel.logs</code> next to the traces of the same run</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Which port the frontend uses for what</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Port</th><th>Mendix side</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag">SQL</span></td><td>External Database Connector, PostgreSQL</td><td>Chart rows from <code>gold.*</code>, with bound parameters</td></tr>
+        <tr><td><span class="tag">OData</span></td><td>External entities</td><td>Lists, detail pages and data grids over the ontology's classes, with <code>$filter</code> and <code>$expand</code></td></tr>
+        <tr><td><span class="tag">SPARQL</span></td><td>Call REST, or <code>sparql(?)</code> over SQL</td><td>Questions about relationships: teammates, careers across teams</td></tr>
+        <tr><td><span class="tag">MCP</span></td><td>The chat agent's tools</td><td><code>sql</code>, <code>sparql</code>, <code>describe_table</code>, plus reviewed query templates</td></tr>
+        <tr><td><span class="tag">Web UI</span></td><td>A link on the admin page</td><td>The lake sync dashboard, and the Pipelines page for refresh state</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Check these before committing</h2>
+    <ol>
+      <li><strong>Mendix external entities against the lake's OData.</strong> Keys are IRIs and there is one entity set per ontology class. Nobody has yet tried consuming that from Studio Pro, and it decides whether browse pages use OData or SQL.</li>
+      <li><strong>Concurrent writes and CDC.</strong> A CDC event's <code>before</code> and <code>after</code> images both come from the committing microflow's in-memory object, not the stored row. When <code>LiveSyncSet</code> changed the session key during a sync run, the run's event carried the old key in both images. The lake applies <code>after</code> as a whole row, so it showed the wrong value for one cycle (reproduced). The fix is in the lake: apply only the attributes where <code>before</code> ≠ <code>after</code>. The prompts in <code>docs/datalake/prompts/</code> ask for that fix, and ask Mendix to investigate.</li>
+      <li><strong>The CDC snapshot rule.</strong> The runtime sends a row's existing state only the first time it publishes that revision. A fresh lake folder against an existing database starts the history at the next change, not at the current state.</li>
+      <li><strong>Where <code>data/</code> lives outside a dev box.</strong> The snapshot lane assumes the backend and the lake share a filesystem. A deployment needs a shared volume, or the snapshot lane moves to events as well.</li>
+      <li><strong>Where the chat agent runs.</strong> MCP listens on loopback, so the tool loop runs in or next to the frontend and only the model call leaves the machine. Set <code>[mcp] allow_changes = false</code> so chat cannot define views.</li>
+    </ol>
+  </section>
+</main>
+
+</html>

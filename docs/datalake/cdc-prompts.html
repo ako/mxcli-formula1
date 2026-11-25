@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}</style>
+<title>CDC After-Image Prompts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: two hand-off prompts, each a copyable block under a short header. */
+:root { --bg:#f5f7f8; --panel:#ffffff; --fg:#17212b; --muted:#5a6773; --line:#c3ccd4; --accent:#0a7b74;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#11171c; --panel:#182129; --fg:#e3e9ee; --muted:#98a5b0; --line:#3a4753; --accent:#3cc2b6; color-scheme:dark; } }
+:root[data-theme="dark"] { --bg:#11171c; --panel:#182129; --fg:#e3e9ee; --muted:#98a5b0; --line:#3a4753; --accent:#3cc2b6; color-scheme:dark; }
+body { background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:15px; line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px)); padding-block:32px 56px; }
+main { max-width:960px; margin:0 auto; display:grid; gap:36px; }
+header { display:grid; gap:8px; max-width:70ch; }
+.eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+h1 { font-size:28px; margin:0; font-weight:600; text-wrap:balance; }
+h2 { font-size:19px; margin:0; font-weight:600; }
+p { margin:0; } .muted { color:var(--muted); }
+section { display:grid; gap:10px; }
+.bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+button { font:500 13px var(--sans); color:var(--panel); background:var(--accent); border:0; border-radius:6px; padding:7px 14px; cursor:pointer; }
+button:focus-visible { outline:2px solid var(--fg); outline-offset:2px; }
+pre { margin:0; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; overflow:auto; max-height:70vh;
+  font-family:var(--mono); font-size:12.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+</style>
+<main>
+  <header>
+    <span class="eyebrow">Formula1 solution · CDC finding · 25 Nov 2026</span>
+    <h1>Two hand-offs for the stale CDC after-image</h1>
+    <p class="muted">When two transactions change the same object, Mendix CDC can publish an after-image that the database never held. The first prompt asks a coding agent to fix DuckGraphLake so it applies updates attribute by attribute. The second asks the Mendix CDC and event broker team to investigate the runtime side. Both are self-contained.</p>
+  </header>
+  <section>
+    <div class="bar"><h2>1 · DuckGraphLake fix, for a coding agent</h2><button type="button" data-copy="p1" id="copy-p1">Copy prompt</button></div>
+    <p class="muted">Run it in a checkout of ako/DuckGraphLake.</p>
+    <pre id="p1"># Task: apply Mendix CDC updates field by field, not as whole rows
+
+You are working in the ako/DuckGraphLake repository, on the server in `server/`. Fix how it turns Mendix entity CDC events into current state and history. Right now a `u` event&#x27;s `after` image replaces the whole row. It should apply only the attributes where `before` and `after` differ. Today the lake can show a value that the source database never held.
+
+## Background: what Mendix actually sends
+
+The Mendix runtime (verified on 11.14.0) publishes CDC through a transactional outbox. Each change becomes one row in `mendixsystem$data_change_event`, written in the app&#x27;s own transaction, and is published to `cdc.&lt;App&gt;.&lt;Entity&gt;.&lt;major&gt;.&lt;space&gt;` after commit. The message is a Debezium envelope with its schema embedded. The payload has the keys `before`, `after`, `op`, `source`, `ts_ms`, `ts_ns` and `ts_us`.
+
+Both `before` and `after` are full images of **every** attribute, and both come from the runtime&#x27;s **in-memory copy of the object** in the committing transaction, not from the stored row. The runtime&#x27;s SQL `UPDATE`, though, writes only the columns that transaction changed. When two transactions change the same object concurrently, an event&#x27;s images can therefore carry stale values for the attributes it didn&#x27;t touch.
+
+A real case, captured from a running app:
+
+| Time | What happened |
+|---|---|
+| 20:59:00 | Transaction B (a scheduled sync run) loads `LiveSyncState`; `SessionKey` is `11343` |
+| 20:59:05 | Transaction A changes `SessionKey` to `11344` and commits |
+| 20:59:06 | B changes `LastRunAt` and `RunCount`, and commits at 20:59:21. The database row now holds `SessionKey = 11344` |
+
+The two events, with only the relevant fields shown:
+
+```json
+// A, op &quot;u&quot;
+&quot;before&quot;: {&quot;SessionKey&quot;: &quot;11343&quot;, &quot;LastRunAt&quot;: &quot;2026-11-25T20:57:06.274Z&quot;, &quot;RunCount&quot;: 96226, ...},
+&quot;after&quot;:  {&quot;SessionKey&quot;: &quot;11344&quot;, &quot;LastRunAt&quot;: &quot;2026-11-25T20:57:06.274Z&quot;, &quot;RunCount&quot;: 96226, ...}
+
+// B, op &quot;u&quot;, published after A
+&quot;before&quot;: {&quot;SessionKey&quot;: &quot;11343&quot;, &quot;LastRunAt&quot;: &quot;2026-11-25T20:57:06.274Z&quot;, &quot;RunCount&quot;: 96226, ...},
+&quot;after&quot;:  {&quot;SessionKey&quot;: &quot;11343&quot;, &quot;LastRunAt&quot;: &quot;2026-11-25T20:59:06.877Z&quot;, &quot;RunCount&quot;: 96227, ...}
+```
+
+The server currently takes B&#x27;s `after` as the new row. So `&lt;app&gt;.&lt;entity&gt;` showed `SessionKey = 11343` until the next event, and `&lt;app&gt;.&lt;entity&gt;_history` recorded a change back to `11343` that never happened. The row `{SessionKey 11343, LastRunAt 20:59:06.877}` never existed in the database. B&#x27;s own images show it didn&#x27;t change `SessionKey`, because `before` equals `after` there.
+
+## The rule to implement
+
+For each object id, events in order (topic offset; `cdc.sequence` within a transaction):
+
+- `c` and `r`: the full `after` image is the state. A snapshot has no `before`.
+- `u`: for each attribute where `before` and `after` differ, take the `after` value. Leave every other attribute as it was.
+- `d`: the object is deleted.
+- An attribute present in `after` but missing from `before`, for example one added by a later revision, counts as changed.
+- If a `u` event has no `before` at all, fall back to the full `after`.
+
+This reproduces the database exactly. The runtime writes only changed columns, and when two transactions change the same column, the last commit wins both in the database and in this fold.
+
+Compare decoded values, not raw JSON text. Timestamps and decimals must compare equal when they encode the same value. A null compares equal to null, and null is not equal to the empty string.
+
+## Where it has to change
+
+Find each of these in `server/` before changing anything; don&#x27;t assume the names.
+
+1. **Ingest.** The topic table currently unwraps only `after` into columns. It also has to keep what changed. Recommended: add `changed LIST(VARCHAR)` to the `cdc` struct, computed once at ingest from the diff. Readers shouldn&#x27;t have to re-decode `warpstream.value`, although the raw message is in there if you need it.
+2. **Current state.** Update these to fold per attribute: the `&lt;app&gt;.&lt;entity&gt;` view, the raw `&quot;local__cdc.…&quot;_current` view, and the incremental `[[materialize]] views = &quot;&lt;app&gt;.*&quot;` path. That path merges events after the last offset, so it must merge per attribute too, not replace keys. One shape that works in SQL: for each attribute, `arg_max(attr, (offset, sequence)) FILTER (WHERE op IN (&#x27;c&#x27;,&#x27;r&#x27;) OR list_contains(changed, &#x27;Attr&#x27;))`. Then drop ids whose last event is `d`.
+3. **History.** Keep `&lt;app&gt;.&lt;entity&gt;_history`&#x27;s existing columns, so dashboards over it still work, and add `changed_fields`. Then the history no longer appears to record changes that didn&#x27;t happen.
+4. **Downstream.** The generated mapping, OData and SPARQL read the current-state view, so they should follow. Check that they do.
+
+## Acceptance
+
+- A test that produces the three messages above (an `r` snapshot of the object, then A, then B), using the format of the existing CDC test fixtures. After the test, `&lt;app&gt;.&lt;entity&gt;` holds `SessionKey = 11344`, `LastRunAt = 2026-11-25T20:59:06.877Z` and `RunCount = 96227`. `_history` shows B&#x27;s `changed_fields` as `[LastRunAt, RunCount]`.
+- The same result through the materialized path, with refreshes between the events, not only at the end.
+- The existing CDC tests still pass.
+- Update `server/guide/cdc.md` (shown by `duckgraphlake help cdc`) and the README&#x27;s CDC section: state that updates are applied per attribute, and why.
+
+## Out of scope
+
+Don&#x27;t change Kafka storage, the Iceberg layout or topic naming. Two other issues found in the same session (an `--init` failure is fatal, and dashboards render nothing for TIMESTAMPTZ axes) are filed separately.
+</pre>
+  </section>
+  <section>
+    <div class="bar"><h2>2 · Investigation request, for the Mendix CDC and event broker team</h2><button type="button" data-copy="p2" id="copy-p2">Copy prompt</button></div>
+    <p class="muted">It contains no credentials or project secrets: one entity's attribute names and sample values only.</p>
+    <pre id="p2"># Investigation request: Mendix CDC `after` images can contain values that were never stored
+
+For the team that owns entity Change Data Capture and the event broker in the Mendix runtime.
+
+## Summary
+
+When two transactions change the same object at the same time, the runtime can publish a CDC event whose `after` image never existed in the database. The event is written atomically through the outbox, and delivery and ordering are both correct. The problem is the payload: `before` and `after` are both built from the committing transaction&#x27;s in-memory object, while the SQL `UPDATE` writes only the columns that transaction changed. A consumer following the Debezium convention that `after` is the row as stored will show a wrong value until the next event.
+
+Please investigate whether this is intended, whether it is documented, and whether the runtime should change it.
+
+## Environment
+
+- Mendix 11.14.0, PostgreSQL, runtime started standalone (no Studio Pro)
+- One CDC service on one entity, `LiveSyncState`: eight attributes, no associations
+- `Kafka.BootstrapServers` pointed at a local Kafka-protocol broker. The broker isn&#x27;t involved, because the payload below was read straight from the runtime&#x27;s outbox table before publication.
+
+## What the runtime produces
+
+Outbox table `mendixsystem$data_change_event`, with columns `sequence`, `event_time`, `change_type`, `data`, `transaction_id` and `execution_id`. One `data` value, as captured:
+
+```json
+[{&quot;entity&quot;:&quot;Formula1Backend.LiveSyncState&quot;,&quot;objectId&quot;:30117822508040565,
+  &quot;before&quot;:{&quot;associations&quot;:[],&quot;attributes&quot;:[
+     {&quot;dataType&quot;:&quot;String&quot;,&quot;name&quot;:&quot;SessionKey&quot;,&quot;value&quot;:&quot;&quot;},
+     {&quot;dataType&quot;:&quot;DateTime&quot;,&quot;name&quot;:&quot;LastRunAt&quot;,&quot;value&quot;:1795641846260},
+     {&quot;dataType&quot;:&quot;Long&quot;,&quot;name&quot;:&quot;RunCount&quot;,&quot;value&quot;:96249}, ...]},
+  &quot;after&quot;:{&quot;associations&quot;:[],&quot;attributes&quot;:[
+     {&quot;dataType&quot;:&quot;String&quot;,&quot;name&quot;:&quot;SessionKey&quot;,&quot;value&quot;:&quot;&quot;},
+     {&quot;dataType&quot;:&quot;DateTime&quot;,&quot;name&quot;:&quot;LastRunAt&quot;,&quot;value&quot;:1795641905800},
+     {&quot;dataType&quot;:&quot;Long&quot;,&quot;name&quot;:&quot;RunCount&quot;,&quot;value&quot;:96250}, ...]}}]
+```
+
+Every attribute appears in both images, including the unchanged ones.
+
+## The race, as observed
+
+Two code paths write the same single object:
+
+- **B**, a scheduled event every minute: retrieves the object at the start of a run of about 20 seconds, later changes `LastRunAt` and `RunCount`, and commits.
+- **A**, a published OData action: changes `SessionKey` and commits.
+
+| Time | Event |
+|---|---|
+| 20:59:00 | B retrieves the object: `SessionKey = 11343` |
+| 20:59:05 | A sets `SessionKey = 11344` and commits. Its event: `before 11343` → `after 11344`. Correct. |
+| 20:59:06 | B changes `LastRunAt` and `RunCount`; its transaction ends at 20:59:21 |
+| after B | The database row holds `SessionKey = 11344` and `LastRunAt = 20:59:06.877`. B&#x27;s `UPDATE` did not touch `SessionKey`. |
+
+B&#x27;s published event:
+
+```
+before: SessionKey 11343, LastRunAt 20:57:06.274, RunCount 96226
+after:  SessionKey 11343, LastRunAt 20:59:06.877, RunCount 96227
+```
+
+B&#x27;s `after` (`SessionKey 11343` with `LastRunAt 20:59:06.877`) is a state the row never had. B&#x27;s `before` isn&#x27;t the stored row either: when B wrote, the stored row already held `11344`. A downstream current-state view showed `11343` for one cycle, until B&#x27;s next run loaded the row again. It was reproduced on purpose, by changing `SessionKey` five seconds into a run.
+
+## Why it matters
+
+- **The Debezium convention.** Consumers built for log-based CDC treat `after` as the stored row. Log-based CDC over PostgreSQL&#x27;s write-ahead log would have reported `11344` here.
+- **Silent and self-healing.** The error lasts only until the object changes again, so it&#x27;s easy to miss and hard to reproduce.
+- **Exposure.** Any entity written from two places is affected: a scheduled event plus a UI or API path, or two users editing the same object. Mendix has no optimistic locking by default, so the application can&#x27;t prevent it.
+
+## How to reproduce in a minimal app
+
+These steps reduce the race above to its essentials. They haven&#x27;t been run as a separate app; the observation above comes from the real one.
+
+1. Create an entity `Thing` with `A: String` and `B: Integer`, publish it in a CDC service, and point `Kafka.BootstrapServers` at any broker.
+2. Microflow `Slow`: retrieve the `Thing`, call a Java action that sleeps 10 seconds, set `B = B + 1`, commit.
+3. Microflow `Fast`: retrieve the `Thing`, set `A = &#x27;new&#x27;`, commit.
+4. Start `Slow`. While it sleeps, run `Fast`.
+5. The database holds `A = &#x27;new&#x27;`, but `Slow`&#x27;s event has `after.A` set to the old value. Read the outbox row before it&#x27;s published, or the topic.
+
+## Questions for the team
+
+1. Is building `before` and `after` from the in-memory object intended, and is it documented anywhere consumers would see it?
+2. Should `after` be the stored row? One option is to read the row back inside the transaction after the `UPDATE`. Under READ COMMITTED, PostgreSQL applies the `UPDATE` to the newest committed version of the row, so a read-back in the same transaction returns the true combined state, at the cost of one `SELECT` per changed object.
+3. Alternatively, should the envelope say which attributes the transaction changed, by listing them or by including only those in `after`? Consumers could then apply patches safely without diffing.
+4. If the current behaviour stays, documenting the rule would be enough for consumers to be correct: apply only the attributes where `before` ≠ `after`. That matches the database exactly, because the runtime writes only changed columns. Do Mendix&#x27;s own CDC consumers (Tableflow, Data Hub, other Mendix apps) already work this way?
+
+## What is not the problem
+
+- The outbox&#x27;s atomicity: the event exists if and only if the transaction committed.
+- Ordering: events are published in commit order.
+- The broker: the payload was captured from the outbox table before it reached any broker.
+</pre>
+  </section>
+</main>
+<script>
+document.querySelectorAll("button[data-copy]").forEach(btn => btn.addEventListener("click", () => {
+  const pre = document.getElementById(btn.dataset.copy);
+  const done = () => { btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy prompt", 1600); };
+  navigator.clipboard.writeText(pre.textContent).then(done, () => {
+    const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent = "Selected: press Ctrl+C";
+  });
+}));
+</script>
+
+</html>
