@@ -31,8 +31,21 @@ CREATE OR REPLACE VIEW f1.sprint_results AS
   SELECT * FROM read_csv('f1db/f1db-races-sprint-race-results.csv');
 CREATE OR REPLACE VIEW f1.drivers AS
   SELECT * FROM read_csv('f1db/f1db-drivers.csv');
+CREATE OR REPLACE VIEW f1.constructors AS
+  SELECT * FROM read_csv('f1db/f1db-constructors.csv');
 CREATE OR REPLACE VIEW f1.season_driver_standings AS
   SELECT * FROM read_csv('f1db/f1db-seasons-driver-standings.csv');
+
+
+-- One winner per race, for the graph's Race -> Driver link (mapping/f1.ttl).
+-- positionNumber 1 is not unique: in the 1950s a shared drive classified both
+-- drivers first, and a single-valued link needs exactly one. The first by
+-- positionDisplayOrder is the one f1db lists first.
+CREATE OR REPLACE VIEW f1.race_winners AS
+  SELECT raceId, driverId
+  FROM f1.race_results
+  WHERE positionNumber = 1
+  QUALIFY row_number() OVER (PARTITION BY raceId ORDER BY positionDisplayOrder) = 1;
 
 
 -- ------------------------------------------------------------------ gold --

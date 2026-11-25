@@ -21,6 +21,7 @@ for f in ../model/frontend/[0-9]*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.
 | `10-driver.mdl` | Screen 5 — one driver, a season strip and a career. |
 | `11-navigation-security.mdl` | Roles, entity/page access, the four default-entry microflows, and the five-item rail. |
 | `12-demo-user.mdl` | `fan`. Separate because 11 is not re-runnable. |
+| `16-lake-graph.mdl` | Module `F1Graph`: the lake's OData (`Driver`, `Constructor`, `Race` from `lake/mapping/f1.ttl`) as external entities, five smoke microflows behind `tests/lake-graph.test.mdl`, and `LakeDrivers` (`/p/lake-drivers`), a data grid paged and sorted by the lake. The browse-page spike; not on the rail. |
 
 ## Five screens and no overviews
 

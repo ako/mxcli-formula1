@@ -1,0 +1,64 @@
+# R2RML: the f1 silver views as a graph, which is also what the lake's OData
+# serves -- one entity set per class (Driver, Constructor, Race), one property
+# per literal predicate, one navigation property per link to another class.
+#
+# Nothing is copied: SPARQL and OData are translated to SQL over the views.
+# Reloaded when this file changes, without a restart.
+#
+# IRIs: data under http://data.formula1.local/<kind>/<f1db id>, vocabulary
+# under http://formula1.local/ns#. The f1db ids (max-verstappen, ferrari) are
+# stable and readable, so they make good IRI tails and good OData keys.
+
+@prefix rr:  <http://www.w3.org/ns/r2rml#> .
+@prefix f1:  <http://formula1.local/ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<#Driver>
+  rr:logicalTable [ rr:tableName "f1.drivers" ] ;
+  rr:subjectMap [ rr:template "http://data.formula1.local/driver/{id}" ; rr:class f1:Driver ] ;
+  rr:predicateObjectMap [ rr:predicate f1:name ;
+      rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:abbreviation ;
+      rr:objectMap [ rr:column "abbreviation" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:nationality ;
+      rr:objectMap [ rr:column "nationalityCountryId" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:dateOfBirth ;
+      rr:objectMap [ rr:column "dateOfBirth" ; rr:datatype xsd:date ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:championships ;
+      rr:objectMap [ rr:column "totalChampionshipWins" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:raceWins ;
+      rr:objectMap [ rr:column "totalRaceWins" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:podiums ;
+      rr:objectMap [ rr:column "totalPodiums" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:careerPoints ;
+      rr:objectMap [ rr:column "totalPoints" ; rr:datatype xsd:decimal ] ] .
+
+<#Constructor>
+  rr:logicalTable [ rr:tableName "f1.constructors" ] ;
+  rr:subjectMap [ rr:template "http://data.formula1.local/constructor/{id}" ; rr:class f1:Constructor ] ;
+  rr:predicateObjectMap [ rr:predicate f1:name ;
+      rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:fullName ;
+      rr:objectMap [ rr:column "fullName" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:country ;
+      rr:objectMap [ rr:column "countryId" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:championships ;
+      rr:objectMap [ rr:column "totalChampionshipWins" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:raceWins ;
+      rr:objectMap [ rr:column "totalRaceWins" ; rr:datatype xsd:integer ] ] .
+
+<#Race>
+  rr:logicalTable [ rr:sqlQuery """
+      SELECT r.id, r.year, r.round, r.date, r.officialName, w.driverId AS winnerId
+      FROM f1.races r LEFT JOIN f1.race_winners w ON w.raceId = r.id""" ] ;
+  rr:subjectMap [ rr:template "http://data.formula1.local/race/{id}" ; rr:class f1:Race ] ;
+  rr:predicateObjectMap [ rr:predicate f1:name ;
+      rr:objectMap [ rr:column "officialName" ; rr:datatype xsd:string ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:year ;
+      rr:objectMap [ rr:column "year" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:round ;
+      rr:objectMap [ rr:column "round" ; rr:datatype xsd:integer ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:date ;
+      rr:objectMap [ rr:column "date" ; rr:datatype xsd:date ] ] ;
+  rr:predicateObjectMap [ rr:predicate f1:winner ;
+      rr:objectMap [ rr:template "http://data.formula1.local/driver/{winnerId}" ] ] .

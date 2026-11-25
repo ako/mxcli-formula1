@@ -12,6 +12,14 @@ directory = "../data"
 # ako/DuckGraphLake#31) are harmless next to the f1.* views init.sql defines.
 init_sql = "init.sql"
 
+[rdf]
+# The graph over the f1 views: SPARQL, the catalog and OData's entity sets
+# (Driver, Constructor, Race). Both reload when they change.
+mapping = "mapping/*.ttl"
+ontology = "ontology/*.ttl"
+# f1db ids are unique and non-null; saying so lets SPARQL skip the checks.
+unique_keys = "f1.drivers(id); f1.constructors(id)"
+
 # gold.* is what the frontend reads: keep the results, and recompute a view
 # when a file it reads changes (a refreshed f1db release, for instance).
 [[materialize]]

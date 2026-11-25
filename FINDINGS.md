@@ -9628,3 +9628,74 @@ The failure mode. A lake outage now shows the user an error dialog where the bac
 used to stand. That's acceptable in development, but for production a DSJ microflow
 could catch the error and return an empty chart. That is a choice to make once, for
 every chart, before most of them move.
+
+## 108. Mendix reads the lake's OData: the browse-page spike
+
+The architecture assigns SQL to charts (§107) and OData to pages that show objects:
+lists, detail pages and data grids. Nobody had tried whether Mendix accepts the lake's
+OData, which has one entity set per class of its graph and IRIs for keys. It does, with
+one gap in mxcli.
+
+### What was built
+
+- **A graph over the f1 views**: `lake/mapping/f1.ttl` (R2RML) maps `f1.drivers`,
+  `f1.constructors` and `f1.races` to the classes `Driver`, `Constructor` and `Race`,
+  plus `Race → winner → Driver`. `lake/ontology/f1.ttl` gives labels, comments and the
+  link's range. A new silver view, `f1.race_winners`, picks one winner per race,
+  because in the 1950s a shared drive classified two drivers first and a single-valued
+  link needs one. Both files are wired in `lake/server.toml`.
+- **Frontend** (`16-lake-graph.mdl`): module `F1Graph`, an OData client over the
+  lake's `$metadata` (saved as `contracts/lake-metadata.xml`, like the backend
+  contracts), the external entities generated from it, five smoke microflows, and
+  `LakeDrivers`, a page with one data grid on `DATABASE F1Graph.Driver`.
+
+### Verified
+
+- **Over HTTP first**: `$filter`, `$orderby`, `$select`, `$count`, `$top`/`$skip`,
+  lookup by IRI key (`Driver('http%3A…max-verstappen')`) and `$expand=winner` all
+  answer correctly.
+- **The model**: the import gives 4 entities and 1 association, and `mx check` reports
+  0 findings once the date fix below is in. Re-exec writes nothing.
+- **The runtime**: `tests/lake-graph.test.mdl`, 5 of 5 passing on 11.16.1. All 917
+  drivers; `$filter` on a string (Senna, 41 wins); `$filter` on a number with
+  `$orderby` (6 drivers with four or more titles); two conditions, then the association
+  (the 2021 finale → Max Verstappen); and `$filter` across the association (41 races
+  with `winner/name = 'Ayrton Senna'`).
+- **The browser**: `/p/lake-drivers` shows "1 to 20 of 917", pages to 21–40, and
+  sorting by Titles descending puts Schumacher and Hamilton (7 each) on top. Each of
+  those is a request the lake answers. Dates show as calendar dates (Brudes,
+  10/15/1899), with no zone shift.
+
+### Three things to know
+
+**`ID` is reserved in Mendix.** The lake's key property is `ID`, so the import names
+the key attribute `DriverID`, `RaceID` and so on, mapped to `ID` in the contract (the
+CE7247 rule). Pages and expressions use the local name. The value is the full IRI,
+`http://data.formula1.local/driver/max-verstappen`, 100 characters at most.
+
+**mxcli's bulk import leaves `Edm.Date` attributes localized.** Mendix allows an
+`Edm.Date` only unlocalized: Studio Pro's import sets that, and without it `mx check`
+fails CE4598 "Cannot localize this attribute". `create external entities from …` does
+not, so the script follows it with
+`alter entity … modify attribute dateOfBirth: DateTime not localized`. An mxcli issue
+to file.
+
+**The lake annotates capabilities with the short alias** (`Capabilities.SortRestrictions`
+where Mendix writes `Org.OData.Capabilities.V1.SortRestrictions`). The contract declares
+the alias, so it is valid. The import stored `Sortable` and `Filterable` as true on
+every attribute anyway, and sorting works, so nothing depends on the spelling. The
+first browser test only seemed to show sorting broken because it clicked the header
+cell instead of its sort button.
+
+### What it does not settle
+
+- **Security.** The project runs at `prototype` level, where entity access is not
+  enforced, so the page needs only a page grant. At production level `F1Graph.Reader`
+  has to join the user roles, which `11-navigation-security.mdl` defines. That script
+  runs before `16`, and MDL cannot add a module role to an existing user role, so
+  `F1Graph` would have to be created earlier in the script order.
+- **The contract is a copy.** The `$metadata` file has to be re-fetched whenever the
+  mapping changes, as the backend contracts do. It also carries the CDC entity the
+  lake maps by itself, which comes in as an unused external entity.
+- **Nationality is a country id** (`united-kingdom`). The mapping could join
+  `f1db-countries.csv` for names.

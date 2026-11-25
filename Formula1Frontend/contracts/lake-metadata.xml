@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:Reference Uri="https://oasis-tcs.github.io/odata-vocabularies/vocabularies/Org.OData.Core.V1.xml">
+    <edmx:Include Namespace="Org.OData.Core.V1" Alias="Core"/>
+  </edmx:Reference>
+  <edmx:Reference Uri="https://oasis-tcs.github.io/odata-vocabularies/vocabularies/Org.OData.Capabilities.V1.xml">
+    <edmx:Include Namespace="Org.OData.Capabilities.V1" Alias="Capabilities"/>
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="DuckGraphLake" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Formula1Backend_LiveSyncState">
+        <Key><PropertyRef Name="ID"/></Key>
+        <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/Formula1Backend_LiveSyncState"/>
+        <Property Name="ID" Type="Edm.String" Nullable="false"/>
+        <Property Name="Enabled" Type="Edm.Boolean">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#Enabled"/>
+        </Property>
+        <Property Name="LapsWritten" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#LapsWritten"/>
+        </Property>
+        <Property Name="LastResult" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#LastResult"/>
+        </Property>
+        <Property Name="LastRunAt" Type="Edm.DateTimeOffset">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#LastRunAt"/>
+        </Property>
+        <Property Name="RowId" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#RowId"/>
+        </Property>
+        <Property Name="RunCount" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#RunCount"/>
+        </Property>
+        <Property Name="SessionKey" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#SessionKey"/>
+        </Property>
+        <Property Name="TelemetryCursor" Type="Edm.DateTimeOffset">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#TelemetryCursor"/>
+        </Property>
+        <Property Name="id" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://duckgraphlake.local/Formula1Backend/LiveSyncState#id"/>
+        </Property>
+      </EntityType>
+      <EntityType Name="Constructor">
+        <Key><PropertyRef Name="ID"/></Key>
+        <Annotation Term="Core.Description" String="http://formula1.local/ns#Constructor"/>
+        <Property Name="ID" Type="Edm.String" Nullable="false"/>
+        <Property Name="championships" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#championships"/>
+        </Property>
+        <Property Name="country" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#country"/>
+        </Property>
+        <Property Name="fullName" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#fullName"/>
+        </Property>
+        <Property Name="name" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#name"/>
+        </Property>
+        <Property Name="raceWins" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#raceWins"/>
+        </Property>
+      </EntityType>
+      <EntityType Name="Driver">
+        <Key><PropertyRef Name="ID"/></Key>
+        <Annotation Term="Core.Description" String="http://formula1.local/ns#Driver"/>
+        <Property Name="ID" Type="Edm.String" Nullable="false"/>
+        <Property Name="abbreviation" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#abbreviation"/>
+        </Property>
+        <Property Name="careerPoints" Type="Edm.Decimal">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#careerPoints"/>
+        </Property>
+        <Property Name="championships" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#championships"/>
+        </Property>
+        <Property Name="dateOfBirth" Type="Edm.Date">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#dateOfBirth"/>
+        </Property>
+        <Property Name="name" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#name"/>
+        </Property>
+        <Property Name="nationality" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#nationality"/>
+        </Property>
+        <Property Name="podiums" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#podiums"/>
+        </Property>
+        <Property Name="raceWins" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#raceWins"/>
+        </Property>
+      </EntityType>
+      <EntityType Name="Race">
+        <Key><PropertyRef Name="ID"/></Key>
+        <Annotation Term="Core.Description" String="http://formula1.local/ns#Race"/>
+        <Property Name="ID" Type="Edm.String" Nullable="false"/>
+        <Property Name="date" Type="Edm.Date">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#date"/>
+        </Property>
+        <Property Name="name" Type="Edm.String">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#name"/>
+        </Property>
+        <Property Name="round" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#round"/>
+        </Property>
+        <Property Name="year" Type="Edm.Int64">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#year"/>
+        </Property>
+        <NavigationProperty Name="winner" Type="DuckGraphLake.Driver">
+          <Annotation Term="Core.Description" String="http://formula1.local/ns#winner"/>
+        </NavigationProperty>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Formula1Backend_LiveSyncState" EntityType="DuckGraphLake.Formula1Backend_LiveSyncState">
+          <Annotation Term="Capabilities.InsertRestrictions"><Record><PropertyValue Property="Insertable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.UpdateRestrictions"><Record><PropertyValue Property="Updatable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.DeleteRestrictions"><Record><PropertyValue Property="Deletable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.CountRestrictions"><Record><PropertyValue Property="Countable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.TopSupported" Bool="true"/>
+          <Annotation Term="Capabilities.SkipSupported" Bool="true"/>
+          <Annotation Term="Capabilities.FilterRestrictions"><Record><PropertyValue Property="Filterable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.SortRestrictions"><Record><PropertyValue Property="Sortable" Bool="true"/></Record></Annotation>
+        </EntitySet>
+        <EntitySet Name="Constructor" EntityType="DuckGraphLake.Constructor">
+          <Annotation Term="Capabilities.InsertRestrictions"><Record><PropertyValue Property="Insertable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.UpdateRestrictions"><Record><PropertyValue Property="Updatable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.DeleteRestrictions"><Record><PropertyValue Property="Deletable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.CountRestrictions"><Record><PropertyValue Property="Countable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.TopSupported" Bool="true"/>
+          <Annotation Term="Capabilities.SkipSupported" Bool="true"/>
+          <Annotation Term="Capabilities.FilterRestrictions"><Record><PropertyValue Property="Filterable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.SortRestrictions"><Record><PropertyValue Property="Sortable" Bool="true"/></Record></Annotation>
+        </EntitySet>
+        <EntitySet Name="Driver" EntityType="DuckGraphLake.Driver">
+          <Annotation Term="Capabilities.InsertRestrictions"><Record><PropertyValue Property="Insertable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.UpdateRestrictions"><Record><PropertyValue Property="Updatable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.DeleteRestrictions"><Record><PropertyValue Property="Deletable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.CountRestrictions"><Record><PropertyValue Property="Countable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.TopSupported" Bool="true"/>
+          <Annotation Term="Capabilities.SkipSupported" Bool="true"/>
+          <Annotation Term="Capabilities.FilterRestrictions"><Record><PropertyValue Property="Filterable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.SortRestrictions"><Record><PropertyValue Property="Sortable" Bool="true"/></Record></Annotation>
+        </EntitySet>
+        <EntitySet Name="Race" EntityType="DuckGraphLake.Race">
+          <Annotation Term="Capabilities.InsertRestrictions"><Record><PropertyValue Property="Insertable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.UpdateRestrictions"><Record><PropertyValue Property="Updatable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.DeleteRestrictions"><Record><PropertyValue Property="Deletable" Bool="false"/></Record></Annotation>
+          <Annotation Term="Capabilities.CountRestrictions"><Record><PropertyValue Property="Countable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.TopSupported" Bool="true"/>
+          <Annotation Term="Capabilities.SkipSupported" Bool="true"/>
+          <Annotation Term="Capabilities.FilterRestrictions"><Record><PropertyValue Property="Filterable" Bool="true"/></Record></Annotation>
+          <Annotation Term="Capabilities.SortRestrictions"><Record><PropertyValue Property="Sortable" Bool="true"/></Record></Annotation>
+          <NavigationPropertyBinding Path="winner" Target="Driver"/>
+        </EntitySet>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

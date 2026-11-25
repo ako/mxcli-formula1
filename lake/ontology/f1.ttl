@@ -1,0 +1,36 @@
+# The F1 vocabulary the mapping (mapping/f1.ttl) uses: labels and comments for
+# the catalog, MCP and agents, and the ranges that make f1:winner a link to a
+# Driver (an OData navigation property) rather than an opaque IRI.
+
+@prefix f1:   <http://formula1.local/ns#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+f1:Driver a owl:Class ;
+  rdfs:label "Driver" ;
+  rdfs:comment "A person who entered at least one Formula One World Championship race." .
+
+f1:Constructor a owl:Class ;
+  rdfs:label "Constructor" ;
+  rdfs:comment "A team that built and entered cars in the championship." .
+
+f1:Race a owl:Class ;
+  rdfs:label "Race" ;
+  rdfs:comment "One Grand Prix of one season: a round of the championship." .
+
+f1:winner a owl:ObjectProperty ;
+  rdfs:label "winner" ;
+  rdfs:comment "The driver classified first. One per race; shared drives keep the first listed." ;
+  rdfs:domain f1:Race ;
+  rdfs:range f1:Driver .
+
+f1:name a owl:DatatypeProperty ; rdfs:label "name" .
+f1:championships a owl:DatatypeProperty ; rdfs:label "championships" ;
+  rdfs:comment "World championships won." .
+f1:raceWins a owl:DatatypeProperty ; rdfs:label "race wins" .
+f1:podiums a owl:DatatypeProperty ; rdfs:label "podiums" ; rdfs:domain f1:Driver .
+f1:careerPoints a owl:DatatypeProperty ; rdfs:label "career points" ; rdfs:domain f1:Driver .
+f1:year a owl:DatatypeProperty ; rdfs:label "season" ; rdfs:domain f1:Race .
+f1:round a owl:DatatypeProperty ; rdfs:label "round" ; rdfs:domain f1:Race .

@@ -1,0 +1,173 @@
+mdl 1;
+/*
+ * F1Graph: the lake's OData, consumed as external entities.
+ *
+ * The spike behind docs/datalake/architecture.html's plan for browse and detail
+ * pages: charts read the lake over SQL (05-chart-data.mdl's F1Lake connection),
+ * and pages that show OBJECTS -- lists, detail pages, data grids -- read it over
+ * OData, so the objects arrive typed, with paging and sorting pushed into the
+ * lake, entity access in force, and associations to follow.
+ *
+ * The lake does not publish tables over OData. It publishes the classes of its
+ * graph: lake/mapping/f1.ttl maps the f1.* views to Driver, Constructor and
+ * Race, and Race's `winner` link to a Driver becomes a navigation property. The
+ * key of every entity set is `ID`, the resource's IRI
+ * ('http://data.formula1.local/driver/max-verstappen'), not a Mendix-style id.
+ * Whether Mendix accepts that is what this script finds out.
+ *
+ * MetadataUrl is a file, as for the backend's services (01-odata-clients.mdl):
+ * the contract was fetched from http://127.0.0.1:9495/odata/$metadata and is
+ * committed, so the script runs without the lake up. Refresh it when the
+ * mapping changes. It also carries the CDC entity the lake maps by itself
+ * (Formula1Backend_LiveSyncState), which arrives here as an external entity
+ * too; nothing uses it.
+ */
+
+create module F1Graph;
+
+/** The lake's OData root. Override per environment. */
+create or modify constant F1Graph.ServiceUrl ( Type: string, DefaultValue: 'http://127.0.0.1:9495/odata/' );
+/**
+ * The lake's bearer token. On a loopback address its OData answers without one,
+ * so this only matters once the lake runs elsewhere -- and then it must be set.
+ */
+create or modify constant F1Graph.Authorization ( Type: string, DefaultValue: 'Bearer duckgraphlake' );
+
+create or modify consumed odata service F1Graph.LakeGraph (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/lake-metadata.xml',
+  Timeout: 60,
+  ServiceUrl: @F1Graph.ServiceUrl
+)
+HEADERS ('Authorization': @F1Graph.Authorization);
+
+create external entities from F1Graph.LakeGraph into F1Graph;
+
+/*
+ * The lake types dates as Edm.Date, a calendar date with no time and no zone,
+ * and Mendix allows such an attribute only unlocalized: Studio Pro's import
+ * sets that, and without it mx check fails CE4598 "Cannot localize this
+ * attribute". mxcli's bulk import above leaves both of these localized, so they
+ * are corrected here, after it.
+ */
+alter entity F1Graph.Driver modify attribute dateOfBirth: DateTime not localized;
+alter entity F1Graph.Race modify attribute date: DateTime not localized;
+
+
+/* --------------------------------------------------------------- smoke -- */
+
+/*
+ * What tests/lake-graph.test.mdl asserts, one OData feature per microflow.
+ * Each states the request Mendix should send, so a failure says which part of
+ * the lake's OData it reached.
+ */
+
+/** No query options; Mendix pages through the whole set. 917 is f1db's count. */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Graph_CountDrivers ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Graph.Driver;
+  $N = COUNT $Rows;
+  RETURN $N;
+END;
+
+/** $filter on a string, $top=1. The same fact 03-smoke.mdl reads from the backend. */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Graph_SennaWins ()
+  RETURNS Long AS $Wins
+BEGIN
+  RETRIEVE $Row FROM F1Graph.Driver WHERE name = 'Ayrton Senna' FIRST;
+  DECLARE $Wins Long = 0;
+  IF $Row != empty THEN
+    SET $Wins = $Row/raceWins;
+  END IF;
+  RETURN $Wins;
+END;
+
+/** $filter on a number, $orderby. Six drivers have won four titles or more. */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Graph_CountMultiChampions ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Graph.Driver WHERE championships >= 4 SORT BY championships DESC;
+  $N = COUNT $Rows;
+  RETURN $N;
+END;
+
+/**
+ * Two conditions, then the navigation property: Race -> winner -> Driver.
+ * The operator is a lowercase `and` (see the project brain: an uppercase AND
+ * with a variable on either side fails CE0161 at build).
+ */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Graph_Winner2021Final ()
+  RETURNS String AS $Name
+BEGIN
+  DECLARE $Name String = '';
+  RETRIEVE $Race FROM F1Graph.Race WHERE year = 2021 and round = 22 FIRST;
+  IF $Race != empty THEN
+    RETRIEVE $Winner FROM $Race/F1Graph.winner;
+    IF $Winner != empty THEN
+      SET $Name = $Winner/name;
+    END IF;
+  END IF;
+  RETURN $Name;
+END;
+
+/** $filter across the navigation property: winner/name. Senna won 41 races. */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.Graph_CountSennaVictories ()
+  RETURNS Long AS $N
+BEGIN
+  RETRIEVE $Rows FROM F1Graph.Race WHERE F1Graph.winner/F1Graph.Driver/name = 'Ayrton Senna';
+  $N = COUNT $Rows;
+  RETURN $N;
+END;
+
+
+/* ---------------------------------------------------------------- page -- */
+
+/*
+ * A browse page straight on the lake: a data grid with a DATABASE source over
+ * F1Graph.Driver, so the grid's own paging, sorting and column filters become
+ * $top, $skip, $orderby and $filter against the lake -- the work a browse page
+ * does, and nothing between.
+ *
+ * Not on the rail: it is reached at /p/lake-drivers, and it is the spike, not a
+ * screen of the design. Page access only. The project runs at security level
+ * prototype, where entity access is not enforced, and F1Graph.Reader cannot
+ * join the user roles from here: those are defined in 11, which runs before this
+ * script, and a user role defined in two scripts belongs to whichever ran last.
+ * Moving to production security means creating F1Graph ahead of 11.
+ */
+create or modify page Formula1Frontend.LakeDrivers
+(
+  title: 'Drivers (lake)',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'lake-drivers'
+)
+{
+  container pageBody {
+    container hdrLake (class: 'panel-head') {
+      dynamictext ttlLake (content: 'Drivers', class: 'panel-title')
+      dynamictext subLake (
+        content: 'read from DuckGraphLake over OData · every driver f1db knows · sort and page in the lake',
+        class: 'panel-sub')
+    }
+    container gLake (class: 'grid-dense') {
+      datagrid dgLakeDrivers (
+        datasource: DATABASE F1Graph.Driver,
+        PageSize: 20,
+        PagingPosition: bottom
+      ) {
+        column (attribute: name, caption: 'Driver', Sortable: true)
+        column (attribute: abbreviation, caption: 'Abbr', Sortable: true)
+        column (attribute: nationality, caption: 'Nationality', Sortable: true)
+        column (attribute: dateOfBirth, caption: 'Born', Sortable: true)
+        column (attribute: championships, caption: 'Titles', Alignment: right, Sortable: true)
+        column (attribute: raceWins, caption: 'Wins', Alignment: right, Sortable: true)
+        column (attribute: podiums, caption: 'Podiums', Alignment: right, Sortable: true)
+        column (attribute: careerPoints, caption: 'Points', Alignment: right, Sortable: true)
+      }
+    }
+  }
+};
+
+GRANT VIEW ON PAGE Formula1Frontend.LakeDrivers TO Formula1Frontend.Enthusiast;

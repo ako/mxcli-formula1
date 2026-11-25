@@ -1,0 +1,39 @@
+/*
+ * Proves the frontend can read the lake's OData (model/frontend/16-lake-graph.mdl)
+ * -- the lake must be running, with lake/mapping/f1.ttl loaded.
+ */
+
+/**
+ * @test Lake OData: all 917 drivers
+ * @expect $result = 917
+ */
+$result = CALL MICROFLOW Formula1Frontend.Graph_CountDrivers();
+/
+
+/**
+ * @test Lake OData: Senna has 41 race wins ($filter on a string)
+ * @expect $result = 41
+ */
+$result = CALL MICROFLOW Formula1Frontend.Graph_SennaWins();
+/
+
+/**
+ * @test Lake OData: six drivers with four or more titles ($filter on a number, $orderby)
+ * @expect $result = 6
+ */
+$result = CALL MICROFLOW Formula1Frontend.Graph_CountMultiChampions();
+/
+
+/**
+ * @test Lake OData: Verstappen won the 2021 final (two conditions, then the winner association)
+ * @expect $result = 'Max Verstappen'
+ */
+$result = CALL MICROFLOW Formula1Frontend.Graph_Winner2021Final();
+/
+
+/**
+ * @test Lake OData: 41 races won by Senna ($filter across the association)
+ * @expect $result = 41
+ */
+$result = CALL MICROFLOW Formula1Frontend.Graph_CountSennaVictories();
+/
