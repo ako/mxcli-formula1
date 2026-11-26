@@ -234,9 +234,9 @@ LEFT JOIN f1.races r ON r.id = rr.raceId;
 
 -- The latest season per team and per driver, which is what the Constructor and
 -- Driver screens chart. Views, so that each frontend query only filters one by
--- its parameter. (FINDINGS §113 blamed WITH for a connector failure; §114 found
--- the real cause: a parameter in a SELECT list, which the lake cannot type. A
--- comparison with a column, or a CAST, types it.)
+-- its parameter. (FINDINGS §113–§115: a parameter the lake cannot type, such as
+-- one in a SELECT list, makes it lose every result column's name, and Mendix then
+-- fails to map the result. Compare each parameter with a column, or CAST it.)
 CREATE OR REPLACE VIEW gold.team_latest_season AS
 SELECT t.* FROM gold.team_season t
 WHERE t.year = (SELECT max(x.year) FROM gold.team_season x WHERE x.constructor_id = t.constructor_id);

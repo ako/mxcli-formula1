@@ -9987,3 +9987,36 @@ instead of handling it. Two reports, then:
 The §113 queries and views stay as they are: they compare every parameter with a
 column, and the two latest-season views keep each query to a filter. Their
 comments now say why. `SELECT * FROM (WITH …)` is not needed; a bare `WITH` works.
+
+## 115. Correction to §114: the lake loses the column names, and Mendix cannot say so
+
+§114's "likely chain" was wrong as well: the lake does type an untyped parameter.
+Measured with the PostgreSQL JDBC driver the apps use (42.7.4), against the lake
+and against the real PostgreSQL in this container:
+
+- **Parameter type:** `SELECT ? AS x` → `text` on both. Not the problem.
+- **Result description:** `SELECT ? AS x` → the lake labels the column
+  **`unknown`**, PostgreSQL labels it `x`. And it is not only the parameter's own
+  column. `WITH arg AS (SELECT ? AS c) SELECT CAST(count(*) AS VARCHAR) AS json …`
+  and its subquery form come back as `unknown:text` too, although the value is
+  right (1135). A statement whose parameter is compared with a column keeps its
+  names (`json:varchar`). So **whenever a statement holds a parameter the lake
+  cannot type, every result column loses its name**, before and after execution.
+
+Then **Mendix maps result columns to attributes by name**, finds no `json`, and
+throws `Cannot invoke "String.contains(java.lang.CharSequence)" because
+"<parameter2>" is null`. That half has nothing to do with the lake. Against real
+PostgreSQL, `SELECT CAST({c} AS VARCHAR) AS other` with `Map: ( json = json )`
+throws the same NullPointerException, while `… AS json` returns `ferrari`. A mapped
+column missing from the result should be an error that names the column.
+
+So two independent bugs, each with a one-line reproduction:
+1. **DuckGraphLake:** a statement with an untypeable parameter loses all result
+   column names (`unknown`/`text`).
+2. **Mendix External Database Connector:** a mapped column missing from the
+   result is a NullPointerException, not a message.
+
+The reports are `docs/datalake/prompts/duckgraphlake-unknown-columns.md` and
+`docs/datalake/prompts/mendix-edc-missing-column.md`. The app's queries were right
+all along: every parameter is compared with a column, which is why they keep their
+names.

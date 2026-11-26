@@ -9,11 +9,13 @@ The DuckGraphLake work, beyond the proposal in
 | [cdc-prompts.html](cdc-prompts.html) | The two prompts below on one page, each with a copy button. |
 | [prompts/duckgraphlake-cdc-fix.md](prompts/duckgraphlake-cdc-fix.md) | For a coding agent in ako/DuckGraphLake: apply Mendix CDC updates attribute by attribute (only where `before` ≠ `after`), not as whole rows. |
 | [prompts/mendix-cdc-after-image.md](prompts/mendix-cdc-after-image.md) | For the Mendix CDC and event broker team: an `after` image can hold values that were never stored, when two transactions change the same object. |
+| [prompts/duckgraphlake-unknown-columns.md](prompts/duckgraphlake-unknown-columns.md) | For a coding agent in ako/DuckGraphLake: a statement with an untypeable parameter loses every result column's name over the PostgreSQL endpoint (FINDINGS §115). |
+| [prompts/mendix-edc-missing-column.md](prompts/mendix-edc-missing-column.md) | For Mendix: the External Database Connector throws a NullPointerException instead of naming a mapped column that is missing from the result. |
 
 Both HTML pages were also published as private Claude artifacts. These copies
 are the versions kept with the project, and they open from disk. They load
 their fonts from Google Fonts and fall back to system fonts offline.
 
-The evidence behind the CDC prompts is FINDINGS §105. The running pieces are
+The evidence behind the CDC prompts is FINDINGS §105; behind the column-name pair, §113–§115. The running pieces are
 `scripts/run-lake.sh`, `scripts/run-backend-on-lake.sh` and
 `lake/dashboards/lake-sync.json`.
