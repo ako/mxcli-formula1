@@ -230,7 +230,7 @@ GRANT READ * ON ENTITY Formula1Frontend.SeasonTeamRow TO Formula1Frontend.Enthus
 GRANT READ * ON ENTITY Formula1Frontend.SeasonDriverRow TO Formula1Frontend.Enthusiast;
 
 /*
- * The chat (17-chat-agent.mdl) runs on the Agents Kit, and every user who may
+ * The chat (18-chat-agent.mdl) runs on the Agents Kit, and every user who may
  * chat needs its user roles: GenAI Commons and Conversational UI for the
  * conversation, the Mendix Cloud GenAI connector for the model, MCP Client for
  * the lake's tools, and Encryption, which stores the model key.
@@ -272,7 +272,7 @@ create or modify navigation Responsive
     MENU ITEM 'Race weekend' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Weekend, Icon: Atlas_Core.Atlas.flag )
     MENU ITEM 'Constructor' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Constructor, Icon: Atlas_Core.Atlas."org-chart" )
     MENU ITEM 'Driver' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Driver, Icon: Atlas_Core.Atlas."user-neutral-group" )
-    /* Ask the lake: the chat agent of 17-chat-agent.mdl. Not part of the comp. */
+    /* Ask the lake: the chat agent of 18-chat-agent.mdl. Not part of the comp. */
     MENU ITEM 'Ask' ( OnClick: SHOW PAGE Formula1Frontend.Chat, Icon: Atlas_Core.Atlas."message-bubble-typing" )
     /*
      * Admin sits last and below the fold of interest, because it is not part of

@@ -9778,3 +9778,77 @@ its handler. ChatV2 recorded the same.
   in the app. ChatV2 turns it on.
 - The table header in an answer is hard to read in the dark theme.
 - `F1Graph`'s entity access (§108) is still the prototype-level shortcut.
+
+## 110. The chat agent's traces, in the lake
+
+§109's agent answered questions; this makes what it did visible in the lake, next to
+the backend's sync: every answer, every tool call it made, and the runtime's own
+traces. The scripts were renumbered on the way: the chat agent is now
+`18-chat-agent.mdl` and the traces `17-agent-traces.mdl` (§109 names the old file),
+because the chat's action microflow calls the copy that 17 defines.
+
+### Where the traces are, and where they cannot go
+
+GenAI Commons records an agent call as a `Trace`, with a `ModelSpan` per model call
+(tokens) and a `ToolSpan` per tool call. The lake's tools arrive as `MCPSpan`, a
+specialization of `ToolSpan`, with the tool name and the exact input, such as the
+SQL. It does this only with `GenAICommons.StoreTraces` on, only in the app's
+database, and it emits no OpenTelemetry of its own.
+
+**A CDC service cannot capture them.** mxbuild refuses every entity of GenAI
+Commons and Conversational UI with CE1578 "cannot be used in data to capture because
+it is non-persistable", although they are persistent. Measured on a copy of the
+project: a persistent entity of an app module is accepted, both from its own module
+and from another one, and so is one with an `AutoOwner`. `GenAICommons.Usage` and
+`ConversationalUI.ChatContext` are refused exactly like `Trace`. So it is these
+marketplace modules, and the message names the wrong cause. Separately, mxcli
+refuses an inherited member on a specialization ("SpanId is not an attribute or an
+association of ModelSpan").
+
+### What was built instead
+
+- **`17-agent-traces.mdl`**: `StoreTraces` on in the Default configuration;
+  `AgentTurn` (question, answer, duration, model calls, tool calls, tokens) and
+  `AgentToolCall` (tool, status, duration, input, output) with an association
+  between them; a CDC service over both; and `SUB_AgentTrace_Copy`, which copies a
+  trace into them.
+- **`18-chat-agent.mdl`**: after each answer, the action microflow follows
+  `Request_Trace` to the trace and copies it. A failed copy is logged and never
+  costs the user the answer.
+- **`scripts/run-frontend-on-lake.sh`**: the frontend's counterpart of
+  `run-backend-on-lake.sh`. It passes the keys from their files, sets Kafka for
+  CDC, and sends OpenTelemetry traces, metrics and logs to the lake, logs through
+  the M2EE log subscriber (§105).
+- **`lake/dashboards/agent.json`**: answers, time to answer, tokens per answer,
+  failed tool calls, which tools the agent uses, steps per answer, and the latest
+  answers and tool calls joined through the association.
+
+### Verified
+
+- The lake builds `formula1frontend.agentturn`, `.agenttoolcall`, their `_history`
+  views and `.agenttoolcall__turn` with no mapping written. This is the
+  **association case §104 left untested**: the link view joins each tool call to
+  its turn, so the dashboard shows the SQL the agent sent next to the question it
+  was answering.
+- 1976 championship: one turn, created after the first model call and updated when
+  the answer finished (history `c` → `u`, 1 → 2 model calls), with 2 tool calls
+  (`describe_table`, then `sql`). The answer, Hunt 69 and Lauda 68, is right.
+- The frontend's runtime spans arrive as `service_name = 'Formula1Frontend'`,
+  including the agent's HTTP calls to the model and the lake's MCP.
+- `mx check` 0 findings. Re-exec writes nothing, measured as files written, not
+  only as the script set's write count.
+
+### One answer, several passes
+
+The first version inserted a turn each time and produced **two turns for one
+answer**, from one trace: Conversational UI runs the chat's action microflow again
+after the agent calls a tool, and the trace grows between the passes. So the copy
+updates or inserts, keyed on `TraceId` and `SpanId`. Because Mendix cannot reassign
+an object variable (MDL-SET01), the find-or-create parts are separate microflows.
+The two rows from before the fix are still in the data.
+
+### Worth knowing
+
+**An answer costs about 55,000 tokens**, nearly all input. Each model call re-sends
+the system prompt, the conversation and every tool result. A long tool result, such
+as a `describe_table` sample, is paid for on every later call of that turn.

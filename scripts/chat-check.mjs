@@ -1,4 +1,4 @@
-// Hold a conversation with the F1 agent on /p/ask (model/frontend/17-chat-agent.mdl)
+// Hold a conversation with the F1 agent on /p/ask (model/frontend/18-chat-agent.mdl)
 // and print what it answered, including which lake tools it called.
 //
 //   node scripts/chat-check.mjs <screenshot-prefix> "question 1" ["question 2" ...]

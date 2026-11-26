@@ -1,0 +1,173 @@
+mdl 1;
+/*
+ * The agent's traces, in the lake.
+ *
+ * GenAI Commons records what an agent did -- a Trace per agent call, a
+ * ModelSpan per model call (tokens) and a ToolSpan per tool call (MCPSpan for
+ * the lake's tools: which tool, with what input, what it returned) -- but only
+ * when GenAICommons.StoreTraces is on, and only in the app's own database. It
+ * emits no OpenTelemetry.
+ *
+ * The obvious route, a change data capture service over those entities, is
+ * closed: mxbuild refuses every entity of the GenAI Commons and Conversational
+ * UI modules with CE1578 "cannot be used in data to capture because it is
+ * non-persistable", although they are persistent. A persistent entity of an
+ * app module, in this module or another, is accepted (FINDINGS §110).
+ *
+ * So each turn is copied, right after the agent answers, into two entities of
+ * this module -- AgentTurn and its AgentToolCalls -- and those travel the way
+ * LiveSyncState does from the backend (FINDINGS §104): CDC to Kafka, and the
+ * lake makes tables, history, a link view for the association and a graph of
+ * them without a hand-written mapping:
+ *
+ *   formula1frontend.agentturn, .agenttoolcall, .agenttoolcall__turn
+ *
+ * Run the frontend with --runtime-setting Kafka.BootstrapServers=127.0.0.1:9092
+ * (scripts/run-frontend-on-lake.sh does).
+ */
+
+alter settings constant @GenAICommons.StoreTraces value 'true' in configuration 'Default';
+
+/** One answer of the chat agent: the question, the answer, and what it cost. */
+create or modify persistent entity Formula1Frontend.AgentTurn (
+  TraceId: String(200),
+  ConversationId: String(200),
+  AgentName: String(200),
+  Question: String(unlimited),
+  Answer: String(unlimited),
+  StartTime: DateTime,
+  DurationMs: Integer,
+  HasError: Boolean default false,
+  ModelCalls: Integer,
+  ToolCalls: Integer,
+  InputTokens: Integer,
+  OutputTokens: Integer
+);
+
+/** One tool the agent called while answering: which, with what, and what came back. */
+create or modify persistent entity Formula1Frontend.AgentToolCall (
+  SpanId: String(200),
+  ToolName: String(200),
+  Status: String(100),
+  StartTime: DateTime,
+  DurationMs: Integer,
+  IsError: Boolean default false,
+  Input: String(unlimited),
+  Output: String(unlimited)
+);
+
+create or modify association Formula1Frontend.AgentToolCall_AgentTurn
+  from Formula1Frontend.AgentToolCall to Formula1Frontend.AgentTurn;
+
+/*
+ * Exposed names are written out, not defaulted: the topic is
+ * cdc.Formula1Frontend.<ExposedName>.<Major>.<space>, and a defaulted name
+ * would move it on a rename.
+ */
+create or modify change data capture service Formula1Frontend.AgentTraceCdc
+( ServiceName: 'AgentTraceCdc' )
+{
+  entity Formula1Frontend.AgentTurn as 'AgentTurn' (
+    TraceId        as 'TraceId',
+    ConversationId as 'ConversationId',
+    AgentName      as 'AgentName',
+    Question       as 'Question',
+    Answer         as 'Answer',
+    StartTime      as 'StartTime',
+    DurationMs     as 'DurationMs',
+    HasError       as 'HasError',
+    ModelCalls     as 'ModelCalls',
+    ToolCalls      as 'ToolCalls',
+    InputTokens    as 'InputTokens',
+    OutputTokens   as 'OutputTokens'
+  );
+  entity Formula1Frontend.AgentToolCall as 'AgentToolCall' (
+    SpanId                  as 'SpanId',
+    ToolName                as 'ToolName',
+    Status                  as 'Status',
+    StartTime               as 'StartTime',
+    DurationMs              as 'DurationMs',
+    IsError                 as 'IsError',
+    Input                   as 'Input',
+    Output                  as 'Output',
+    AgentToolCall_AgentTurn as 'Turn'
+  );
+};
+
+/*
+ * Find or create. Mendix has no action that reassigns an object variable, so
+ * each lives in a microflow of its own with one return per branch.
+ */
+create or modify microflow Formula1Frontend.SUB_AgentTurn_ForTrace (
+  $Trace: GenAICommons.Trace)
+  returns Formula1Frontend.AgentTurn as $Turn
+begin
+  retrieve $Existing from Formula1Frontend.AgentTurn where TraceId = $Trace/TraceId first;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $Turn = create Formula1Frontend.AgentTurn (
+    TraceId = $Trace/TraceId, ConversationId = $Trace/_ConversationId,
+    AgentName = $Trace/_AgentName, StartTime = $Trace/StartTime);
+  return $Turn;
+end;
+
+create or modify microflow Formula1Frontend.SUB_AgentToolCall_ForSpan (
+  $Known: List of Formula1Frontend.AgentToolCall,
+  $Span: GenAICommons.ToolSpan,
+  $Turn: Formula1Frontend.AgentTurn)
+  returns Formula1Frontend.AgentToolCall as $Call
+begin
+  $Existing = FIND $Known BY SpanId = $Span/SpanId;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $Call = create Formula1Frontend.AgentToolCall (
+    SpanId = $Span/SpanId, StartTime = $Span/StartTime,
+    Formula1Frontend.AgentToolCall_AgentTurn = $Turn);
+  return $Call;
+end;
+
+/*
+ * Copy one GenAI Commons trace into an AgentTurn and its AgentToolCalls, and
+ * commit them, which is what publishes them.
+ *
+ * Update or insert, never insert only. Conversational UI runs the chat's
+ * action microflow again after the agent calls a tool, so one answer reaches
+ * this microflow more than once, and each time the trace has grown: the first
+ * pass of one answer saw 1 model call, the last 2. Keyed on TraceId and
+ * SpanId, a turn stays one row, and its history in the lake shows it growing.
+ */
+create or modify microflow Formula1Frontend.SUB_AgentTrace_Copy (
+  $Trace: GenAICommons.Trace)
+  returns Boolean as $Copied
+begin
+  retrieve $ModelSpans from GenAICommons.ModelSpan where [GenAICommons.Span_Trace = $Trace];
+  retrieve $ToolSpans from GenAICommons.ToolSpan where [GenAICommons.Span_Trace = $Trace];
+  $ModelCalls = COUNT $ModelSpans;
+  $ToolCount = COUNT $ToolSpans;
+  $InTokens = SUM $ModelSpans BY InputTokens;
+  $OutTokens = SUM $ModelSpans BY OutputTokens;
+
+  $Turn = call microflow Formula1Frontend.SUB_AgentTurn_ForTrace (Trace = $Trace);
+  change $Turn (
+    Question = $Trace/Input, Answer = $Trace/Output,
+    DurationMs = $Trace/DurationMilliseconds, HasError = $Trace/HasError,
+    ModelCalls = $ModelCalls, ToolCalls = $ToolCount,
+    InputTokens = $InTokens, OutputTokens = $OutTokens);
+  commit $Turn;
+
+  retrieve $Known from $Turn/Formula1Frontend.AgentToolCall_AgentTurn;
+  $Calls = create list of Formula1Frontend.AgentToolCall;
+  loop $S in $ToolSpans begin
+    $Call = call microflow Formula1Frontend.SUB_AgentToolCall_ForSpan (
+      Known = $Known, Span = $S, Turn = $Turn);
+    change $Call (
+      ToolName = $S/ToolName, Status = getKey($S/ToolCallStatus),
+      DurationMs = $S/DurationMilliseconds, IsError = $S/IsError,
+      Input = $S/Input, Output = $S/Output);
+    add $Call to $Calls;
+  end loop;
+  commit $Calls;
+  return true;
+end;

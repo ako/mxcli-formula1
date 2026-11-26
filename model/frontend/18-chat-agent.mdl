@@ -126,6 +126,21 @@ begin
   call microflow ConversationalUI.ChatContext_UpdateAssistantResponse(
     ChatContext = $ChatContext, MessageStatus = ConversationalUI.ENUM_MessageStatus.Success,
     Response = $Response);
+
+  /*
+   * The turn's trace, to the lake (17-agent-traces.mdl): GenAI Commons links
+   * the request to the trace it stored. A failure here must not cost the user
+   * the answer they already have, so it is logged and the chat goes on.
+   */
+  retrieve $Trace from $Request/GenAICommons.Request_Trace;
+  if $Trace != empty then
+    $Copied = call microflow Formula1Frontend.SUB_AgentTrace_Copy (Trace = $Trace)
+      on error without rollback begin
+        log warning node 'F1Chat' 'Could not copy the agent trace to the lake: {1}' with ({1} = $latestError/Message);
+      end error;
+  else
+    log warning node 'F1Chat' 'The agent request has no trace; is GenAICommons.StoreTraces on?';
+  end if;
   return true;
 end;
 
