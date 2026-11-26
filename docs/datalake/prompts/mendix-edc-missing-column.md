@@ -14,7 +14,7 @@ The message names neither the query, the mapping nor the missing column. It look
 
 ## Environment
 
-- Mendix 11.16.1, runtime started standalone (no Studio Pro). The same NullPointerException appeared on 11.17.0.
+- Mendix 11.16.1, runtime started standalone (no Studio Pro). Not checked on other versions.
 - A database connection of type `PostgreSQL`, PostgreSQL JDBC driver 42.7.4, PostgreSQL 16.
 - A query that returns a non-persistent entity with one String attribute, `json`, mapped as `json = json`.
 
