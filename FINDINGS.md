@@ -10072,3 +10072,72 @@ Verified: the Race weekend tests in `fan-pages.test.mdl` pass (27 of 28 overall;
 circuit outline, as before), `mx check` 0, and re-exec writes nothing. The lap chart
 is empty for 2026 races, because the lap file covers 2024; the page says a race
 without traces draws an empty chart.
+
+## 117. The live lane's first half: every OpenF1 response into the lake
+
+A race weekend starts tomorrow, so the backend's half of the live lane comes first:
+everything the live sync fetches now lands in the lake as raw events. Parsing it
+into live views, and moving the live screens over, can follow from what is stored.
+The existing sync keeps writing `LiveLap` and the rest, so the live screens do not
+depend on the new path yet.
+
+### How
+
+- **One hook.** Every OpenF1 request in every tier (live, telemetry, slow, context,
+  entry, track map; about twenty call sites) goes through `Sync_Fetch`, which now
+  ends with `Sync_LakePost`. It posts the response to the lake's HTTP events
+  endpoint: topic `openf1`, event type the feed (`laps`, `intervals`, `location`,
+  …), subject the request path, `ce_source /OpenF1/Sync/`. The lake keeps each as
+  raw JSON and makes `openf1.<feed>` views (event time, subject, payload) by itself.
+- **Only what changed.** Most cycles re-fetch a whole session, and several tiers
+  fetch `laps` in the same cycle. `LakePost` keeps the SHA-256 of the last body
+  posted per request path (a small inline Java action), and an unchanged response
+  is not posted again.
+- **Never fails the sync.** A refused or failed post is a warning on `F1Lake` and a
+  `f1.lake.post_failures` count. `LakePost` is updated only after the lake accepted
+  a post, so the next cycle retries. `LakeIngestEnabled` switches it all off.
+
+### Verified
+
+- **The endpoint takes big payloads:** 15 MB in 0.6 s on a scratch lake, against a
+  full race's `intervals` at about 3 MB.
+- **Against the OpenF1 stand-in:** every feed arrived once over several cycles,
+  and each stored payload unpacks to exactly the rows served (laps 506,
+  intervals 11,063, position 65, race control 65, weather 80, drivers 22, stints
+  24, pit 2).
+- **With the lake down:** the sync kept running (run 198 → 199), each failed post
+  logged a warning naming its request, and when the lake came back the next cycle
+  re-posted.
+- **Against the real OpenF1:** the backend now follows the latest session (11420)
+  with this machine's credentials. It posted every feed, telemetry windows
+  included, then nothing on later cycles, since a finished session does not change.
+- `mx check` 0, and re-exec writes nothing.
+
+### Running a weekend: `scripts/run-weekend.sh`
+
+It starts the lake, then both apps under `scripts/keep-app-running.sh` with every
+ingestion path on: the backend against api.openf1.org with the lake events, CDC
+and OpenTelemetry; the frontend with its chat keys, CDC and OpenTelemetry.
+`status` shows the supervisors, the health of the three services, the sync state
+and the event count; `stop` stops the supervisors. The supervisor restarts an app
+whose health URL stops answering, which is how the trial licence's run-time
+limit is survived. It gained `POST_START`, used to re-attach the OpenTelemetry
+log subscriber (`scripts/attach-otel-logs.sh`) after every start, because the
+subscriber dies with the runtime.
+
+The lake-sync dashboard gained "OpenF1 events into the lake" (events per 10
+minutes and feed, counted in bronze) and "Posts to the lake that failed".
+
+### Volume
+
+One session is about 3.7 MB across all feeds, `intervals` 3 MB of it. During a live
+session each changed feed is posted every minute and grows, and the lake keeps the
+Kafka log and the Iceberg table. Estimate: about 0.5 GB per session, 3 GB a
+weekend, against 1.3 TB free. Posting deltas instead of whole sessions is the
+obvious later improvement; for one weekend it is not needed.
+
+### Next, after the weekend
+
+Silver views that parse `openf1.<feed>` (the latest event per session and feed,
+unnested), checked against what the backend derived into `LiveLap` and the rest
+over the same weekend. Then gold views and the live screens.

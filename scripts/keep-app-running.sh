@@ -44,7 +44,7 @@
 #   FAIL_PATTERN='cannot listen' scripts/keep-app-running.sh ...
 #
 # Usage:
-#   scripts/keep-app-running.sh <app-dir> <health-url> <log> -- <mxcli run args...>
+#   [POST_START='cmd'] scripts/keep-app-running.sh <app-dir> <health-url> <log> -- <mxcli run args...>
 #
 # Example:
 #   scripts/keep-app-running.sh Formula1Backend http://localhost:8080/ /tmp/be.log \
@@ -60,6 +60,7 @@ POLL=${POLL:-20}
 FAIL_LIMIT=${FAIL_LIMIT:-3}     # consecutive failed polls before a restart
 FAIL_PATTERN=${FAIL_PATTERN:-}  # if this appears in recent log output, restart
 FAIL_TAIL=${FAIL_TAIL:-40}      # how much of the log counts as "recent"
+POST_START=${POST_START:-}      # a command to run once the app answers, after every start
 
 say() { printf '[supervisor %s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOG"; }
 
@@ -93,10 +94,24 @@ stop() {
   MXPID=""
 }
 
+# Run POST_START once the freshly started app answers its health URL. For what a
+# restart does not keep: the runtime's OpenTelemetry log subscriber, for one, is
+# created over M2EE after boot (scripts/attach-otel-logs.sh) and dies with the
+# runtime, so without this the lake gets no logs after the first licence restart.
+post_start() {
+  [ -n "$POST_START" ] || return 0
+  local i=0
+  until curl -sf -o /dev/null --max-time 10 "$HEALTH_URL"; do
+    i=$((i + 1)); [ $i -gt 30 ] && { say "post-start skipped: no answer on $HEALTH_URL"; return 0; }
+    sleep 10
+  done
+  if bash -c "$POST_START" >>"$LOG" 2>&1; then say "post-start done"; else say "post-start failed"; fi
+}
 trap 'say "supervisor stopping"; stop; exit 0' INT TERM
 
 start
 sleep "$BOOT_GRACE"
+post_start
 
 fails=0
 while true; do
@@ -122,5 +137,6 @@ while true; do
     start
     fails=0
     sleep "$BOOT_GRACE"
+post_start
   fi
 done

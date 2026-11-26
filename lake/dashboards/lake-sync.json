@@ -1,6 +1,6 @@
 {
   "title": "Lake sync",
-  "description": "Is the backend getting OpenF1 data, and is the live sync healthy? CDC of LiveSyncState plus the backend's OpenTelemetry metrics, traces and logs.",
+  "description": "Is the backend getting OpenF1 data into the lake, and is the live sync healthy? The OpenF1 events in bronze, CDC of LiveSyncState, and the backend's OpenTelemetry metrics, traces and logs.",
   "refresh": 30,
   "panels": [
     {
@@ -42,6 +42,16 @@
       "query": "WITH d AS (SELECT time::TIMESTAMP AS time, attributes, CASE WHEN temporality = 'delta' THEN value WHEN lag(value) OVER w IS NULL OR value < lag(value) OVER w THEN value ELSE value - lag(value) OVER w END AS delta FROM otel.metrics WHERE name = 'f1.openf1.requests' WINDOW w AS (PARTITION BY service_name, CAST(attributes AS VARCHAR) ORDER BY time)) SELECT date_trunc('hour', time) AS hour, sum(delta) AS requests FROM d GROUP BY 1 ORDER BY 1",
       "x": "hour",
       "y": "requests"
+    },
+    {
+      "title": "Posts to the lake that failed",
+      "lang": "sql",
+      "view": "metric",
+      "width": 3,
+      "format": "integer",
+      "note": "From the backend's f1.lake.post_failures counter, last 24 hours. The sync carries on and retries the next cycle.",
+      "query": "WITH d AS (SELECT time::TIMESTAMP AS time, CASE WHEN temporality = 'delta' THEN value WHEN lag(value) OVER w IS NULL OR value < lag(value) OVER w THEN value ELSE value - lag(value) OVER w END AS delta FROM otel.metrics WHERE name = 'f1.lake.post_failures' WINDOW w AS (PARTITION BY service_name, CAST(attributes AS VARCHAR) ORDER BY time)) SELECT COALESCE(sum(delta), 0) AS failed FROM d WHERE time > now()::TIMESTAMP - INTERVAL 1 DAY",
+      "y": "failed"
     },
     {
       "title": "Sync timeline",
@@ -120,6 +130,17 @@
       "view": "table",
       "query": "SELECT time::TIMESTAMP AS time, CASE WHEN severity_number >= 21 THEN 'CRITICAL' WHEN severity_number >= 17 THEN 'ERROR' ELSE 'WARNING' END AS level, body, attributes['node'] AS node, service_name FROM otel.logs WHERE severity_number >= 13 AND time > now() - INTERVAL 1 DAY ORDER BY time DESC LIMIT 50",
       "note": "Mendix sends the level as a number only (OpenTelemetry's scale: 9 INFO, 13 WARN, 17 ERROR, 21 FATAL), so the name is derived here."
+    },
+    {
+      "title": "OpenF1 events into the lake",
+      "lang": "sql",
+      "view": "multiples",
+      "facet": "feed",
+      "width": 12,
+      "note": "Events per 10 minutes and feed, counted in bronze (topic openf1): what actually arrived. A feed only posts when its response changed, so a quiet feed outside a session is normal; a feed that goes quiet during one is not.",
+      "query": "SELECT time_bucket(INTERVAL 10 MINUTE, warpstream.timestamp)::TIMESTAMP AS t, warpstream.headers['ce_type'] AS feed, count(*) AS events FROM main.local__openf1 GROUP BY ALL ORDER BY t",
+      "x": "t",
+      "y": "events"
     }
   ]
 }

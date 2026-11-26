@@ -432,6 +432,140 @@ AS $$
     }
 $$;
 
+/* -------------------------------------------------------------- the lake -- */
+
+/*
+ * Every OpenF1 response, to DuckGraphLake as well.
+ *
+ * The architecture (docs/datalake/architecture.html) has the backend ingest and
+ * the lake shape: the live lane is OpenF1 posted to the lake as events, parsed
+ * there once, and read from there by the frontend. This is the first half -- the
+ * ingest -- and it runs NEXT TO the existing sync, which keeps writing LiveLap and
+ * the rest as before, so the live screens do not depend on it yet.
+ *
+ * One event per response, on one topic (`openf1`), with the feed as the event
+ * type (laps, position, intervals, car_data, ...) and the request path as its
+ * subject. The lake keeps each as raw JSON in bronze, and its automatic view
+ * openf1.<feed> holds event_time, subject and payload; parsing comes later, in
+ * the lake, from what is stored.
+ *
+ * Posted from Sync_Fetch, the one place every OpenF1 request passes through, and
+ * only when the response changed. Most cycles re-fetch a whole session, and
+ * several tiers fetch the same `laps` in one cycle, so posting every response
+ * would store the same megabytes over and over. LakePost remembers the SHA-256
+ * of the last body posted per request path.
+ *
+ * It never fails the sync. A lake that is down, slow or refusing costs a warning
+ * and a counter, and the next cycle tries again -- LakePost is only updated after
+ * a post was accepted, so nothing is skipped because a post failed.
+ */
+
+/** The lake's events endpoint, topic included. Override per environment. */
+create or modify constant Formula1Backend.LakeEventsUrl ( Type: string, DefaultValue: 'http://127.0.0.1:9495/events/openf1' );
+/** The lake's bearer token ('duckgraphlake' is its default on a loopback address). */
+create or modify constant Formula1Backend.LakeToken ( Type: string, DefaultValue: 'duckgraphlake' );
+/** Post OpenF1 responses to the lake. Off: the sync runs exactly as before. */
+create or modify constant Formula1Backend.LakeIngestEnabled ( Type: Boolean, DefaultValue: 'true' );
+
+/** The last body posted to the lake per request path, so an unchanged response is not posted again. */
+create or modify persistent entity Formula1Backend.LakePost (
+  Path: String(500),
+  Feed: String(100),
+  BodyHash: String(64),
+  Chars: Integer,
+  Posts: Integer,
+  PostedAt: DateTime
+);
+
+create or modify java action Formula1Backend.Sync_Sha256 (
+  Text: String NOT NULL
+) RETURNS String
+AS $$
+    try {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] digest = md.digest((Text == null ? "" : Text).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(64);
+        for (byte b : digest) hex.append(String.format("%02x", b));
+        return hex.toString();
+    } catch (java.security.NoSuchAlgorithmException e) {
+        throw new RuntimeException(e);
+    }
+$$;
+
+/*
+ * Find or create the LakePost of one request path. Its own microflow because
+ * Mendix has no action that reassigns an object variable.
+ */
+create or modify microflow Formula1Backend.Sync_LakePost_ForPath (
+  $Path: String,
+  $Feed: String
+)
+  returns Formula1Backend.LakePost as $Post
+begin
+  retrieve $Existing from Formula1Backend.LakePost where Path = $Path first;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $Post = create Formula1Backend.LakePost (Path = $Path, Feed = $Feed, Posts = 0);
+  return $Post;
+end;
+
+/*
+ * Post one OpenF1 response to the lake, unless it is empty or unchanged.
+ * Returns true when it posted. Never throws.
+ */
+create or modify microflow Formula1Backend.Sync_LakePost (
+  $Path: String,
+  $Feed: String,
+  $Body: String
+)
+  returns Boolean as $Posted
+begin
+  declare $Posted Boolean = false;
+  if @Formula1Backend.LakeIngestEnabled != true then
+    return $Posted;
+  end if;
+  if trim($Body) = '' or trim($Body) = '[]' then
+    return $Posted;
+  end if;
+
+  $Hash = call java action Formula1Backend.Sync_Sha256(Text = $Body);
+  $State = call microflow Formula1Backend.Sync_LakePost_ForPath (Path = $Path, Feed = $Feed);
+  if $State/BodyHash = $Hash then
+    return $Posted;
+  end if;
+
+  $Resp = call rest service post @Formula1Backend.LakeEventsUrl (
+      Headers: ('Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + @Formula1Backend.LakeToken,
+                'ce_type': $Feed,
+                'ce_source': '/OpenF1/Sync/',
+                'ce_subject': $Path),
+      Body: $Body,
+      Timeout: 60
+    ) returns response
+    on error without rollback begin
+      log warning node 'F1Lake' 'OpenF1 {1} not posted to the lake: {2}'
+        with ({1} = $Path, {2} = $latestError/Message);
+      increment counter 'f1.lake.post_failures' (Tags: ('feed': $Feed));
+      return $Posted;
+    end error;
+
+  if $Resp = empty or $Resp/StatusCode != 202 then
+    log warning node 'F1Lake' 'OpenF1 {1} refused by the lake' with ({1} = $Path);
+    increment counter 'f1.lake.post_failures' (Tags: ('feed': $Feed));
+    return $Posted;
+  end if;
+
+  change $State (BodyHash = $Hash, Chars = length($Body), Posts = $State/Posts + 1,
+                 PostedAt = [%CurrentDateTime%]);
+  commit $State;
+  increment counter 'f1.lake.events_posted' (Tags: ('feed': $Feed));
+  increment counter 'f1.lake.chars_posted' by length($Body) (Tags: ('feed': $Feed));
+  set $Posted = true;
+  return $Posted;
+end;
+
 /*
  * One OpenF1 GET, paced.
  *
@@ -549,6 +683,12 @@ BEGIN
   END IF;
   increment counter 'f1.openf1.chars' by length($Body) (Tags: ('feed': $Feed));
   LOG INFO NODE 'F1LiveSync' 'fetch ' + $Url + ' -> ' + toString(length($Body)) + ' chars';
+
+  /* The same response, to the lake, when it changed (Sync_LakePost, above). */
+  $ToLake = CALL MICROFLOW Formula1Backend.Sync_LakePost (Path = $Path, Feed = $Feed, Body = $Body)
+    ON ERROR WITHOUT ROLLBACK BEGIN
+      LOG WARNING NODE 'F1Lake' 'Lake ingest failed for ' + $Path + ': ' + $latestError/Message;
+    END ERROR;
   RETURN $Body;
 END;
 
