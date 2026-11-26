@@ -9948,3 +9948,42 @@ it must not go unnoticed.
 Verified: both screens render all four charts in the browser, with no new warnings.
 `fan-pages.test.mdl` 27 of 28 (the circuit outline, as before), `mx check` 0, and
 re-exec writes nothing.
+
+## 114. Correction to §113: not WITH, an untyped parameter
+
+§113 concluded that Mendix's External Database Connector cannot run a query that
+starts with `WITH`. That is wrong. The four queries failed for something else they
+had in common: a parameter in a `SELECT` list (`WITH arg AS (SELECT {c} AS c)`).
+
+Probed in a test runtime on a scratch copy of the frontend, against the lake, with
+`c = 'ferrari'`:
+
+| Query | Result |
+| --- | --- |
+| `SELECT … WHERE constructor_id = {c}` | 1135 |
+| `WITH t AS (SELECT … WHERE constructor_id = {c}) SELECT … FROM t` | 1135 |
+| `SELECT * FROM (WITH t AS (… = {c}) SELECT …) q` | 1135 |
+| `WITH arg AS (SELECT {c} AS c) SELECT … WHERE constructor_id = (SELECT c FROM arg)` | NullPointerException |
+| `SELECT … WHERE constructor_id = (SELECT c FROM (SELECT {c} AS c) arg)` | NullPointerException |
+| `SELECT {c} AS json` | NullPointerException |
+| `SELECT CAST({c} AS VARCHAR) AS json` | `ferrari` |
+| `WITH arg AS (SELECT CAST({c} AS VARCHAR) AS c) SELECT … = (SELECT c FROM arg)` | 1135 |
+
+The rule: **a parameter the server cannot type crashes the connector** with
+`Cannot invoke "String.contains(java.lang.CharSequence)" because "<parameter2>" is
+null`. A parameter compared with a column takes the column's type, and a `CAST`
+gives one explicitly. Either works, with or without `WITH`.
+
+That fits the backend's `F1Ops` connection: its `{driverId} AS driver_id` runs
+against real PostgreSQL, which types an untyped parameter as `text` or `unknown`.
+So the likely chain is the lake's PostgreSQL endpoint describing an untyped
+parameter with no type, and the connector then dereferencing that null type name
+instead of handling it. Two reports, then:
+- **DuckGraphLake:** describe an untyped parameter as `unknown` or `text`, as
+  PostgreSQL does.
+- **Mendix:** the connector should not throw a NullPointerException on a parameter
+  without a type name.
+
+The §113 queries and views stay as they are: they compare every parameter with a
+column, and the two latest-season views keep each query to a filter. Their
+comments now say why. `SELECT * FROM (WITH …)` is not needed; a bare `WITH` works.

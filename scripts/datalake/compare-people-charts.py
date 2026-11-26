@@ -44,8 +44,9 @@ def q(s):
 
 
 # --- the frontend's queries (keep in step with 05-chart-data.mdl) -----------
-# No WITH: Mendix's External Database Connector fails on a query that starts
-# with one (FINDINGS §113). The latest-season logic is in gold views instead.
+# Every {c} is compared with a column. A parameter the lake cannot type -- one
+# in a SELECT list, like SELECT {c} AS c -- crashes Mendix's External Database
+# Connector unless it is CAST (FINDINGS §114; §113 wrongly blamed WITH).
 SQL = {
  "teampoints": """SELECT COALESCE(CAST(to_json(list({'code': code, 'round': round, 'driver': driver, 'seat': seat, 'pts': round(pts, 2)}
        ORDER BY round, seat)) AS VARCHAR), '[]') AS json

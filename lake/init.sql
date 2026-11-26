@@ -233,10 +233,10 @@ FROM f1.race_results rr
 LEFT JOIN f1.races r ON r.id = rr.raceId;
 
 -- The latest season per team and per driver, which is what the Constructor and
--- Driver screens chart. Views rather than a max(year) subquery in each frontend
--- query: Mendix's External Database Connector fails on a query that starts with
--- WITH (a NullPointerException inside it, FINDINGS §113), and a query that only
--- filters a view needs no CTE.
+-- Driver screens chart. Views, so that each frontend query only filters one by
+-- its parameter. (FINDINGS §113 blamed WITH for a connector failure; §114 found
+-- the real cause: a parameter in a SELECT list, which the lake cannot type. A
+-- comparison with a column, or a CAST, types it.)
 CREATE OR REPLACE VIEW gold.team_latest_season AS
 SELECT t.* FROM gold.team_season t
 WHERE t.year = (SELECT max(x.year) FROM gold.team_season x WHERE x.constructor_id = t.constructor_id);
