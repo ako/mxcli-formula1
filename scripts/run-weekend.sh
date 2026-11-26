@@ -54,8 +54,9 @@ if [ "${1:-}" = "status" ]; then
   for u in "backend http://127.0.0.1:8080/dist/index.js" "frontend http://127.0.0.1:8180/dist/index.js" "lake http://127.0.0.1:9495/api/otel"; do
     set -- $u; printf '%-9s %s\n' "$1" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$2")"
   done
-  psql -h 127.0.0.1 -U postgres -d formula1backend -Atc \
-    'select ''sync: enabled='' || enabled || '' session='''''' || sessionkey || '''''' runs='' || runcount || '' last='' || lastrunat || '' -> '' || left(lastresult, 70) from "formula1backend$livesyncstate"' 2>/dev/null || true
+  psql -h 127.0.0.1 -U postgres -d formula1backend -At -F ' | ' -c \
+    'select enabled, sessionkey, runcount, lastrunat, left(lastresult, 70) from "formula1backend$livesyncstate"' 2>/dev/null \
+    | sed 's/^/sync (enabled | session | runs | last run | result): /' || true
   curl -s -X POST http://127.0.0.1:9495/api/sql -H 'Authorization: Bearer duckgraphlake' --data-binary \
     "SELECT 'lake: ' || count(*) || ' OpenF1 events, last ' || CAST(max(warpstream.timestamp) AS VARCHAR) FROM main.local__openf1" \
     | python3 -I -c "import json,sys; d=json.load(sys.stdin); print(d['rows'][0][0] if d.get('rows') else d.get('error'))" 2>/dev/null || true
