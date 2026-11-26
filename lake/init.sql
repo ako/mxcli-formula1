@@ -125,3 +125,45 @@ FROM (SELECT r.year, r.round, r.race_name, t.rk, t.driverId
       FROM rounds r JOIN top5 t USING (year)) g
 LEFT JOIN scored s ON s.year = g.year AND s.round = g.round AND s.driverId = g.driverId
 JOIN f1.drivers d ON d.id = g.driverId;
+
+
+-- Team colours: the comp's map, which is the FIA's for the current teams and
+-- the two that just left. f1db has no livery. Every other constructor falls
+-- through to the brand colour in the views that use this (#2DD4BF), as the
+-- frontend's DS_SeasonTeamRows did: a season of teal bars is honest about
+-- there being no colour to give, where invented ones would not be.
+CREATE OR REPLACE VIEW f1.constructor_colours AS
+SELECT * FROM (VALUES
+  ('red-bull', '#3671C6'), ('mclaren', '#FF8000'), ('ferrari', '#E8002D'),
+  ('mercedes', '#27F4D2'), ('aston-martin', '#229971'), ('alpine', '#FF87BC'),
+  ('haas', '#B6BABD'), ('rb', '#6692FF'), ('racing-bulls', '#6692FF'),
+  ('williams', '#64C4FF'), ('sauber', '#52E252'), ('alphatauri', '#5E8FAA'),
+  ('alfa-romeo', '#C92D4B'), ('audi', '#BB0A30'), ('cadillac', '#C9B037')
+) AS t(constructorId, colour);
+
+-- The constructors' championship as a bar per team, in the team's colour.
+-- Ported from the frontend's DS_SeasonTeamRows + DSJ_SeasonTeams, which read
+-- the backend's cached ConstructorStandings: name, points, colour, final order.
+CREATE OR REPLACE VIEW gold.season_teams AS
+SELECT s.year, s.positionDisplayOrder AS position_order, s.constructorId AS constructor_id,
+       c.name AS team, s.points, COALESCE(k.colour, '#2DD4BF') AS colour
+FROM f1.season_constructor_standings s
+JOIN f1.constructors c ON c.id = s.constructorId
+LEFT JOIN f1.constructor_colours k ON k.constructorId = s.constructorId;
+
+-- Finishing position by round for the season's top ten: one row per race of
+-- each of them, pos empty and dnf 1 when they were not classified. Ported from
+-- DSJ_SeasonMultiples, which took the top ten of the backend's cached
+-- DriverStandings by positionOrder and their RaceResults (races only; sprints
+-- are not finishing positions of a Grand Prix).
+CREATE OR REPLACE VIEW gold.season_multiples AS
+WITH top10 AS (
+  SELECT year, driverId
+  FROM f1.season_driver_standings
+  QUALIFY row_number() OVER (PARTITION BY year ORDER BY positionDisplayOrder) <= 10
+)
+SELECT rr.year, rr.round, d.name AS driver_name, rr.positionNumber AS pos,
+       CASE WHEN rr.positionNumber IS NULL THEN 1 ELSE 0 END AS dnf
+FROM f1.race_results rr
+JOIN top10 t ON t.year = rr.year AND t.driverId = rr.driverId
+JOIN f1.drivers d ON d.id = rr.driverId;

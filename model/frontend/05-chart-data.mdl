@@ -108,6 +108,33 @@ Password: @Formula1Frontend.LakePassword )
     Parameters: ( year: string ),
     Returns: Formula1Frontend.Chart,
     Map: ( json = json ) )
+  /*
+   * The constructors' championship: a bar per team in its colour, in the final
+   * order. The colours are the lake's (f1.constructor_colours), the same map
+   * DS_SeasonTeamRows still uses for the table beside the chart.
+   */
+  query GetSeasonTeams (
+    Sql: 'SELECT COALESCE(CAST(to_json(list(
+            {''team'': team, ''pts'': round(points, 2), ''colour'': colour}
+            ORDER BY position_order)) AS VARCHAR), ''[]'') AS json
+         FROM gold.season_teams
+         WHERE year = CAST({year} AS INTEGER)',
+    Parameters: ( year: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * Finishing position by round for the season's top ten. A retirement is
+   * pos null and dnf 1, never pos 0: a zero would plot as a result.
+   */
+  query GetSeasonMultiples (
+    Sql: 'SELECT COALESCE(CAST(to_json(list(
+            {''driver'': driver_name, ''round'': round, ''pos'': pos, ''dnf'': dnf}
+            ORDER BY driver_name, round)) AS VARCHAR), ''[]'') AS json
+         FROM gold.season_multiples
+         WHERE year = CAST({year} AS INTEGER)',
+    Parameters: ( year: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
 };
 
 /* -------------------------------------------------------------- driver -- */
@@ -210,7 +237,13 @@ BEGIN
    * championship. scripts/datalake/compare-season-progress.py is the check.
    */
   $Rows = execute database query Formula1Frontend.F1Lake.GetSeasonProgress
-    (year = toString($Season/year));
+    (year = toString($Season/year))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Season progress chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
   $Chart = head $Rows;
   RETURN $Chart;
 END;
@@ -227,20 +260,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonTeams (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_SeasonTeamRows (Season = $Season);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $T IN $Rows BEGIN
-    SET $Json = $Json + $Sep
-      + '{"team":"' + $T/ConstructorName + '"'
-      + ',"pts":' + toString(round($T/Points, 2))
-      + ',"colour":"' + $T/Colour + '"}';
-    SET $Sep = ',';
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.season_teams). It used to loop over DS_SeasonTeamRows,
+   * the backend's cached ConstructorStandings, and concatenate. Identical in all
+   * 77 seasons: scripts/datalake/compare-season-charts.py teams.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetSeasonTeams
+    (year = toString($Season/year))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Season teams chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -677,35 +710,21 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SeasonMultiples (
   $Season: F1Cached.Seasons)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  RETRIEVE $Top FROM F1Cached.DriverStandings
-    WHERE year = $Season/year SORT BY positionOrder ASC LIMIT 10;
-
-  DECLARE $Names String = '|';
-  LOOP $T IN $Top BEGIN
-    SET $Names = $Names + $T/driverName + '|';
-  END LOOP;
-
-  RETRIEVE $Results FROM F1Cached.RaceResults WHERE year = $Season/year;
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $R IN $Results BEGIN
-    IF $R/driverName != empty AND contains($Names, '|' + $R/driverName + '|') THEN
-      IF $R/position != empty THEN
-        SET $Json = $Json + $Sep
-          + '{"driver":"' + $R/driverName + '","round":' + toString($R/round)
-          + ',"pos":' + toString($R/position) + ',"dnf":0}';
-      ELSE
-        SET $Json = $Json + $Sep
-          + '{"driver":"' + $R/driverName + '","round":' + toString($R/round)
-          + ',"pos":null,"dnf":1}';
-      END IF;
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.season_multiples). It used to retrieve the top ten
+   * from F1Cached.DriverStandings and every F1Cached.RaceResults row of the year,
+   * then match them by name in a loop. Identical in all 77 seasons:
+   * scripts/datalake/compare-season-charts.py multiples.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetSeasonMultiples
+    (year = toString($Season/year))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Season multiples chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 

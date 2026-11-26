@@ -9852,3 +9852,49 @@ The two rows from before the fix are still in the data.
 **An answer costs about 55,000 tokens**, nearly all input. Each model call re-sends
 the system prompt, the conversation and every tool result. A long tool result, such
 as a `describe_table` sample, is paid for on every later call of that turn.
+
+## 112. The Season screen reads the lake, and a lake outage no longer reaches the user
+
+Back on 11.16.1 after §111. Restoring meant fresh app databases: an 11.16.1 runtime
+refuses one an 11.17 runtime migrated ("Downgrading the database is not allowed").
+The 11.17 databases are kept as `formula1backend_v1117` and `formula1frontend_v1117`.
+The backend reloads its F1 data at startup. The live sync starts disabled, as the
+model's default says.
+
+### A chart without the lake draws nothing, not an error
+
+§107 left this open. Every lake-backed `DSJ_` now catches a failed query, logs a
+warning on the `F1Lake` node and returns an empty chart (`[]`), so a lake outage
+empties the chart and the rest of the page works. The pattern is
+`execute database query … on error without rollback begin … return $NoData; end error;`,
+the same in every chart that moves.
+
+### Two more charts, each equal to what it replaced
+
+| Chart | Gold view | Was | Equal |
+| --- | --- | --- | --- |
+| Constructors' championship | `gold.season_teams` | `DS_SeasonTeamRows` (cached `ConstructorStandings`) + a loop | 77 of 77 seasons |
+| Finishing position by round | `gold.season_multiples` | cached `DriverStandings` + all `RaceResults` of the year, matched by name in a loop | 77 of 77 seasons |
+
+`scripts/datalake/compare-season-charts.py teams|multiples` rebuilds the old rows
+from the backend's cached OData, the way the old microflows did, and compares them
+as sets. Neither old microflow sorted, and the specs do not depend on order. The
+control: comparing each season against the previous one fails all of them.
+
+The team colours are now a lake view, `f1.constructor_colours`, the comp's map;
+f1db has no livery. The table beside the chart still uses `DS_SeasonTeamRows` and
+its own copy of the same map.
+
+**`DSJ_SeasonTeams` is not on any page.** The Season screen shows the constructors
+as a list from `DS_SeasonTeamRows`, so this chart was dead code before it moved and
+is dead code now. Moved and verified, but it changes nothing a user sees; it is a
+candidate for deletion. That leaves the Season screen with two charts, both from the
+lake.
+
+### Verified in the app
+
+The 2026 Season page renders both charts from the lake, with no dialog and no
+console error. `tests/fan-pages.test.mdl` passes 27 of 28 with the sync running.
+The one failure is the circuit outline, whose CSV has a header and no rows (§99).
+On the fresh database, before the sync had run, eight failed: every test that needs
+the live sync's data, which a fresh database does not have yet.
