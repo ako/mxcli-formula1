@@ -189,6 +189,56 @@ WHERE driver_id = {driverId} AND qualifying_position IS NOT NULL AND finish_posi
     Parameters: ( driverId: string ),
     Returns: Formula1Frontend.Chart,
     Map: ( json = json ) )
+  /*
+   * Where the race's top ten placed in each session of the weekend (gold.weekend_shape).
+   * Each parameter is compared with a column, CAST to its type (FINDINGS §115).
+   * The SQL is the one scripts/datalake/compare-weekend-charts.py runs.
+   */
+  query GetWeekendShape (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''i'': session_index, ''session'': session_label, ''driver'': driver, ''pos'': pos}
+       ORDER BY session_index, rk)) AS VARCHAR), ''[]'') AS json
+FROM gold.weekend_shape
+WHERE race_id = CAST({raceId} AS BIGINT) AND pos IS NOT NULL',
+    Parameters: ( raceId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * Each driver's gap to the fastest of each session, the columns unpivoted to rows
+   * as DSJ_WeekendPace did (gold.race_sessions). The key is "driver", which the
+   * chart's spec reads; the old microflow wrote "drv", and the chart drew every
+   * point on one "undefined" row (FINDINGS §116).
+   * Each parameter is compared with a column, CAST to its type (FINDINGS §115).
+   * The SQL is the one scripts/datalake/compare-weekend-charts.py runs.
+   */
+  query GetWeekendPace (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''driver'': drv, ''session'': session, ''gap'': gap}
+       ORDER BY o, k)) AS VARCHAR), ''[]'') AS json
+FROM (SELECT position_order AS o, 1 AS k, abbreviation AS drv, ''FP1'' AS session, fp1_gap AS gap
+      FROM gold.race_sessions WHERE race_id = CAST({raceId} AS BIGINT) AND fp1_gap IS NOT NULL
+      UNION ALL SELECT position_order, 2, abbreviation, ''FP2'', fp2_gap
+      FROM gold.race_sessions WHERE race_id = CAST({raceId} AS BIGINT) AND fp2_gap IS NOT NULL
+      UNION ALL SELECT position_order, 3, abbreviation, ''FP3'', fp3_gap
+      FROM gold.race_sessions WHERE race_id = CAST({raceId} AS BIGINT) AND fp3_gap IS NOT NULL
+      UNION ALL SELECT position_order, 4, abbreviation, ''Qualifying'', qual_gap
+      FROM gold.race_sessions WHERE race_id = CAST({raceId} AS BIGINT) AND qual_gap IS NOT NULL
+      UNION ALL SELECT position_order, 5, abbreviation, ''Best race lap'', best_lap_gap
+      FROM gold.race_sessions WHERE race_id = CAST({raceId} AS BIGINT) AND best_lap_gap IS NOT NULL) p',
+    Parameters: ( raceId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * Position by lap for the last lap's top ten (gold.lap_chart, from the Jolpica lap file).
+   * Each parameter is compared with a column, CAST to its type (FINDINGS §115).
+   * The SQL is the one scripts/datalake/compare-weekend-charts.py runs.
+   */
+  query GetLapChart (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''lap'': lap, ''driver'': driver, ''pos'': pos}
+       ORDER BY lap, rk)) AS VARCHAR), ''[]'') AS json
+FROM gold.lap_chart
+WHERE year = CAST({year} AS BIGINT) AND round = CAST({round} AS BIGINT) AND pos IS NOT NULL',
+    Parameters: ( year: string, round: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
 };
 
 /* -------------------------------------------------------------- driver -- */
@@ -411,75 +461,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_WeekendShape (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendShape (Race = $Race);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $W IN $Rows BEGIN
-    IF $W/s1name != empty AND $W/s1value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s1name
-        + '","pos":' + toString($W/s1value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s2name != empty AND $W/s2value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s2name
-        + '","pos":' + toString($W/s2value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s3name != empty AND $W/s3value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s3name
-        + '","pos":' + toString($W/s3value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s4name != empty AND $W/s4value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s4name
-        + '","pos":' + toString($W/s4value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s5name != empty AND $W/s5value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s5name
-        + '","pos":' + toString($W/s5value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s6name != empty AND $W/s6value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s6name
-        + '","pos":' + toString($W/s6value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s7name != empty AND $W/s7value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s7name
-        + '","pos":' + toString($W/s7value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s8name != empty AND $W/s8value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s8name
-        + '","pos":' + toString($W/s8value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s9name != empty AND $W/s9value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s9name
-        + '","pos":' + toString($W/s9value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $W/s10name != empty AND $W/s10value != empty THEN
-      SET $Json = $Json + $Sep + '{"i":' + toString($W/sessionIndex)
-        + ',"session":"' + $W/sessionLabel + '","driver":"' + $W/s10name
-        + '","pos":' + toString($W/s10value) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.weekend_shape). It used to retrieve F1Fan.WeekendShape,
+   * the backend's pivot to ten series, and unpivot it with ten IFs per session.
+   * Identical for all 1,171 races: compare-weekend-charts.py shape.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetWeekendShape
+    (raceId = toString($Race/raceId))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Weekend shape chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -491,65 +486,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LapChart (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_LapChart (Race = $Race);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $L IN $Rows BEGIN
-    IF $L/s1name != empty AND $L/s1value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s1name + '","pos":' + toString($L/s1value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s2name != empty AND $L/s2value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s2name + '","pos":' + toString($L/s2value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s3name != empty AND $L/s3value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s3name + '","pos":' + toString($L/s3value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s4name != empty AND $L/s4value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s4name + '","pos":' + toString($L/s4value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s5name != empty AND $L/s5value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s5name + '","pos":' + toString($L/s5value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s6name != empty AND $L/s6value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s6name + '","pos":' + toString($L/s6value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s7name != empty AND $L/s7value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s7name + '","pos":' + toString($L/s7value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s8name != empty AND $L/s8value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s8name + '","pos":' + toString($L/s8value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s9name != empty AND $L/s9value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s9name + '","pos":' + toString($L/s9value) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $L/s10name != empty AND $L/s10value != empty THEN
-      SET $Json = $Json + $Sep + '{"lap":' + toString($L/lap)
-        + ',"driver":"' + $L/s10name + '","pos":' + toString($L/s10value) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.lap_chart). It used to retrieve F1Fan.LapChart and
+   * unpivot ten series per lap. Identical for all 24 races in the lap file:
+   * compare-weekend-charts.py laps.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetLapChart
+    (year = toString($Race/year), round = toString($Race/round))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Lap chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -564,40 +514,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_WeekendPace (
   $Race: F1Fan.Calendar)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_WeekendSessions (Race = $Race);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $S IN $Rows BEGIN
-    IF $S/fp1Gap != empty THEN
-      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP1","gap":' + toString(round($S/fp1Gap, 3)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $S/fp2Gap != empty THEN
-      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP2","gap":' + toString(round($S/fp2Gap, 3)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $S/fp3Gap != empty THEN
-      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"FP3","gap":' + toString(round($S/fp3Gap, 3)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $S/qualGap != empty THEN
-      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"Qualifying","gap":' + toString(round($S/qualGap, 3)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $S/bestLapGap != empty THEN
-      SET $Json = $Json + $Sep + '{"drv":"' + $S/abbreviation
-        + '","session":"Best race lap","gap":' + toString(round($S/bestLapGap, 3)) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.race_sessions). It used to retrieve F1Fan.RaceSessions
+   * and emit five gaps per driver. Identical for all 1,171 races:
+   * compare-weekend-charts.py pace.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetWeekendPace
+    (raceId = toString($Race/raceId))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Weekend pace chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 

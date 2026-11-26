@@ -10020,3 +10020,55 @@ The reports are `docs/datalake/prompts/duckgraphlake-unknown-columns.md` and
 `docs/datalake/prompts/mendix-edc-missing-column.md`. The app's queries were right
 all along: every parameter is compared with a column, which is why they keep their
 names.
+
+## 116. The Race weekend screen reads the lake, and a chart that never worked
+
+The Race weekend screen reads history, not the live feeds: f1db's session results
+and Jolpica's lap positions in `data/laps` (2024 so far). So it moved over the
+snapshot lane, ahead of the live lane.
+
+| Chart | Gold view | Was (backend fan resource) | Equal |
+| --- | --- | --- | --- |
+| Practice → qualifying → race | `gold.weekend_shape` | `Read_WeekendShape` | all 1,171 races |
+| Pace by session | `gold.race_sessions` | `Read_RaceSessions` | all 1,171 races, apart from one key |
+| Position by lap | `gold.lap_chart` | `Read_LapChart` | all 24 races in the lap file |
+
+New silver views: `f1.fp1_results`, `f1.fp2_results`, `f1.fp3_results`, and
+`f1.laps` with the column spec the backend declares for it. The lap chart keeps the
+backend's three-step match from Jolpica's `driverRef` to f1db's abbreviation (by id,
+then by last name among that race's starters, then the driverRef upper-cased).
+`scripts/datalake/compare-weekend-charts.py` runs the frontend's SQL, with every
+parameter `CAST` and compared with a column (§115). Its controls fail every race:
+swapped session labels, swapped FP1 and FP2 gaps, laps shifted by one.
+
+### Pace by session never drew what it meant to
+
+The chart's Vega spec plots `y: driver`; the old `DSJ_WeekendPace` wrote the key as
+`drv`. Every point of every driver landed on a single row labelled "undefined",
+since the chart was first drawn. Moving the chart did not cause this and an
+old-versus-new comparison cannot see it, because old and new were identical. The
+browser showed it. An audit of all nine lake charts, the fields each spec reads
+against the keys its data carries, found no other mismatch. The lake query now
+writes `driver`, deliberately different from the old output; the comparison
+script says why.
+
+Lesson for the remaining charts: **an equality check proves the move, not the
+chart.** Check each spec's fields against its data too.
+
+### Smaller things
+
+- **The lake's HTTP SQL endpoint stops at 1,000 rows** and says so in `truncated`.
+  The first comparison read only 1,000 of the 1,171 races and reported "1000 of
+  1000 identical". The script now pages, and exits if a result is truncated.
+- **mxcli refused to splice the new `DSJ_WeekendPace`** into the stored flow (its
+  layout left no room: MDL-V1-REBUILD). As mxcli suggests, it was dropped and
+  created once in a run of its own, and `11-navigation-security.mdl` was re-applied
+  for its grant. A second run changes nothing.
+- **The local runtimes stop after a fixed time** on a trial licence
+  (`LicenseUtil.checkRuntimeDuration`). The backend went down two hours after its
+  start, mid-comparison. Restarting it is enough.
+
+Verified: the Race weekend tests in `fan-pages.test.mdl` pass (27 of 28 overall; the
+circuit outline, as before), `mx check` 0, and re-exec writes nothing. The lap chart
+is empty for 2026 races, because the lap file covers 2024; the page says a race
+without traces draws an empty chart.

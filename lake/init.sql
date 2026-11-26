@@ -244,3 +244,114 @@ WHERE t.year = (SELECT max(x.year) FROM gold.team_season x WHERE x.constructor_i
 CREATE OR REPLACE VIEW gold.driver_latest_races AS
 SELECT r.* FROM gold.driver_races r
 WHERE r.year = (SELECT max(x.year) FROM gold.driver_races x WHERE x.driver_id = r.driver_id);
+
+
+-- ------------------------------------------------------ the race weekend --
+-- History, not live data: f1db's session results, and Jolpica's lap-by-lap
+-- positions (data/laps, 2024 so far). The live OpenF1 feeds are another lane.
+
+CREATE OR REPLACE VIEW f1.fp1_results AS
+  SELECT * FROM read_csv('f1db/f1db-races-free-practice-1-results.csv');
+CREATE OR REPLACE VIEW f1.fp2_results AS
+  SELECT * FROM read_csv('f1db/f1db-races-free-practice-2-results.csv');
+CREATE OR REPLACE VIEW f1.fp3_results AS
+  SELECT * FROM read_csv('f1db/f1db-races-free-practice-3-results.csv');
+-- The column spec is the backend's own (Read_LapChart): inference would read
+-- driverRef fine, but the model states the types, and §99 showed that the
+-- declared specs are load-bearing for the files that have one.
+CREATE OR REPLACE VIEW f1.laps AS
+  SELECT * FROM read_csv('laps/f1db-laps.csv', header = true,
+    columns = {'year': 'BIGINT', 'round': 'BIGINT', 'lap': 'BIGINT', 'driverRef': 'VARCHAR',
+               'position': 'BIGINT', 'time': 'VARCHAR', 'timeMillis': 'BIGINT'});
+
+-- Where the race's top ten placed in each session of the weekend. Ported from
+-- the backend's Read_WeekendShape (14-weekend.mdl): the top ten by the race's
+-- display order, named by abbreviation (else name, else id), their position in
+-- FP1, FP2, FP3, qualifying and the race. Long form, every race at once; the
+-- backend pivoted to s1..s10 for the Mendix chart widget, and the frontend's
+-- DSJ_WeekendShape unpivoted it again.
+CREATE OR REPLACE VIEW gold.weekend_shape AS
+WITH top10 AS (
+  SELECT raceId, driverId,
+         row_number() OVER (PARTITION BY raceId ORDER BY positionDisplayOrder) AS rk
+  FROM f1.race_results
+  QUALIFY rk <= 10
+),
+sess AS (
+  SELECT 1 AS idx, 'FP1' AS label, raceId, driverId, positionNumber AS pos FROM f1.fp1_results
+  UNION ALL SELECT 2, 'FP2', raceId, driverId, positionNumber FROM f1.fp2_results
+  UNION ALL SELECT 3, 'FP3', raceId, driverId, positionNumber FROM f1.fp3_results
+  UNION ALL SELECT 4, 'Quali', raceId, driverId, positionNumber FROM f1.qualifying_results
+  UNION ALL SELECT 5, 'Race', raceId, driverId, positionNumber FROM f1.race_results
+)
+SELECT s.raceId AS race_id, s.idx AS session_index, s.label AS session_label, t.rk,
+       COALESCE(d.abbreviation, d.name, t.driverId) AS driver, max(s.pos) AS pos
+FROM sess s
+JOIN top10 t ON t.raceId = s.raceId AND t.driverId = s.driverId
+LEFT JOIN f1.drivers d ON d.id = t.driverId
+GROUP BY ALL;
+
+-- Each driver's gap to the fastest of each session: FP1-3, qualifying (the
+-- best of Q3, Q2, Q1, or the single-session time) and the best race lap.
+-- Ported from the backend's Read_RaceSessions, the columns the pace chart reads,
+-- with the same joins, so a driver with two rows in a session file has two
+-- here too. Seconds, rounded to milliseconds.
+CREATE OR REPLACE VIEW gold.race_sessions AS
+WITH b1 AS (SELECT raceId, min(timeMillis) AS m FROM f1.fp1_results GROUP BY 1),
+     b2 AS (SELECT raceId, min(timeMillis) AS m FROM f1.fp2_results GROUP BY 1),
+     b3 AS (SELECT raceId, min(timeMillis) AS m FROM f1.fp3_results GROUP BY 1),
+     bq AS (SELECT raceId, min(COALESCE(q3Millis, q2Millis, q1Millis, timeMillis)) AS m
+            FROM f1.qualifying_results GROUP BY 1),
+     bf AS (SELECT raceId, min(timeMillis) AS m FROM f1.fastest_laps GROUP BY 1)
+SELECT rr.raceId AS race_id, rr.positionDisplayOrder AS position_order, rr.driverId AS driver_id,
+       COALESCE(d.abbreviation, '') AS abbreviation,
+       round((fp1.timeMillis - b1.m) / 1000.0, 3) AS fp1_gap,
+       round((fp2.timeMillis - b2.m) / 1000.0, 3) AS fp2_gap,
+       round((fp3.timeMillis - b3.m) / 1000.0, 3) AS fp3_gap,
+       round((COALESCE(q.q3Millis, q.q2Millis, q.q1Millis, q.timeMillis) - bq.m) / 1000.0, 3) AS qual_gap,
+       round((f.timeMillis - bf.m) / 1000.0, 3) AS best_lap_gap
+FROM f1.race_results rr
+LEFT JOIN f1.drivers d ON d.id = rr.driverId
+LEFT JOIN f1.fp1_results fp1 ON fp1.raceId = rr.raceId AND fp1.driverId = rr.driverId
+LEFT JOIN f1.fp2_results fp2 ON fp2.raceId = rr.raceId AND fp2.driverId = rr.driverId
+LEFT JOIN f1.fp3_results fp3 ON fp3.raceId = rr.raceId AND fp3.driverId = rr.driverId
+LEFT JOIN f1.qualifying_results q ON q.raceId = rr.raceId AND q.driverId = rr.driverId
+LEFT JOIN f1.fastest_laps f ON f.raceId = rr.raceId AND f.driverId = rr.driverId
+LEFT JOIN b1 ON b1.raceId = rr.raceId LEFT JOIN b2 ON b2.raceId = rr.raceId
+LEFT JOIN b3 ON b3.raceId = rr.raceId LEFT JOIN bq ON bq.raceId = rr.raceId
+LEFT JOIN bf ON bf.raceId = rr.raceId;
+
+-- Position by lap for the drivers who were the top ten on the last lap. Ported
+-- from the backend's Read_LapChart, every race in the lap file at once:
+--   * "the last lap" is the race's highest lap number, so a lapped car is not on
+--     it and is not in the ten;
+--   * Jolpica names a driver by driverRef ('max_verstappen', 'leclerc'), matched
+--     to f1db's abbreviation by id ('_' -> '-'), else by last name among that
+--     race's starters, else the driverRef upper-cased.
+CREATE OR REPLACE VIEW gold.lap_chart AS
+WITH last AS (SELECT year, round, max(lap) AS maxlap FROM f1.laps GROUP BY ALL),
+final AS (
+  SELECT l.year, l.round, l.driverRef, l.position
+  FROM f1.laps l JOIN last m ON m.year = l.year AND m.round = l.round
+  WHERE l.lap = m.maxlap
+),
+dref AS (
+  SELECT x.year, x.round, x.driverRef, COALESCE(
+    (SELECT d.abbreviation FROM f1.drivers d WHERE d.id = replace(x.driverRef, '_', '-') LIMIT 1),
+    (SELECT d.abbreviation FROM f1.drivers d JOIN f1.race_results rr ON rr.driverId = d.id
+      WHERE rr.year = x.year AND rr.round = x.round
+        AND lower(strip_accents(d.lastName)) = x.driverRef LIMIT 1),
+    upper(x.driverRef)) AS who
+  FROM (SELECT DISTINCT year, round, driverRef FROM f1.laps) x
+),
+top10 AS (
+  SELECT f.year, f.round, f.driverRef, dref.who,
+         row_number() OVER (PARTITION BY f.year, f.round ORDER BY f.position) AS rk
+  FROM final f
+  JOIN dref ON dref.year = f.year AND dref.round = f.round AND dref.driverRef = f.driverRef
+  QUALIFY rk <= 10
+)
+SELECT l.year, l.round, l.lap, x.rk, x.who AS driver, max(l.position) AS pos
+FROM f1.laps l
+JOIN top10 x ON x.year = l.year AND x.round = l.round AND x.driverRef = l.driverRef
+GROUP BY ALL;
