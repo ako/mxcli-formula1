@@ -135,6 +135,60 @@ Password: @Formula1Frontend.LakePassword )
     Parameters: ( year: string ),
     Returns: Formula1Frontend.Chart,
     Map: ( json = json ) )
+  /*
+   * A team's points per round, split by seat, in its latest season (gold.team_season).
+   * Race points only, as before: sprints are not in that view yet.
+   * The SQL is the one scripts/datalake/compare-people-charts.py runs.
+   */
+  query GetTeamPoints (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''code'': code, ''round'': round, ''driver'': driver, ''seat'': seat, ''pts'': round(pts, 2)}
+       ORDER BY round, seat)) AS VARCHAR), ''[]'') AS json
+FROM (SELECT code, round, driver1_name AS driver, ''Seat 1'' AS seat, driver1_points AS pts
+      FROM gold.team_latest_season WHERE constructor_id = {constructorId} AND driver1_name IS NOT NULL
+      UNION ALL
+      SELECT code, round, driver2_name, ''Seat 2'', driver2_points
+      FROM gold.team_latest_season WHERE constructor_id = {constructorId} AND driver2_name IS NOT NULL) p',
+    Parameters: ( constructorId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * The team's championship position after each round of its latest season.
+   * The SQL is the one scripts/datalake/compare-people-charts.py runs.
+   */
+  query GetTeamPosition (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''code'': code, ''round'': round, ''race'': race_name, ''pos'': standing_position}
+       ORDER BY round)) AS VARCHAR), ''[]'') AS json
+FROM gold.team_latest_season WHERE constructor_id = {constructorId} AND standing_position IS NOT NULL',
+    Parameters: ( constructorId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * A career: points per season, and the championship finish where there was one.
+   * f1db's sentinel order for an unclassified season (999) is left out, as before.
+   * The SQL is the one scripts/datalake/compare-people-charts.py runs.
+   */
+  query GetCareer (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''year'': year, ''s'': s, ''v'': v} ORDER BY year, s)) AS VARCHAR), ''[]'') AS json
+FROM (SELECT year, ''Points'' AS s, round(points, 2) AS v FROM gold.driver_seasons WHERE driver_id = {driverId}
+      UNION ALL
+      SELECT year, ''Finish'', standing_order FROM gold.driver_seasons
+      WHERE driver_id = {driverId} AND standing_position <> ''-'' AND standing_order < 100) p',
+    Parameters: ( driverId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /*
+   * Qualifying against finishing position, every race of the driver's latest season
+   * where both are known.
+   * The SQL is the one scripts/datalake/compare-people-charts.py runs.
+   */
+  query GetQualRace (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''q'': qualifying_position, ''r'': finish_position, ''race'': race_name, ''round'': round}
+       ORDER BY round)) AS VARCHAR), ''[]'') AS json
+FROM gold.driver_latest_races
+WHERE driver_id = {driverId} AND qualifying_position IS NOT NULL AND finish_position IS NOT NULL',
+    Parameters: ( driverId: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
 };
 
 /* -------------------------------------------------------------- driver -- */
@@ -151,30 +205,19 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_Career (
   $Driver: F1Live.Drivers)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Seasons = CALL MICROFLOW Formula1Frontend.DS_DriverSeasons (Driver = $Driver);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $S IN $Seasons BEGIN
-    SET $Json = $Json + $Sep
-      + '{"year":' + toString($S/year)
-      + ',"s":"Points","v":' + toString(round($S/points, 2)) + '}';
-    SET $Sep = ',';
-    /*
-     * Only a season that was actually classified gets a Finish point. f1db
-     * carries an unclassified season as a sentinel standing in the high
-     * hundreds, and plotting that draws a career arc out of "no position" —
-     * the axis ran to 1,000 before this guard, which reads as a real ranking.
-     */
-    IF $S/standingOrder != empty AND $S/standingPosition != empty
-       AND $S/standingPosition != '-' AND $S/standingOrder < 100 THEN
-      SET $Json = $Json + ',{"year":' + toString($S/year)
-        + ',"s":"Finish","v":' + toString($S/standingOrder) + '}';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.driver_seasons). It used to retrieve F1Fan.DriverSeasons
+   * and loop. Identical for all 917 drivers: compare-people-charts.py career.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetCareer
+    (driverId = $Driver/driverId)
+    on error without rollback begin
+      log warning node 'F1Lake' 'Career chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -190,23 +233,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_QualRace (
   $Driver: F1Live.Drivers)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Races = CALL MICROFLOW Formula1Frontend.DS_DriverLatestRaces (Driver = $Driver);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $R IN $Races BEGIN
-    IF $R/qualifyingPosition != empty AND $R/finishPosition != empty THEN
-      SET $Json = $Json + $Sep
-        + '{"q":' + toString($R/qualifyingPosition)
-        + ',"r":' + toString($R/finishPosition)
-        + ',"race":"' + $R/raceName + '"'
-        + ',"round":' + toString($R/round) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.driver_races). It used to find the latest season in
+   * F1Fan.DriverSeasons, then retrieve F1Fan.DriverRaces. Identical for all 917
+   * drivers: compare-people-charts.py qualrace.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetQualRace
+    (driverId = $Driver/driverId)
+    on error without rollback begin
+      log warning node 'F1Lake' 'Qualifying vs race chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -291,29 +331,20 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TeamPoints (
   $Constructor: F1Cached.Constructors)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_TeamSeason (Constructor = $Constructor);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $R IN $Rows BEGIN
-    IF $R/driver1Name != empty AND $R/driver1Points != empty THEN
-      SET $Json = $Json + $Sep
-        + '{"code":"' + $R/code + '","round":' + toString($R/round)
-        + ',"driver":"' + $R/driver1Name + '","seat":"Seat 1"'
-        + ',"pts":' + toString(round($R/driver1Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-    IF $R/driver2Name != empty AND $R/driver2Points != empty THEN
-      SET $Json = $Json + $Sep
-        + '{"code":"' + $R/code + '","round":' + toString($R/round)
-        + ',"driver":"' + $R/driver2Name + '","seat":"Seat 2"'
-        + ',"pts":' + toString(round($R/driver2Points, 2)) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.team_season). It used to retrieve F1Fan.TeamSeason
+   * -- the backend computing the latest season per request -- and concatenate.
+   * Identical for all 187 constructors: compare-people-charts.py teampoints.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetTeamPoints
+    (constructorId = $Constructor/constructorId)
+    on error without rollback begin
+      log warning node 'F1Lake' 'Team points chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -325,22 +356,19 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TeamPosition (
   $Constructor: F1Cached.Constructors)
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  $Rows = CALL MICROFLOW Formula1Frontend.DS_TeamSeason (Constructor = $Constructor);
-
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  LOOP $R IN $Rows BEGIN
-    IF $R/standingPosition != empty THEN
-      SET $Json = $Json + $Sep
-        + '{"code":"' + $R/code + '","round":' + toString($R/round)
-        + ',"race":"' + $R/raceName + '"'
-        + ',"pos":' + toString($R/standingPosition) + '}';
-      SET $Sep = ',';
-    END IF;
-  END LOOP;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  /*
+   * Read from the lake (gold.team_season). Identical for all 187 constructors:
+   * compare-people-charts.py teamposition.
+   */
+  $Rows = execute database query Formula1Frontend.F1Lake.GetTeamPosition
+    (constructorId = $Constructor/constructorId)
+    on error without rollback begin
+      log warning node 'F1Lake' 'Team position chart: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 

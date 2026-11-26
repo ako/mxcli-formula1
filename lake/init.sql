@@ -167,3 +167,80 @@ SELECT rr.year, rr.round, d.name AS driver_name, rr.positionNumber AS pos,
 FROM f1.race_results rr
 JOIN top10 t ON t.year = rr.year AND t.driverId = rr.driverId
 JOIN f1.drivers d ON d.id = rr.driverId;
+
+-- A team's season round by round: each of its two seats' points per race, and
+-- the team's championship position after the race. Ported from the backend's
+-- Read_TeamSeason (13-fan-resources.mdl), which computed one constructor-year
+-- per request; this is every constructor-year at once. The rules are the same:
+--   * the seats are the team's two highest scorers of the year, by points,
+--     then by number of starts, then by driver id;
+--   * points are race points only -- like Read_TeamSeason, sprints are not in
+--     this view (gold.season_progress counts them; this one does not yet);
+--   * the code is the Grand Prix's abbreviation, upper-cased, or R<round>.
+CREATE OR REPLACE VIEW gold.team_season AS
+WITH seats AS (
+  SELECT constructorId, year, driverId,
+         row_number() OVER (PARTITION BY constructorId, year
+           ORDER BY sum(COALESCE(points, 0)) DESC, count(*) DESC, driverId) AS seat
+  FROM f1.race_results
+  GROUP BY constructorId, year, driverId
+),
+seat_names AS (
+  SELECT s.constructorId, s.year,
+         max(CASE WHEN s.seat = 1 THEN COALESCE(d.name, s.driverId) END) AS driver1_name,
+         max(CASE WHEN s.seat = 2 THEN COALESCE(d.name, s.driverId) END) AS driver2_name
+  FROM seats s LEFT JOIN f1.drivers d ON d.id = s.driverId
+  GROUP BY ALL
+)
+SELECT rr.constructorId AS constructor_id, rr.year, rr.round,
+       upper(COALESCE(max(g.abbreviation), 'R' || rr.round)) AS code,
+       COALESCE(max(r.officialName), 'Round ' || rr.round) AS race_name,
+       max(n.driver1_name) AS driver1_name,
+       COALESCE(sum(CASE WHEN s.seat = 1 THEN rr.points END), 0) AS driver1_points,
+       max(n.driver2_name) AS driver2_name,
+       COALESCE(sum(CASE WHEN s.seat = 2 THEN rr.points END), 0) AS driver2_points,
+       max(cs.positionNumber) AS standing_position
+FROM f1.race_results rr
+LEFT JOIN seats s ON s.constructorId = rr.constructorId AND s.year = rr.year AND s.driverId = rr.driverId
+LEFT JOIN seat_names n ON n.constructorId = rr.constructorId AND n.year = rr.year
+LEFT JOIN f1.races r ON r.id = rr.raceId
+LEFT JOIN f1.grands_prix g ON g.id = r.grandPrixId
+LEFT JOIN f1.race_constructor_standings cs ON cs.raceId = rr.raceId AND cs.constructorId = rr.constructorId
+GROUP BY rr.constructorId, rr.year, rr.round;
+
+-- A driver's seasons: points and championship order per year. Ported from the
+-- backend's Read_DriverSeasons, the columns the career chart reads: the official
+-- points when the driver is in the final standings, else the sum of race points;
+-- the standing's display order, 999 when not classified; its text, '-' when not.
+CREATE OR REPLACE VIEW gold.driver_seasons AS
+SELECT rr.driverId AS driver_id, rr.year,
+       COALESCE(max(ds.points), sum(COALESCE(rr.points, 0))) AS points,
+       COALESCE(max(ds.positionDisplayOrder), 999) AS standing_order,
+       COALESCE(max(ds.positionText), '-') AS standing_position
+FROM f1.race_results rr
+LEFT JOIN f1.season_driver_standings ds ON ds.year = rr.year AND ds.driverId = rr.driverId
+GROUP BY rr.year, rr.driverId;
+
+-- A driver's races: where they qualified and where they finished. Ported from
+-- the backend's Read_DriverRaces, the columns the qualifying-versus-race chart
+-- reads.
+CREATE OR REPLACE VIEW gold.driver_races AS
+SELECT rr.driverId AS driver_id, rr.year, rr.round,
+       COALESCE(r.officialName, 'Round ' || rr.round) AS race_name,
+       rr.qualificationPositionNumber AS qualifying_position,
+       rr.positionNumber AS finish_position
+FROM f1.race_results rr
+LEFT JOIN f1.races r ON r.id = rr.raceId;
+
+-- The latest season per team and per driver, which is what the Constructor and
+-- Driver screens chart. Views rather than a max(year) subquery in each frontend
+-- query: Mendix's External Database Connector fails on a query that starts with
+-- WITH (a NullPointerException inside it, FINDINGS §113), and a query that only
+-- filters a view needs no CTE.
+CREATE OR REPLACE VIEW gold.team_latest_season AS
+SELECT t.* FROM gold.team_season t
+WHERE t.year = (SELECT max(x.year) FROM gold.team_season x WHERE x.constructor_id = t.constructor_id);
+
+CREATE OR REPLACE VIEW gold.driver_latest_races AS
+SELECT r.* FROM gold.driver_races r
+WHERE r.year = (SELECT max(x.year) FROM gold.driver_races x WHERE x.driver_id = r.driver_id);

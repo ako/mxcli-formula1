@@ -9898,3 +9898,53 @@ console error. `tests/fan-pages.test.mdl` passes 27 of 28 with the sync running.
 The one failure is the circuit outline, whose CSV has a header and no rows (§99).
 On the fresh database, before the sync had run, eight failed: every test that needs
 the live sync's data, which a fresh database does not have yet.
+
+## 113. The Constructor and Driver screens read the lake, and the connector does not take WITH
+
+Four more charts, the last ones on these two screens that read f1db through the
+backend:
+
+| Chart | Gold view | Was (backend fan resource) | Equal |
+| --- | --- | --- | --- |
+| Constructor: points by round, per seat | `gold.team_season` | `Read_TeamSeason` | all 187 constructors |
+| Constructor: championship position by round | `gold.team_season` | `Read_TeamSeason` | all 187 constructors |
+| Driver: season by season | `gold.driver_seasons` | `Read_DriverSeasons` | all 917 drivers |
+| Driver: qualifying → race | `gold.driver_races` | `Read_DriverRaces` | all 917 drivers |
+
+The backend computed one constructor or driver per request. The gold views hold all
+of them, and `gold.team_latest_season` and `gold.driver_latest_races` narrow them to
+the latest season, which is what both screens show. Points by round counts race
+points only, as `Read_TeamSeason` did: sprints are still missing there, unlike
+`gold.season_progress` (§107). It is a separate decision, not part of the port.
+
+`scripts/datalake/compare-people-charts.py` rebuilds the old rows from the backend's
+fan service and **runs the frontend's own SQL** against the lake, so the queries are
+tested as well as the views. The controls fail: swapping the seats fails 40 of 40
+constructors, and swapping qualifying and finish fails 19 of 40 drivers. The other
+21 have no qualifying data, or qualified where they finished.
+
+`DSJ_Retirements` is on no page, like `DSJ_SeasonTeams` (§112), and was not moved.
+
+### Mendix's External Database Connector cannot run a query that starts with WITH
+
+The first version of the four queries used a CTE. All four failed in the runtime
+with `Cannot invoke "String.contains(java.lang.CharSequence)" because "<parameter2>"
+is null`, while the same SQL ran on the lake directly, and the two `SELECT` queries
+from §107 and §112 worked. Repeating a parameter is fine: the backend's `F1Ops`
+query uses `{driverId}` twice. The rewrite starts every query with `SELECT` and
+moves the latest-season logic into the two views. All four then rendered, and the
+comparison still matched everywhere. A connector limitation worth reporting to
+Mendix.
+
+### The fallback hid it, and the lake showed it
+
+With §112's fallback, the four failing charts drew empty axes, with no dialog and no
+console error. The user sees a chart with no data, not why. The warnings it logs
+reach the lake (`otel.logs`, node `F1Lake`, service `Formula1Frontend`), so the
+lake-sync dashboard's "Warnings and errors" panel is where a chart that fell back
+shows up. That trade-off is deliberate: a broken chart should not stop the page, but
+it must not go unnoticed.
+
+Verified: both screens render all four charts in the browser, with no new warnings.
+`fan-pages.test.mdl` 27 of 28 (the circuit outline, as before), `mx check` 0, and
+re-exec writes nothing.
