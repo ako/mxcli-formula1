@@ -1,0 +1,29 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../token-monitor-variables' as *;
+
+@mixin chart($graph-line-color) {
+    &.widget-chart {
+
+        .fills,
+        .legendfill {
+            .js-fill {
+                fill: color-mix(in srgb, $graph-line-color 60%, white) !important;
+            }
+        }
+
+        .lines,
+        .legendlines {
+            .js-line {
+                stroke: $graph-line-color !important;
+            }
+        }
+    }
+}
+
+.chart-input {
+    @include chart(var(--input-graph-line-color));
+}
+
+.chart-output {
+    @include chart(var(--output-graph-line-color));
+}

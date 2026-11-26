@@ -1,0 +1,38 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.text-heading-4 {
+    font-weight: var(--font-weight-bold, $font-weight-bold);
+    font-size: var(--font-size-h4, $font-size-h4);
+}
+
+.visibility-none {
+    visibility: hidden !important;
+}
+
+.line-clamp--1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+
+.img-display--24{
+    img {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+
+.popupmenu-custom-item-container-mxgenai {
+    padding: $spacing-small;
+    margin-top: none;
+    margin-bottom: none;
+    align-items: right !important;
+    a {
+        &:focus {
+            color: #264ae5;
+        }
+    }
+}

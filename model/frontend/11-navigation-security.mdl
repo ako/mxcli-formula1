@@ -229,8 +229,15 @@ GRANT READ * ON ENTITY Formula1Frontend.SeasonHeadline TO Formula1Frontend.Enthu
 GRANT READ * ON ENTITY Formula1Frontend.SeasonTeamRow TO Formula1Frontend.Enthusiast;
 GRANT READ * ON ENTITY Formula1Frontend.SeasonDriverRow TO Formula1Frontend.Enthusiast;
 
+/*
+ * The chat (17-chat-agent.mdl) runs on the Agents Kit, and every user who may
+ * chat needs its user roles: GenAI Commons and Conversational UI for the
+ * conversation, the Mendix Cloud GenAI connector for the model, MCP Client for
+ * the lake's tools, and Encryption, which stores the model key.
+ */
 create or modify user role Enthusiast ( ModuleRoles: (Formula1Frontend.Enthusiast, F1Live.Reader, F1Cached.Reader, F1Fan.Reader,
-  F1Now.Reader, System.User) );
+  F1Now.Reader, System.User,
+  GenAICommons.User, ConversationalUI.User, MxGenAIConnector.User, MCPClient.User, Encryption.User) );
 
 /*
  * An administrator is an enthusiast who can also see the plumbing, so the role
@@ -239,7 +246,10 @@ create or modify user role Enthusiast ( ModuleRoles: (Formula1Frontend.Enthusias
  */
 create or modify user role Administrator ( ModuleRoles: (Formula1Frontend.Administrator, Formula1Frontend.Enthusiast,
   F1Live.Reader, F1Cached.Reader, F1Fan.Reader, F1Now.Reader,
-  F1Admin.Reader, System.User) );
+  F1Admin.Reader, System.User,
+  GenAICommons.User, ConversationalUI.User, MxGenAIConnector.User, MCPClient.User, Encryption.User,
+  GenAICommons.TraceMonitoring, ConversationalUI.TraceMonitoring, GenAICommons.UsageMonitoring,
+  AgentCommons.AgentAdmin) );
 
 /*
  * The rail. Five items, in the order the comp puts them: the race happening
@@ -262,6 +272,8 @@ create or modify navigation Responsive
     MENU ITEM 'Race weekend' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Weekend, Icon: Atlas_Core.Atlas.flag )
     MENU ITEM 'Constructor' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Constructor, Icon: Atlas_Core.Atlas."org-chart" )
     MENU ITEM 'Driver' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Driver, Icon: Atlas_Core.Atlas."user-neutral-group" )
+    /* Ask the lake: the chat agent of 17-chat-agent.mdl. Not part of the comp. */
+    MENU ITEM 'Ask' ( OnClick: SHOW PAGE Formula1Frontend.Chat, Icon: Atlas_Core.Atlas."message-bubble-typing" )
     /*
      * Admin sits last and below the fold of interest, because it is not part of
      * the comp. A menu item whose page the signed-in user cannot view is not

@@ -1,0 +1,199 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../abstracts/helpers' as *;
+
+/* tooltip basic styling */
+.agent-tooltip {
+    .widget-tooltip-trigger {
+        .info-icon {
+            margin: 0 0 0 var(--spacing-smaller, $spacing-smaller);
+            padding: 0;
+            img {
+                height: 16px;
+                width: 16px;
+            }
+        }
+    }
+    .widget-tooltip-content {
+        position: relative;
+        z-index: 1000;
+        background-color: white;
+        color: var(--gray-darker);
+        align-self: stretch;
+        padding: 8px 16px;
+        word-break: break-word;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: normal;
+        max-height: 48vh;
+        line-height: 150% !important;
+        .mx-layoutgrid {
+            &:before, &:after{
+                display: none;
+            } 
+        }
+        .widget-tooltip-arrow-left {
+            left: -4px;
+        }
+    }
+
+    .mx-link {
+        font-weight: normal;
+        line-height: $line-height-base * 1.25;
+    }
+}
+
+.agent-tooltip-w330 {
+    .widget-tooltip-content {
+        width: 330px;
+        //padding: 8px 15px 0px 15px;
+    }
+}
+
+.agent-tooltip-w280 {
+    .widget-tooltip-content {
+        width: 280px;
+        padding: 8px 15px 0px 15px;
+    }
+}
+
+/* tooltip adjustment for version */
+/* use in combination with .tooltip-col */
+.tooltip-container-version {
+    width: 350px;
+    max-height: 45vh;
+    display: grid;
+    grid-template-columns: 30% 69%;
+    padding: var(--spacing-smallest) var(--spacing-small) var(--spacing-smaller) var(--spacing-small);
+    gap: var(--spacing-smaller);
+    overflow-x: hidden;
+    overflow-y: auto;
+
+}
+
+/* tooltip adjustment for token */
+.tooltip-container-token {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    align-self: stretch;
+    gap: var(--spacing-large);
+    padding: var(--spacing-small);
+
+    .tooltip-col {
+        flex-direction: unset;
+        overflow: auto;
+    }
+}
+
+/* tooltip adjustment for tools */
+.tooltip-container-tools {
+    padding: 0 var(--spacing-small) var(--spacing-smallest) var(--spacing-small);
+    width: 300px;
+}
+
+/* tooltip adjustment text only */
+.tooltip-container {
+    width: fit-content;
+    display: inline-flex;
+    justify-content: center;
+    padding: var(--spacing-smallest);
+}
+
+.tooltip-empty {
+    width: 11vw;
+    display: inline-flex;
+    justify-content: center;
+    padding: var(--spacing-smallest);
+}
+
+/* tooltip components */
+.tooltip-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; 
+    text-align: left;
+    gap: var(--spacing-smaller);
+    word-wrap: break-word; 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+
+.tooltip-header {
+    @extend .row-text-img;
+    gap: 0;
+    padding-left: var(--spacing-small);
+    padding-bottom: var(--spacing-smaller);
+}
+
+.tooltip-version-draft {
+    @extend .row-text-img;
+    gap: 2px;
+    padding-left: var(--spacing-smallest);
+}
+
+.tooltip-row-text-icon {
+    @extend .row-text-img;
+    height: 20px;
+    padding-top: var(--spacing-smaller);
+}
+
+.tooltip-icon-text {
+    @extend .row-text-img;
+    gap: 10px;
+    img {
+        height: 16px;
+        width: 16px;
+        margin: 0 2px;
+    }
+}
+
+.tooltip-info-icon {
+    margin: 0;
+    padding: 0;
+    img {
+        height: 16px;
+        width: 16px;
+        margin: 0;
+    }
+}
+
+// Output List Tooltip
+.output-tooltip {
+    .widget-tooltip-content {
+        width: 330px;
+        max-height: 230px;
+        text-align: left;
+        margin-bottom: 0;
+        padding: var(--spacing-medium);
+        padding-bottom: 0;
+        overflow-y: auto;
+    }
+}
+
+.output-tooltip-grid {
+    display: grid;
+    grid-template-columns: 40% 60%;
+    grid-template-rows: auto;
+    gap: var(--spacing-small);
+    padding: 0;
+    margin: 0;
+}
+
+.output-tooltip-with-icon {
+    grid-template-columns: 10% 80%;
+    gap: var(--spacing-smallest);
+    padding: 0;
+    margin: 0;
+
+    .tooltip-icon {
+        padding-bottom: var(--spacing-smallest);
+    }
+}
+
+.custom-tooltip-listview {
+    ul {
+        padding: 0;
+        margin: 0;
+    }
+}

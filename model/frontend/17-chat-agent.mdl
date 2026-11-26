@@ -1,0 +1,214 @@
+mdl 1;
+/*
+ * Ask the lake: a chat agent that answers Formula One questions from
+ * DuckGraphLake, through the lake's own MCP server.
+ *
+ * The architecture (docs/datalake/architecture.html) gives the frontend three
+ * ways into the lake -- SQL for charts (05), OData for pages of objects (16) --
+ * and this is the third: MCP, for an agent. The agent gets the lake's tools
+ * (sql, sparql, list_tables, describe_table, find_entity, ...) and decides
+ * itself which to call, so a question nobody built a page for still has an
+ * answer.
+ *
+ * Built on the Mendix 11.16 Agents Kit, the way ako/ChatV2 does it: an AI model
+ * document on Mendix Cloud GenAI, a consumed MCP service, an agent document
+ * that names both, and a Conversational UI chat whose action microflow calls the
+ * agent with the conversation's history.
+ *
+ * What the agent can do to the lake is decided in the lake, not here: an agent
+ * gets every tool its MCP server offers, so lake/server.toml sets
+ * [mcp] allow_changes = false, which leaves only tools that read.
+ *
+ * The model key is never in the project. Pass it per run:
+ *   --constant Formula1Frontend.GenAIKey=@file:.mxcli/genai-text.key
+ * and the Encryption module, which stores it encrypted, its own key:
+ *   --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key
+ * (both files are in the git-ignored .mxcli/ folder).
+ */
+
+/** Mendix Cloud GenAI text generation key. Never commit a value; pass it per run. */
+create or modify constant Formula1Frontend.GenAIKey (
+  Type: String,
+  DefaultValue: ''
+);
+
+/** The lake's MCP endpoint (streamable HTTP). Override per environment. */
+create or modify constant Formula1Frontend.LakeMcpEndpoint (
+  Type: String,
+  DefaultValue: 'http://127.0.0.1:9495/mcp'
+);
+
+/** DuckGraphLake's MCP server: read-only SQL, SPARQL and catalog tools over the F1 data. */
+create or modify consumed mcp service Formula1Frontend.LakeMcp (
+  ProtocolVersion: v2025_03_26,
+  Endpoint: @Formula1Frontend.LakeMcpEndpoint,
+  Version: '1.0.0',
+  ConnectionTimeoutSeconds: 60,
+  Documentation: 'DuckGraphLake: the F1 data as SQL (DuckDB), SPARQL and a catalog. Read-only (lake/server.toml).'
+);
+
+create or modify ai model Formula1Frontend.ChatModel (
+  Provider: MxCloudGenAI,
+  Key: @Formula1Frontend.GenAIKey
+);
+
+/** Answers Formula One questions from the lake. */
+create or modify agent Formula1Frontend.F1Agent (
+  UsageType: Chat,
+  Model: Formula1Frontend.ChatModel,
+  SelectedModel: 'eu.anthropic.claude-sonnet-5-5',
+  Description: 'Answers questions about Formula One history and statistics from the data lake, with SQL and SPARQL.',
+  ToolChoice: Auto,
+  EnableBackendStreaming: true,
+  EnableUIStreaming: true,
+  SystemPrompt: $$You are the Formula One statistician of a fan app. You answer questions about the World Championship, 1950 to today, from a data lake that you reach through tools. You have no other source.
+
+The data
+- f1db, the open Formula One database. The useful views are in the schema f1:
+  - f1.drivers, f1.constructors, f1.circuits, f1.countries, f1.grands_prix, f1.seasons
+  - f1.races (one row per race: id, year, round, date, grandPrixId, officialName, circuitId, ...)
+  - f1.race_results, f1.sprint_results, f1.qualifying_results, f1.starting_grid, f1.fastest_laps, f1.pit_stops (one row per race and driver; raceId, year, round, driverId, constructorId, positionNumber, points, ...)
+  - f1.race_winners (raceId, driverId: one winner per race)
+  - f1.season_driver_standings, f1.season_constructor_standings (final championship tables per year)
+  - f1.race_driver_standings, f1.race_constructor_standings (the championship after each race)
+  - gold.season_progress (year, round, driver_name, cumulative points of the top five)
+- Ids are lowercase slugs: drivers 'max-verstappen', 'lewis-hamilton'; constructors 'ferrari', 'red-bull'; countries 'united-kingdom'. Look an id up before you filter on it.
+- f1.drivers and f1.constructors already carry career totals (totalRaceWins, totalPodiums, totalChampionshipWins, totalPolePositions, ...). Prefer them for career questions.
+- Sprint points are in f1.sprint_results, not in f1.race_results. A season's points total includes both. Before 1991 not every result counted towards the championship, so a sum of points can differ from the championship total; the standings views have the official totals.
+- Ignore the views named f1db, facts, laps, live and openf1 in the main schema: they merge unrelated files.
+- The same data is a graph with the classes Driver, Constructor and Race (Race has a winner). Use sparql, find_entity or describe_entity when a question is about relationships.
+
+How to work
+- Use describe_table before you write SQL against a view you have not used in this conversation, so you use real column names.
+- SQL is DuckDB's dialect. Only SELECT queries run. Keep result sets small: aggregate, use LIMIT.
+- Answer only with facts from tool results. Never fill a gap from memory; if the data does not have it, say so.
+- If a query fails, read the error, fix the query and try again.
+- Never say that two sources agree, or that a list is complete, unless a query showed it. When you compare two views, query both and report where they differ: the qualifying results and the starting grid, for example, differ whenever a penalty moved the fastest qualifier.
+
+How to answer
+- Lead with the answer in one sentence, then the supporting numbers. Use a short markdown table for lists and rankings.
+- Mention the season, race or table the numbers come from, so the user can check them.
+- Keep it short. Do not show your SQL unless the user asks for it.$$
+)
+{
+  mcp service Formula1Frontend.LakeMcp (
+    Enabled: true,
+    UserAccessApproval: VisibleForUser
+  )
+};
+
+
+/* ---------------------------------------------------------------- chat -- */
+
+/*
+ * Conversational UI runs this on every message the user sends: it turns the
+ * conversation into a request, calls the agent document with the history, and
+ * stores the answer. Following ChatV2's 08-chat.mdl, without its hand-off to a
+ * person.
+ */
+create or modify microflow Formula1Frontend.ChatContext_F1Agent_ActionMicroflow (
+  $ChatContext: ConversationalUI.ChatContext)
+  returns Boolean as $Success
+begin
+  $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext);
+  if $Request = empty then
+    return false;
+  end if;
+  $Response = call java action AgentEditorCommons.Agent_CallDocument_WithHistory(
+      Agent = 'Formula1Frontend.F1Agent', Request = $Request, OptionalContextObject = empty)
+    on error without rollback begin
+      log error node 'F1Chat' 'The F1 agent call failed: {1}' with ({1} = $latestError/Message);
+      return false;
+    end error;
+  if $Response = empty then
+    return false;
+  end if;
+  call microflow ConversationalUI.ChatContext_UpdateAssistantResponse(
+    ChatContext = $ChatContext, MessageStatus = ConversationalUI.ENUM_MessageStatus.Success,
+    Response = $Response);
+  return true;
+end;
+
+/** A new chat with the F1 agent, stored at once so the page can come back to it. */
+create or modify microflow Formula1Frontend.SUB_F1Chat_Create ()
+  returns ConversationalUI.ChatContext as $ChatContext
+begin
+  $ChatContext = call java action AgentEditorCommons.ChatContext_Create_ForAgentDocument(
+      Agent = 'Formula1Frontend.F1Agent',
+      ActionMicroflow = 'Formula1Frontend.ChatContext_F1Agent_ActionMicroflow',
+      ContextObject = empty, OverwritingDeployedModel = empty)
+    on error without rollback begin
+      log error node 'F1Chat' 'Could not start a chat with the F1 agent: {1}' with ({1} = $latestError/Message);
+      return empty;
+    end error;
+  call microflow ConversationalUI.ChatContext_CommitProviderConfigList(ChatContext = $ChatContext);
+  commit $ChatContext;
+  return $ChatContext;
+end;
+
+/** The page's data source: the user's latest chat with the F1 agent, or a new one. */
+create or modify microflow Formula1Frontend.DS_F1Chat ()
+  returns ConversationalUI.ChatContext as $ChatContext
+begin
+  if $currentUser = empty then
+    return empty;
+  end if;
+  retrieve $Latest from ConversationalUI.ChatContext
+    where [System.owner = $currentUser]
+          [ConversationalUI.ChatContext_ProviderConfig_Active/ConversationalUI.ProviderConfig/ActionMicroflow = 'Formula1Frontend.ChatContext_F1Agent_ActionMicroflow']
+    sort by changedDate desc first;
+  if $Latest != empty then
+    return $Latest;
+  end if;
+  $ChatContext = call microflow Formula1Frontend.SUB_F1Chat_Create ();
+  return $ChatContext;
+end;
+
+create or modify page Formula1Frontend.Chat
+(
+  title: 'Ask',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'ask'
+)
+{
+  container pageBody {
+    container hdrAsk (class: 'panel-head') {
+      dynamictext ttlAsk (content: 'Ask', class: 'panel-title')
+      dynamictext subAsk (
+        content: 'questions about any season, race, driver or team · answered from the data lake',
+        class: 'panel-sub')
+    }
+    /*
+     * Conversational UI's snippet fills its container and scrolls inside it, so
+     * the container needs a height of its own: without one the message list
+     * collapses to nothing above the input box. ChatV2 sets it in its theme;
+     * inline here, the viewport less the page header.
+     */
+    dataview dvChat (datasource: microflow Formula1Frontend.DS_F1Chat, class: 'chat-dataview--display-contents') {
+      container ctChat (class: 'chat-container', style: 'height: calc(100vh - 130px); display: flex; flex-direction: column;') {
+        snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
+      }
+    }
+  }
+};
+
+grant execute on microflow Formula1Frontend.DS_F1Chat to Formula1Frontend.Enthusiast;
+grant execute on microflow Formula1Frontend.ChatContext_F1Agent_ActionMicroflow to Formula1Frontend.Enthusiast;
+grant view on page Formula1Frontend.Chat to Formula1Frontend.Enthusiast;
+
+
+/* -------------------------------------------------------- after startup -- */
+
+/*
+ * The app's first after-startup microflow. Agent Editor needs it: its agent
+ * documents are imported into Agent Commons at startup (ASU_AgentEditor), and
+ * a chat cannot start before they are.
+ */
+create or modify microflow Formula1Frontend.ASU_App ()
+  returns Boolean as $Ok
+begin
+  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
+  return true;
+end;
+
+alter settings runtime ( AfterStartupMicroflow: 'Formula1Frontend.ASU_App' );

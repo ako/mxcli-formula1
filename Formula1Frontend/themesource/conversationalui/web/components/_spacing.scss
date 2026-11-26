@@ -1,0 +1,135 @@
+/* ==========================================================================
+   CSS SPACING TOKENS (with fallbacks)
+   ========================================================================== */
+
+:root {
+  --spacing-smallest: 2px;
+  --spacing-smaller: 4px;
+  --spacing-small: 8px;
+  --spacing-medium: 16px;
+  --spacing-large: 24px;
+  --spacing-larger: 32px;
+}
+
+/* ==========================================================================
+   CONFIG
+   ========================================================================== */
+
+/* Use of !important (kept for compatibility) */
+$important-spacing: true !default;
+
+/* Spacing sizes using CSS vars with fallbacks */
+$spacing-sizes: (
+  smallest: var(--spacing-smallest, 2px),
+  smaller:  var(--spacing-smaller, 4px),
+  small:    var(--spacing-small, 8px),
+  medium:   var(--spacing-medium, 16px),
+  large:    var(--spacing-large, 24px),
+  larger:   var(--spacing-larger, 32px),
+);
+
+/* Sides map */
+$sides: (
+  top: top,
+  right: right,
+  bottom: bottom,
+  left: left,
+);
+
+/* ==========================================================================
+   PADDING UTILITIES
+   ========================================================================== */
+
+/* Remove all padding */
+.spacing-inner-none {
+  padding: 0;
+}
+.spacing-outer-left-xxs {
+  margin-left: var(--spacing-smallest);
+}
+.spacing-outer-left-xs {
+  margin-left: var(--spacing-smaller);
+}
+.spacing-outer-right-xxs {
+  margin-right: var(--spacing-smallest);
+}
+
+
+/* Remove padding per side */
+@each $side, $sideValue in $sides {
+  .spacing-inner-#{$side}-none {
+    padding-#{$sideValue}: 0;
+  }
+}
+
+/* Generate padding classes */
+@each $size, $sizeValue in $spacing-sizes {
+  @each $side, $sideValue in $sides {
+    .spacing-inner-#{$side}-#{$size} {
+      padding-#{$sideValue}: #{$sizeValue};
+    }
+  }
+}
+
+/* ==========================================================================
+   MARGIN UTILITIES
+   ========================================================================== */
+
+/* Remove all margins */
+.spacing-outer-none {
+  margin: 0;
+}
+
+/* Remove margin per side */
+@each $side, $sideValue in $sides {
+  .spacing-outer-#{$side}-none {
+    margin-#{$sideValue}: 0;
+  }
+}
+
+/* Generate margin classes */
+@each $size, $sizeValue in $spacing-sizes {
+  @each $side, $sideValue in $sides {
+    .spacing-outer-#{$side}-#{$size} {
+      margin-#{$sideValue}: #{$sizeValue};
+    }
+  }
+}
+
+/* ==========================================================================
+   CUSTOM SPACING UTILITIES
+   ========================================================================== */
+
+$custom-spacing: (
+  inner-left-20: (
+    property: padding-left,
+    value: 20px
+  ),
+  inner-left-48: (
+    property: padding-left,
+    value: var(--spacing-large, 24px)
+  ),
+  outer-bottom-6: (
+    property: margin-bottom,
+    value: 6px
+  ),
+  outer-bottom-18: (
+    property: margin-bottom,
+    value: var(--spacing-medium, 16px)
+  ),
+);
+
+@each $name, $config in $custom-spacing {
+  .spacing-#{$name} {
+    #{map-get($config, property)}: #{map-get($config, value)};
+  }
+}
+
+/* ==========================================================================
+   COMPONENT-SPECIFIC SPACING
+   ========================================================================== */
+
+.spacing-inner-dataview {
+  padding: var(--spacing-large, 24px);
+  padding-top: 0;
+}

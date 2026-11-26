@@ -1,0 +1,34 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../chat-variables' as *;
+
+.layout-chat-sidebar {
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: unset !important;
+    height: unset !important;
+    width: var(--pop-up-chat-width);
+    .mx-window-content {
+        border-radius: 0;
+        border: none;
+        .mx-window-header {
+            background: var(--chat-header-color) !important;
+            cursor: auto;
+            border: none;
+            h4 {
+                color: var(--header-text-color);
+            }
+            .close {
+                color: var(--header-text-color);
+            }
+        }
+        .mx-window-body {
+            overflow: hidden;
+            padding: var(--spacing-medium) ;
+            height: calc(100% - 50px);
+            .mx-placeholder {
+                height: 100%;
+            }
+        }
+    }
+}

@@ -1,0 +1,92 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.accordion-chat-sources {
+    .widget-accordion-group{
+        background: transparent;
+        border-bottom: none;
+        .widget-accordion-group-header {
+            .widget-accordion-group-header-button {
+                display: inline-flex;
+                background: transparent;
+                padding: 0;
+                &.widget-accordion-group-header-button-clickable {
+                    &:hover,
+                    &:focus,
+                    &:active {
+                        color: var(--font-color-default);
+                        background: transparent;
+                    }
+                }
+                .widget-accordion-group-header-button-icon {
+                    align-self: left;
+                    display: inline-flex;
+                    fill: var(--font-color-default);
+                }
+            }      
+        }
+        .widget-accordion-group-content-wrapper {
+            .widget-accordion-group-content {
+                padding: 0; 
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////
+///// Accordion styling for accordions used inside a message bubble 
+////////////////////////////////////////////////////////////////////
+.accordion-tool-calls {
+    width: 100%;
+    .widget-accordion-group{
+        background: transparent;
+        border-bottom: none;
+        .widget-accordion-group-header {
+            .widget-accordion-group-header-button {
+                display: inline-flex;
+                background: transparent;
+                padding: var(--spacing-smaller);
+                width: 100%;
+                .tool-title {
+                    font-weight: var(--font-weight-normal);
+                    color: var(--font-color-header);
+                    word-break: break-word;
+                }
+                .mx-image-viewer {
+                    width: auto;
+                }
+                &[aria-expanded="false"] {
+                    .widget-accordion-group-header-button-icon {
+                        transform: rotate(0.75turn);
+                        transition: 200ms linear 50ms
+                    }
+                }
+                &[aria-expanded="true"] {
+                    .widget-accordion-group-header-button-icon {
+                        transform: rotate(1.0turn);
+                    }
+                }
+                .widget-accordion-group-header-button-icon {
+                    align-self: left;
+                    display: inline-flex;
+                    fill: var(--font-color-default);
+                }
+            }      
+        }
+        .widget-accordion-group-content-wrapper {
+            .widget-accordion-group-content {
+                padding-left: 0px;
+                padding-right: 0px;
+                padding-bottom: var(--spacing-smaller);
+                color: var(--font-weight-normal);
+                font-weight: 400;
+                opacity: 60%;
+                .card {
+                    padding: 8px 16px;
+                    margin-bottom: 0;
+                    border-radius: var(--spacing-smaller);
+                    border: 1px solid var(--chat-border-color);
+                }
+            }
+        }
+    }
+}

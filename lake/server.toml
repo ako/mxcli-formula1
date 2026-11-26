@@ -25,3 +25,12 @@ unique_keys = "f1.drivers(id); f1.constructors(id)"
 [[materialize]]
 views = "gold.*"
 refresh = "on_change"
+
+[mcp]
+# The MCP endpoint is for agents, the frontend's chat agent included, and an
+# agent gets every tool a server offers. With changes allowed that includes
+# produce and publish_event (writing to Kafka topics, the CDC ones too),
+# define_view, set_mapping and set_dashboard. Off: agents read, and the repo
+# (lake/init.sql, lake/mapping, lake/dashboards over HTTP) is how the lake
+# changes.
+allow_changes = false

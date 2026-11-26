@@ -1,0 +1,55 @@
+@import "../agent-builder-variables.scss";
+@import '../../../../theme/web/custom-variables';
+
+
+:root {
+    --color-edited: #9BB7F4;
+}
+
+.mcp-tool{
+    margin: 0;
+    color: var(--gray-light);
+    padding-bottom: var(--spacing-medium);
+    word-break: break-word;
+
+    &.mcp-tool-edited {
+        border-left: 3px solid;
+        border-color: var(--brand-primary);
+        color: var(--color-edited); 
+    }
+
+    &.active {
+        font-weight: var(--font-weight-bold);
+        border-left: 3px solid;
+        border-color: var(--brand-primary);
+        color: var(--brand-primary); 
+    }
+
+    .status-icon {
+        width: var(--spacing-medium);
+        margin-right: var(--spacing-small);
+        margin-left: var(--spacing-smaller);
+    }
+}
+
+.mcp-tool-import{
+    .tool-name{
+        width: 60%;
+        .mx-checkbox{
+            margin-bottom: auto;
+            .control-label {
+                font-weight: normal;
+            }
+        }
+    }
+
+    .tool-access-approval{
+        width: 40%;
+        margin-top:auto;
+        margin-bottom:auto;
+
+        .form-group {
+            margin-bottom: 0;
+        }
+    }
+}

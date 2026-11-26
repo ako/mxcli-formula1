@@ -1,0 +1,27 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.segmented-control {
+    height: fit-content;
+    border: 1px solid var(--border-color-default);
+    border-radius: var(--btn-border-radius);
+    padding: var(--spacing-smaller);
+    width: fit-content;
+    background-color: var(--gray-lighter);
+    .btn.btn-default{
+        border: 1px solid transparent;
+        background: transparent;
+        &.disabled {
+            background-color: transparent !important;
+            cursor: default;
+        }
+    
+        &:hover {
+            background-color: var(--btn-default-bg-hover);
+        }
+    }
+    
+}
+
+.segmented-control-custom-margin {
+    margin-top: 20px;
+}

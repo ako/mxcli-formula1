@@ -1,0 +1,21 @@
+@use '../../../theme/web/custom-variables' as *;
+
+$chat-width: 900px !default;
+$send-btn-size: calc($form-input-font-size * 2) !default;
+$chat-input-max-height: clamp(100px, 25vh, 400px) !default;
+
+//pop-up & sidebar chat
+$chat-header-color: $brand-primary !default;
+$pop-up-chat-bottom-position: 5vh !default;
+$pop-up-chat-right-position: 3vw !default;
+$pop-up-chat-width: 500px !default; //also used for sidebar width
+$pop-up-chat-height: 65vh !default;
+
+//chat bubbles
+$chat-bubble-user-background: $gray-lighter !default;
+$chat-bubble-assistant-background: $bg-color-secondary !default;
+$chat-bubble-margin: 10% !default;
+
+//chat color variables
+$chat-border-color: #E7E7E9;
+$chat-bg-light: #f7f7f7;

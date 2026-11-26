@@ -1,0 +1,46 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../token-monitor-variables' as *;
+
+.chat-card--full-height {
+    height: 100%;
+}
+
+.card-border {
+    border: 1px solid var(--light-border-color);
+}
+
+.card-border-top{
+    border-top: 1px solid var(--light-border-color);
+}
+
+.card-statistics {
+    width: fit-content;
+    .mx-text.statistic {
+        min-width: 200px;
+    }
+}
+
+.card--sticky-content{
+    overflow: unset;
+    padding-top: 0;
+}
+
+.filter-card {
+    border-radius: 8px;
+    border: 1px solid var(--border-color-default);
+    background: var(--bg-color-secondary);
+    display: flex;
+    padding: var(--spacing-medium);
+    margin: 0;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 48px;
+    align-self: stretch;
+    flex-wrap: wrap;
+}
+
+.card-sm {
+    border: 1px solid var(--border-color-default);
+    padding: var(--spacing-medium);
+    border-radius: 8px;
+}

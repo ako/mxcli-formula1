@@ -1,0 +1,8 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.responsive-image {
+    &.mx-image-viewer {
+    max-width: var(--font-size-default);
+    max-height: var(--font-size-default);
+    }
+}

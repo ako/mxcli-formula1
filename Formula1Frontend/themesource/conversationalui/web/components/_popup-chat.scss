@@ -1,0 +1,63 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../chat-variables' as *;
+
+//this file contains styling for a pop-up chatbox
+
+.btn-chat-popup {
+    position: fixed;
+    right: var(--pop-up-chat-right-position);
+    bottom: var(--pop-up-chat-bottom-position);
+    z-index: 10;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    padding: 0px;
+    .glyphicon {
+        font-size: 24px;
+    }
+    img {
+        height: 32px;
+        width: 32px;
+        margin: 0;
+    }
+}
+
+.layout-chat-popup.mx-window {
+    position: fixed;
+    right: var(--pop-up-chat-right-position) !important;
+    bottom: var(--pop-up-chat-bottom-position)!important;
+    left: unset !important;
+    top: unset !important;
+    width: var(--pop-up-chat-width) !important;
+    height: Var(--pop-up-chat-height) !important;
+    z-index: 100;
+
+    .mx-resizer-n, .mx-resizer-s, .mx-resizer-e, .mx-resizer-w, .mx-resizer-nw, .mx-resizer-ne, .mx-resizer-sw, .mx-resizer-se{
+        cursor: auto;
+    }
+    .mx-window-header {
+        background: var(--chat-header-color);
+        cursor: auto;
+        h4 {
+            color: var(--chat-header-color);
+        }
+    }
+    .mx-window-header button.close {
+        color: transparent;
+        &::after {
+            content: "-";
+            color: var(--header-text-color);
+        }
+        
+    }
+    .modal-body {
+        height: calc(100% - 50px);
+        overflow: hidden;
+        padding: var(--spacing-medium);
+        .mx-placeholder {
+            height: 100%;
+        }
+    }
+}
+
+

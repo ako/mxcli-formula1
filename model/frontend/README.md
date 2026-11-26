@@ -22,6 +22,7 @@ for f in ../model/frontend/[0-9]*.mdl; do ./mxcli exec "$f" -p Formula1Frontend.
 | `11-navigation-security.mdl` | Roles, entity/page access, the four default-entry microflows, and the five-item rail. |
 | `12-demo-user.mdl` | `fan`. Separate because 11 is not re-runnable. |
 | `16-lake-graph.mdl` | Module `F1Graph`: the lake's OData (`Driver`, `Constructor`, `Race` from `lake/mapping/f1.ttl`) as external entities, five smoke microflows behind `tests/lake-graph.test.mdl`, and `LakeDrivers` (`/p/lake-drivers`), a data grid paged and sorted by the lake. The browse-page spike; not on the rail. |
+| `17-chat-agent.mdl` | **Ask**: a chat agent (`F1Agent`, Claude Sonnet 5.5 on Mendix Cloud GenAI) that answers F1 questions through the lake's MCP tools, on the Agents Kit (GenAI Commons, Conversational UI, MCP Client, Agent Commons, Agent Editor). The chat page, its action microflow and `ASU_App`, the app's after-startup microflow, which loads the agent documents. Run it as below. |
 
 ## Five screens and no overviews
 
@@ -110,3 +111,26 @@ validate an attribute named in a `SORT BY`. `mx check` does. Run both:
 
 `mxcli lint` catches a third class again — an empty container passes both
 checkers and crashes at render (MPR006).
+
+
+## Running the chat
+
+The agent needs a Mendix Cloud GenAI text key and an encryption key, both read
+from git-ignored files per run and never written to the project:
+
+```bash
+# once: the GenAI key you were given, and any 32 characters for Encryption
+(umask 077; printf '%s' '<key>' > Formula1Frontend/.mxcli/genai-text.key)
+(umask 077; python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)), end='')" > Formula1Frontend/.mxcli/encryption.key)
+
+scripts/run-lake.sh            # the agent's tools are the lake's MCP server
+cd Formula1Frontend && ./mxcli run --local --detach -p Formula1Frontend.mpr \
+  --app-port 8180 --admin-port 8190 --serve-port 6643 \
+  --constant Formula1Frontend.GenAIKey=@file:.mxcli/genai-text.key \
+  --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key
+```
+
+Open it at **http://localhost:8180/p/ask**, not `frontend.local`: over plain
+HTTP, Conversational UI only finds the session for its streaming handler when
+the host is `localhost` (FINDINGS §109). `scripts/chat-check.mjs` holds a
+conversation headlessly and prints the answers and the tools the agent called.

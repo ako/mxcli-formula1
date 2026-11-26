@@ -1,0 +1,163 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../traceability-variables' as *;
+@use '../abstracts/helpers' as *;
+
+
+.badge-with-circle {
+    display: flex;
+    align-items: center;
+    flex-flow: row;
+    justify-content: flex-start;
+    margin-left: var(--spacing-medium);
+    .circle {
+        border-radius: 100%;
+        background-color: var(--brand-primary);
+        width: var(--spacing-small);
+        height: var(--spacing-small);
+        margin-left: var(--spacing-smaller);
+        margin-right: var(--spacing-smaller);
+    }
+    .badge-text {
+        text-transform: uppercase;
+        font-weight: var(--font-weight-semibold);
+        font-size: var(--font-size-small);
+    }
+    &.badge-with-circle--success {
+        .circle {
+            background-color: var(--brand-success);
+        }
+    }
+    &.badge-with-circle--info {
+        .circle {
+            background-color: var(--brand-primary);
+        }
+    }
+}
+
+.badge--in-use {
+    max-width: fit-content;
+    height: auto;
+    padding-left: var(--spacing-smaller);
+    padding-right: var(--spacing-smaller);
+    border-radius: var(--border-radius-default);
+    border: 1px solid var(--border-color-in-use);
+    background-color: var(--background-color-in-use);
+    .badge-text{
+        font-size: var(--font-size-small);
+        font-weight: var(--font-weight-semibold);
+        text-transform: uppercase;
+  }
+}
+
+.agent-badge {
+  display: inline-flex;
+  height: 20px;
+  padding: 4px;
+  gap: 4px;
+  align-items: center;
+  border-radius: 4px;
+  font-size: 12px;
+  font-style: normal;
+  .agent-tooltip {
+    .mx-link {
+      line-height: 1;
+    }
+  }
+}
+
+.agent-badge--purple {
+  @extend .agent-badge;
+  background: var(--agent-purple-light);
+  border: 1px solid var(--agent-purple);
+}
+
+.agent-badge--default {
+  @extend .agent-badge;
+  background: var(--color-default-lighter);
+  border: 1px solid var(--color-default-dark);
+}
+
+.agent-badge--primary {
+  @extend .agent-badge;
+  background: var(--color-primary-lighter);
+  border: 1px solid var(--color-primary-dark);
+}
+
+.convui-badge {
+    display: inline-block;
+    height: 16px;
+    padding: 0 4px;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.convui-blue-badge {
+    @extend .convui-badge;
+    border: 1px solid var(--color-light-blue-5, #47A9FF);
+    background: var(--color-light-blue-1, #DCEEFE);
+}
+
+.convui-red-badge {
+    @extend .convui-badge;
+    border: 1px solid var(--color-light-red-5, #FB4A4C);
+    background: var(--color-light-red-1, #FFE5E9);
+    height: 24px;
+    padding: var(--spacing-smaller);
+    text-transform: uppercase;
+}
+
+.convui-green-badge {
+    @extend .convui-badge;
+    border: 1px solid var(--color-light-green-5, #4FD84F);
+    background: var(--color-light-green-1, #E1FAE1);
+    height: 24px;
+    padding: var(--spacing-smaller);
+    text-transform: uppercase;
+}
+
+.convui-gray-badge {
+    @extend .convui-badge;
+    border: 1px solid var(--color-light-gray-5, #C1C3C8);
+    background: var(--color-light-gray-1, #F7F7F7);
+    height: 24px;
+    padding: var(--spacing-smaller);
+    text-transform: uppercase;
+}
+
+.convui-purple-badge {
+    @extend .convui-badge;
+    border: 1px solid var(--color-light-purple-5, #845EFF);
+    background: var(--color-light-purple-1, #E2E0FC);
+}
+
+.filter-tag {
+    display: flex;
+    width: fit-content;
+    align-items: flex-start;
+    align-self: stretch;
+    padding: var(--spacing-smaller) var(--spacing-small);
+    border-radius: 1000px;
+    background: var(--gray-primary);
+
+    .filter-item {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-smaller);    
+        overflow: hidden;
+    }
+
+    .filter-text {
+        @extend .text-clamp--1-line;
+        font-size: 12px;
+    }
+
+    .icon {
+        width: 12px;
+        float: right;
+    }
+}

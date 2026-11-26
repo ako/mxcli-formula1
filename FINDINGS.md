@@ -9699,3 +9699,82 @@ cell instead of its sort button.
   lake maps by itself, which comes in as an unused external entity.
 - **Nationality is a country id** (`united-kingdom`). The mapping could join
   `f1db-countries.csv` for names.
+
+## 109. Ask the lake: a Mendix chat agent on the lake's MCP server
+
+The architecture's third route into the lake: an agent, through MCP. The frontend now
+has an **Ask** page where a chat agent answers Formula One questions by calling the
+lake's tools itself. It is built the way ako/ChatV2 builds its agents, on the Mendix
+11.16 Agents Kit.
+
+### What was built
+
+- **Agents Kit** in the frontend, through `mxcli marketplace install` (it needs a
+  Mendix PAT: `mxcli auth login`): CommunityCommons 11.5.1, Encryption 11.1.2, GenAI
+  Commons 7.4.0, the Mendix Cloud GenAI Connector 7.4.0, MCP Client 4.4.0,
+  Conversational UI 7.4.0, the Markdown viewer and Events widgets, Agent Commons
+  4.4.0, and Agent Editor 2.7.0 with its add-on module. `mx check` reported 0 errors
+  straight after, and all 18 managed Java dependencies were in `vendorlib/`, so
+  neither ChatV2's `fix widgets` step nor its separate dependency sync was needed.
+- **`17-chat-agent.mdl`**: a consumed MCP service on `http://127.0.0.1:9495/mcp`,
+  an AI model on Mendix Cloud GenAI keyed from a constant, and `F1Agent`
+  (`eu.anthropic.claude-sonnet-5-5`) with the MCP service attached. Its system prompt
+  carries the data map, the id conventions and the rules: answer only from tool
+  results, and say where the numbers come from. It also holds the chat's action
+  microflow and page, and `ASU_App`, the app's first after-startup microflow, which
+  imports the agent documents (`AgentEditorCommons.ASU_AgentEditor`).
+- **`11-navigation-security.mdl`**: the Agents Kit user roles for both user roles,
+  and an **Ask** item on the rail.
+- **The lake**: 11 more `f1.*` silver views (seasons, circuits, countries,
+  grands prix, constructor standings, standings per race, qualifying, starting grid,
+  fastest laps, pit stops). `[mcp] allow_changes = false` takes the lake's MCP server
+  from 24 tools to 15 that only read. An agent gets every tool its MCP server
+  offers, and with changes allowed that included `produce` and `publish_event`,
+  which write to Kafka topics, the CDC ones included.
+
+### Verified, in the browser, with real answers checked against the lake
+
+| Question | Agent's answer | Checked |
+| --- | --- | --- |
+| Most wins at Monaco | Senna 6; Graham Hill and Schumacher 5 | ✓ |
+| Follow-up: "and the most poles there?" | Senna 5 | ✓, history used |
+| Most constructors' titles, and the last three | Ferrari 16: 2008, 2007, 2004 | ✓, the whole top five |
+| Do qualifying and the grid agree on Monaco poles? | Same leader; one race differs: 2012, Schumacher fastest, Webber first on the grid | ✓ |
+
+The agent picks its own tools: `describe_table` to learn the columns, then `sql`,
+retrying a query that failed. Answers take 12–22 seconds. The page shows each tool
+call with its status.
+
+**The comparison row came from a prompt change.** The first time, asked about Monaco
+poles, the agent said the two tables "agree on the five drivers tied on 4". They
+don't: Schumacher has 4 by qualifying and 3 by grid position. Its next reply noticed
+the first was garbled and replaced it with another unchecked claim. One rule in the
+prompt ("never say two sources agree … unless a query showed it; query both and
+report where they differ") turned that into the exact answer in the table, with the
+inference marked as one.
+
+### Three traps
+
+**Conversational UI's streaming fails on any plain-HTTP host but `localhost`.**
+`InitAsyncStreamHandler` reads the `XASSESSIONID` cookie only when the `Host` header
+contains "localhost", and otherwise `__Host-XASSESSIONID`, which the runtime sets only
+over HTTPS. At `http://frontend.local:8180` it passes null to `UUID.fromString`, logs
+`Cannot invoke "String.length()" because "name" is null`, and every answer is
+"Error" after the model was never called. Use `http://localhost:8180`. Cookies are per
+host, so the backend on `backend.local` still keeps its own session. Deployed over
+HTTPS it works. A bug to report to Mendix.
+
+**The chat needs a container with a height.** Without one the message list collapses
+to nothing above the input box, while the messages are in the page and readable by a
+script. ChatV2 sets it in its theme; `17` sets it inline.
+
+**The `llm-streaming` 404 is not the error.** The connector logs
+`404 - file not found for file: llm-streaming` on the first call while it registers
+its handler. ChatV2 recorded the same.
+
+### Not done
+
+- `GenAICommons.StoreTraces` is off, so there are no traces of the agent's tool calls
+  in the app. ChatV2 turns it on.
+- The table header in an answer is hard to read in the dark theme.
+- `F1Graph`'s entity access (§108) is still the prototype-level shortcut.

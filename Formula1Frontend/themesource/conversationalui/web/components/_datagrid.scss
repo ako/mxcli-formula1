@@ -1,0 +1,27 @@
+@use '../../../../theme/web/custom-variables' as *;
+@use '../traceability-variables.scss';
+
+//Prevents scrollbars when a datagrid has a popupmenu inside.
+//Also fixes alignment for image viewers.
+.datagrid--no-scroll {
+    .widget-datagrid-content {
+        overflow-y: visible;
+        overflow-x: visible;
+        .td {
+            .td-custom-content {
+                .mx-image-viewer {
+                    width: auto;
+                }
+            }
+        }
+    }
+}
+
+.datagrid--fixed-row-height .table .td {
+    height: calc(3 * var(--font-size-default) + 2 * var(--spacing-small));
+    padding: var(--spacing-small); 
+}
+
+.datagrid--fixed-row-height .table .th {
+    padding: var(--spacing-small); 
+}

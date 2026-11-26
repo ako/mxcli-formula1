@@ -1,0 +1,24 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.model-badge {
+  display: inline-flex;
+  height: 20px;
+  padding: 4px;
+  gap: 4px;
+  align-items: center;
+  border-radius: 4px;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.model-badge--default {
+  @extend .model-badge;
+  background: var(--color-default-lighter, $color-default-lighter);
+  border: 1px solid var(--color-default-dark, $color-default-dark);
+}
+
+.model-badge--primary {
+  @extend .model-badge;
+  background: var(--color-primary-lighter, $color-primary-lighter);
+  border: 1px solid var(--color-primary-dark, $color-primary-dark);
+}

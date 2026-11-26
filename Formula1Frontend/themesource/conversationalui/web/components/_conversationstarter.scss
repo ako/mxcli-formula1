@@ -1,0 +1,60 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+//Cards for ConversationStarters
+.conversationstarter.card {
+    margin-bottom: var(--spacing-small);
+    padding: var(--spacing-small);
+    border: 1px solid var(--brand-default);
+    position: relative;
+
+    &:hover {
+        background-color: var(--grid-bg-hover)
+    }
+
+    .mx-link {
+        color: var(--brand-primary);
+        margin-bottom: var(--spacing-small);
+        margin-top: var(--spacing-small);
+    }
+
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+} 
+
+//Card containers for ConversationStarters
+.conversationstarter-container--vertical {
+    margin-top: 20%;
+}
+
+.conversationstarter-container--horizontal {
+    margin-top: 20%;
+    
+    .mx-layoutgrid {
+        height: 100%;
+        &>.row {
+            .col>.card {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+
+            }
+        }
+    }
+
+    .conversationstarter.card {
+        height: 100%;
+        div {
+            display: flex;
+            flex-direction: column;
+        }
+    }
+
+    .widget-gallery-item-button {
+        height: 100%;
+    }
+
+    .conversationstarter-arrow {
+        display: none;
+    }
+} 

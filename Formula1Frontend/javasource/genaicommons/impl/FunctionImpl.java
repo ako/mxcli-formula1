@@ -1,0 +1,161 @@
+package genaicommons.impl;
+
+import static java.util.Objects.requireNonNull;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mendix.core.Core;
+import com.mendix.core.CoreException;
+import com.mendix.systemwideinterfaces.core.IContext;
+import com.mendix.systemwideinterfaces.core.IDataType;
+
+import genaicommons.proxies.Request;
+import genaicommons.proxies.Tool;
+import genaicommons.proxies.ToolCollection;
+
+public class FunctionImpl {
+	
+	private static final ObjectMapper MAPPER = new ObjectMapper();
+	
+	/**
+	 * validates the input of a function: 
+	 * Name: is required
+	 * Function Microflow: needs string as output; only primitives and Tool/Request as input is allowed.
+	 * @param functionMicroflow
+	 * @param toolName
+	 * @throws Exception
+	 */
+	public static void validateFunctionInput(String functionMicroflow, String toolName) throws Exception {
+		requireNonNull(functionMicroflow, "Function Microflow is required.");
+		requireNonNull(toolName, "Tool Name is required.");
+		validateFunctionMicroflow(functionMicroflow);
+	}	
+
+	private static void validateFunctionMicroflow(String functionMicroflow) throws Exception {
+		Set<String> microflowNames = Core.getMicroflowNames();
+		if(!microflowNames.contains(functionMicroflow)) {
+			throw new IllegalArgumentException("Function Microflow with name " + functionMicroflow + " does not exist.");
+		}
+		
+		Map<String, IDataType> inputParameters = Core.getInputParameters(functionMicroflow);
+		for(IDataType value : inputParameters.values()) {
+			validateFunctionInputParameter(value, functionMicroflow);
+		}
+		
+
+		if(Core.getReturnType(functionMicroflow) == null || IDataType.DataTypeEnum.String.equals(Core.getReturnType(functionMicroflow).getType()) == false) {
+			throw new IllegalArgumentException("Function Microflow " + functionMicroflow + " should have a String return value.");		
+		}
+	}
+	
+	private static void validateFunctionInputParameter(IDataType value, String functionMicroflow){
+		if (
+			    IDataType.DataTypeEnum.String.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Boolean.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Integer.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Long.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Enumeration.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Decimal.equals(value.getType()) ||
+			    IDataType.DataTypeEnum.Datetime.equals(value.getType())
+		) {
+		    return;
+		}
+		
+		String objectType = value.getObjectType();
+		if (objectType == null ||
+			(!Core.getMetaObject(objectType).isSubClassOf(Request.getType()) &&
+			!Core.getMetaObject(objectType).isSubClassOf(Tool.getType()))
+			) 
+		{
+			throw new IllegalArgumentException("Function Microflow " + functionMicroflow + " can only have primitive and/or a Request and/or Tool object as input parameters.");				
+		}
+	}
+	
+	/**
+	 * To create properties nodes for a toolspec per input parameter of a function microflow
+	 * @param propertiesNode
+	 * @param requiredNode
+	 * @param inputParameter
+	 */
+	public static void addProperty(ObjectNode propertiesNode, ArrayNode requiredNode, Entry<String, IDataType> inputParameter) {
+		ObjectNode propertyNode = MAPPER.createObjectNode(); 
+		String type = parameterGetType(inputParameter);
+				
+		//For enums, all possible keys are specified
+		if (type == "enum") {
+			Set<String> enumKeySet = inputParameter.getValue().getEnumeration().getEnumValues().keySet();
+			ArrayNode enumKeyArrayNode = MAPPER.valueToTree(enumKeySet);
+            propertyNode.put("type", "string");
+            propertyNode.set(type, enumKeyArrayNode);
+		} else {
+			propertyNode.put("type", type);
+		}
+		propertiesNode.set(inputParameter.getKey(), propertyNode);
+		requiredNode.add(inputParameter.getKey());
+	}
+	
+	/**
+	 * Returns the type of an input parameter of a microflow. (Long will be integer, Decimal/Datetime will be number, Enumeration will be enum)
+	 * @param inputParameter
+	 * @return type as String
+	 */
+	public static String parameterGetType(Entry<String, IDataType> inputParameter) {
+		String type = inputParameter.getValue().toString().toLowerCase();
+		if (type.equals("long")) {
+			type = "integer";
+		} else if(type.equals("decimal") || type.equals("datetime")) {
+			type = "number";
+		} else if (type.equals("enumeration")) {
+			type = "enum";
+		}
+		return type;
+	}
+		
+	/**
+	 * return a ToolObject from the Request for a given toolName
+	 * @param request
+	 * @param toolName
+	 * @param context
+	 * @throws CoreException
+	 */
+	public static Tool getToolByName(Request request, String toolName, IContext context) throws CoreException{
+		
+		ToolCollection toolCollection = request.getRequest_ToolCollection();
+		
+		if(toolCollection == null) {
+			return null;
+		}
+		
+		List<Tool> toolList = Core.retrieveByPath(context,
+				toolCollection.getMendixObject(), ToolCollection.MemberNames.ToolCollection_Tool.toString())
+				.stream()
+				.map(mxObject -> Tool.initialize(context, mxObject))
+				.collect(Collectors.toList());
+		
+		if( toolList == null || toolList.isEmpty()) {
+			return null;
+		}
+		
+		Optional<Tool> toolMatch = toolList.stream()
+				.filter(tool -> {
+					return tool.getName().equals(toolName);
+				})
+				.findFirst();
+		
+		if(toolMatch.isPresent()) {
+			Tool functionMatch = Tool.load(context, toolMatch.get().getMendixObject().getId());
+			return functionMatch;
+		}
+		return null;	
+	}
+}
+
+	

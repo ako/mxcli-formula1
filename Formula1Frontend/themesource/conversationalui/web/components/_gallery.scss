@@ -1,0 +1,23 @@
+@use '../../../../theme/web/custom-variables' as *;
+
+.filter-gallery {
+    .widget-gallery-items {
+        padding: var(--spacing-small) 0 var(--spacing-small) 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: flex-start;
+    }
+
+    :where(.widget-gallery-fc-start, .widget-gallery-fc-middle, .widget-gallery-fc-end) {
+        min-height: 0;
+        height: auto;
+   }
+
+    :where(.widget-gallery-footer-controls) {
+        display: unset;
+    }
+   
+}
+
+    

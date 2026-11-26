@@ -36,6 +36,33 @@ CREATE OR REPLACE VIEW f1.constructors AS
 CREATE OR REPLACE VIEW f1.season_driver_standings AS
   SELECT * FROM read_csv('f1db/f1db-seasons-driver-standings.csv');
 
+-- The rest of what a question about F1 usually touches, for the chat agent
+-- (model/frontend/17-chat-agent.mdl), which reads the lake over MCP. Each one
+-- is a view per f1db file, so a row can always be traced to its source; the
+-- merged `f1db` view discovery makes cannot (ako/DuckGraphLake#31).
+CREATE OR REPLACE VIEW f1.seasons AS
+  SELECT * FROM read_csv('f1db/f1db-seasons.csv');
+CREATE OR REPLACE VIEW f1.circuits AS
+  SELECT * FROM read_csv('f1db/f1db-circuits.csv');
+CREATE OR REPLACE VIEW f1.countries AS
+  SELECT * FROM read_csv('f1db/f1db-countries.csv');
+CREATE OR REPLACE VIEW f1.grands_prix AS
+  SELECT * FROM read_csv('f1db/f1db-grands-prix.csv');
+CREATE OR REPLACE VIEW f1.season_constructor_standings AS
+  SELECT * FROM read_csv('f1db/f1db-seasons-constructor-standings.csv');
+CREATE OR REPLACE VIEW f1.race_driver_standings AS
+  SELECT * FROM read_csv('f1db/f1db-races-driver-standings.csv');
+CREATE OR REPLACE VIEW f1.race_constructor_standings AS
+  SELECT * FROM read_csv('f1db/f1db-races-constructor-standings.csv');
+CREATE OR REPLACE VIEW f1.qualifying_results AS
+  SELECT * FROM read_csv('f1db/f1db-races-qualifying-results.csv');
+CREATE OR REPLACE VIEW f1.starting_grid AS
+  SELECT * FROM read_csv('f1db/f1db-races-starting-grid-positions.csv');
+CREATE OR REPLACE VIEW f1.fastest_laps AS
+  SELECT * FROM read_csv('f1db/f1db-races-fastest-laps.csv');
+CREATE OR REPLACE VIEW f1.pit_stops AS
+  SELECT * FROM read_csv('f1db/f1db-races-pit-stops.csv');
+
 
 -- One winner per race, for the graph's Race -> Driver link (mapping/f1.ttl).
 -- positionNumber 1 is not unique: in the 1950s a shared drive classified both
