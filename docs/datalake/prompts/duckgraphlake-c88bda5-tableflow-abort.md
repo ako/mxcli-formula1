@@ -1,5 +1,7 @@
 # Bug: c88bda5 loses existing tableflow tables, then aborts on every restart
 
+> **Status:** fixed in 46ec4c0 (FINDINGS §119): both starts on a copy of this lake matched the live one.
+
 For a coding agent working in ako/DuckGraphLake.
 
 ## Summary

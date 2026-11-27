@@ -10215,3 +10215,25 @@ arrives. The report for the DuckGraphLake agent is
 `docs/datalake/prompts/duckgraphlake-c88bda5-tableflow-abort.md`. A fixed build
 gets the same check before it goes in: run it on a copy on test ports, restart it
 once, and compare the baseline.
+
+### Fixed in 46ec4c0, and the CDC fix confirmed
+
+46ec4c0 was tested the same way before it went in: on a fresh copy of the data
+folder, old marker included, on test ports, started twice. Both starts matched the
+live lake exactly: schemas, 967 OpenF1 events, `gold.season_progress`,
+`gold.lap_chart` and `f1.races`. (The first attempt at this test queried a c88bda5
+test lake that had been left running on the test ports; the check script now finds
+test lakes by `/proc/<pid>/cmdline` and stops them.)
+
+On the live lake after the switch, the counts were identical. CDC events, metrics
+and logs kept arriving, the PostgreSQL endpoint answered the frontend's queries,
+and the MCP tools listed.
+
+**The §105 race, rerun.** `LiveSyncSet` changed the session key at second :49,
+while a sync run was committing, to 11420 and then back to latest. Both of those
+transactions' after-images carried a stale `RunCount`: 625 when the database had
+628, and 631 when it had 634. That is the Mendix behaviour reported in
+`docs/datalake/prompts/mendix-cdc-after-image.md`, so the race really happened.
+Each event's `cdc.changed` is `[SessionKey]`, and the lake now applies only that
+field. After both changes `formula1backend.livesyncstate` matched the database:
+SessionKey, RunCount and LastRunAt.
