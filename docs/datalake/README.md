@@ -12,6 +12,7 @@ The DuckGraphLake work, beyond the proposal in
 | [prompts/duckgraphlake-unknown-columns.md](prompts/duckgraphlake-unknown-columns.md) | For a coding agent in ako/DuckGraphLake: a statement with an untypeable parameter loses every result column's name over the PostgreSQL endpoint (FINDINGS §115). |
 | [prompts/mendix-edc-missing-column.md](prompts/mendix-edc-missing-column.md) | For Mendix: the External Database Connector throws a NullPointerException instead of naming a mapped column that is missing from the result. |
 | [prompts/duckgraphlake-c88bda5-tableflow-abort.md](prompts/duckgraphlake-c88bda5-tableflow-abort.md) | For a coding agent in ako/DuckGraphLake: build c88bda5 does not register the Kafka tableflow tables an earlier build wrote, writes `_tableflow/.iceberg-namespace`, and then aborts on every start (FINDINGS §119). |
+| [prompts/duckgraphlake-tableflow-retention.md](prompts/duckgraphlake-tableflow-retention.md) | For a coding agent in ako/DuckGraphLake: topic tables keep every snapshot, every file compaction replaced and every metadata file, so they grow far beyond their data (657 MB for 23 MB). Expiry, cleanup, bounded metadata. |
 
 Both HTML pages were also published as private Claude artifacts. These copies
 are the versions kept with the project, and they open from disk. They load
