@@ -534,6 +534,114 @@ BEGIN
   RETURN $Result;
 END;
 
+/*
+ * Backfill a season's OpenF1 data into the lake.
+ *
+ * The live sync (19-live-sync.mdl) only ever fetches the current session, so the
+ * lake holds OpenF1 events from the day it was switched on. This walks every
+ * session of a year -- `sessions?year=<year>` -- and fetches each one's feeds
+ * once, through Sync_Fetch, so they reach the lake exactly as live data does:
+ * the same pacing, the same retry on an empty answer, the same post-if-changed
+ * (Sync_LakePost). A second run posts nothing new. It writes nothing into the
+ * live sync's own entities.
+ *
+ * Telemetry (car_data, location) is left out: hundreds of MB per session, and
+ * nothing in the app charts it outside a live session.
+ *
+ * The loop is a Java action because a microflow cannot iterate over the
+ * session keys in a JSON text. Each Sync_Fetch runs in a context of its own,
+ * so each one commits by itself: a run that takes minutes holds no lock the
+ * live sync's own posts would wait on, and progress survives an interruption.
+ *
+ * The token is asked for per session, not once: a year is ~1,600 requests and
+ * takes longer than a token's 60 minutes, and an expired token makes OpenF1
+ * answer 401, which Sync_Fetch -- like a 429 -- turns into `[]`. The first run
+ * lost a third of the season that way, silently (FINDINGS §118).
+ * Sync_EnsureToken reuses the stored token until five minutes before it
+ * expires, so asking per session costs nothing.
+ *
+ * Every session that has run has an entry list, so an empty `drivers` answer
+ * is a failed request, never an empty session: it is retried once after ten
+ * seconds, and the sessions that stay empty are named in the result. Pass them
+ * back as Sessions (comma-separated keys) to fetch only those; empty Sessions
+ * means every session of the year.
+ */
+create or modify java action Formula1Backend.Lake_Backfill (
+  Year: Integer NOT NULL,
+  Feeds: String NOT NULL,
+  Sessions: String
+) RETURNS String
+AS $$
+    java.util.function.Supplier<String> token = () -> {
+        try {
+            Object t = com.mendix.core.Core.microflowCall("Formula1Backend.Sync_EnsureToken")
+                .execute(com.mendix.core.Core.createSystemContext());
+            return t == null ? "" : t.toString();
+        } catch (Exception e) {
+            com.mendix.core.Core.getLogger("F1Lake").warn("Backfill token failed: " + e.getMessage());
+            return "";
+        }
+    };
+    java.util.function.Function<String, String> fetch = path -> {
+        try {
+            Object body = com.mendix.core.Core.microflowCall("Formula1Backend.Sync_Fetch")
+                .withParam("Path", path).withParam("Token", token.get())
+                .execute(com.mendix.core.Core.createSystemContext());
+            return body == null ? "" : body.toString().trim();
+        } catch (Exception e) {
+            com.mendix.core.Core.getLogger("F1Lake").warn("Backfill fetch failed for " + path + ": " + e.getMessage());
+            return "";
+        }
+    };
+    java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+    String now = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).toString();
+    if (Sessions != null && !Sessions.trim().isEmpty()) {
+        for (String k : Sessions.split(",")) if (!k.trim().isEmpty()) keys.add(k.trim());
+    } else {
+        fetch.apply("meetings?year=" + Year);
+        String sessions = fetch.apply("sessions?year=" + Year);
+        // Only sessions that have started: a future one has nothing to fetch.
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            "\"session_key\"\\s*:\\s*(\\d+)[^}]*?\"date_start\"\\s*:\\s*\"([^\"]+)\"").matcher(sessions);
+        while (m.find()) if (m.group(2).compareTo(now) < 0) keys.add(m.group(1));
+    }
+    int requests = 0, empty = 0;
+    java.util.List<String> missing = new java.util.ArrayList<>();
+    for (String key : keys) {
+        for (String feed : Feeds.split(",")) {
+            String f = feed.trim();
+            if (f.isEmpty()) continue;
+            String path = f + "?session_key=" + key;
+            String body = fetch.apply(path);
+            requests++;
+            if (f.equals("drivers") && (body.isEmpty() || body.equals("[]"))) {
+                try { Thread.sleep(10000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                body = fetch.apply(path);
+                requests++;
+                if (body.isEmpty() || body.equals("[]")) missing.add(key);
+            }
+            if (body.isEmpty() || body.equals("[]")) empty++;
+        }
+    }
+    String result = "year " + Year + ": " + keys.size() + " sessions, " + requests + " requests, " + empty
+        + " empty" + (missing.isEmpty() ? "" : "; no entry list for " + String.join(",", missing));
+    com.mendix.core.Core.getLogger("F1Lake").info("Backfill " + result);
+    return result;
+$$;
+
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_LakeBackfill (
+  $Year: Integer,
+  $Sessions: String
+)
+  RETURNS String AS $Result
+BEGIN
+  $Result = CALL JAVA ACTION Formula1Backend.Lake_Backfill(
+    Year = $Year,
+    Feeds = 'drivers,laps,position,intervals,stints,pit,race_control,weather,team_radio,overtakes,session_result,starting_grid',
+    Sessions = $Sessions);
+  RETURN $Result;
+END;
+
 create or modify published odata service Formula1Backend.F1OpsApi (
   path: 'odata/f1-ops/',
   version: '1.0.0',
@@ -603,6 +711,9 @@ create or modify published odata service Formula1Backend.F1OpsApi (
              TelemetryFrom as 'telemetryFrom' );
   publish microflow Formula1Backend.Ops_LiveSyncNow as 'LiveSyncNow';
   publish microflow Formula1Backend.Ops_LiveCycleNow as 'LiveCycleNow';
+  /* Backfill a season's OpenF1 data into the lake. Takes minutes. */
+  publish microflow Formula1Backend.Ops_LakeBackfill as 'LakeBackfill'
+    expose ( Year as 'year', Sessions as 'sessions' );
 };
 
 /*
@@ -624,6 +735,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncSet TO Formula1Backend.Ap
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncSet TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LakeBackfill TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LakeBackfill TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_Live TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_EnsureToken TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveCycleNow TO Formula1Backend.ApiUser;

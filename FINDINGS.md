@@ -10141,3 +10141,54 @@ obvious later improvement; for one weekend it is not needed.
 Silver views that parse `openf1.<feed>` (the latest event per session and feed,
 unnested), checked against what the backend derived into `LiveLap` and the rest
 over the same weekend. Then gold views and the live screens.
+
+## 118. This season into the lake: f1db, laps, and every OpenF1 session
+
+The lake held the 2026 results only up to the f1db release it was built from,
+laps for 2024 only, and OpenF1 events only from the day the live lane was
+switched on (§117). Now it has the whole season so far.
+
+- **f1db** refreshed: 21 rounds, through Las Vegas (2026-11-22). The gold views
+  refreshed themselves (`refresh = "on_change"`).
+- **Laps** (Jolpica, `scripts/fetch-f1-laps.sh`): 2026 fetched separately and
+  appended to the 2024 rows in `data/laps/f1db-laps.csv`, 24,524 timings. Each
+  round's count matches f1db's `sum(laps)` (round 9 is off by one, an Ergast/f1db
+  difference). `compare-weekend-charts.py laps`: 21 of 21 races of 2026 identical
+  to the backend's own derivation. The first attempt fetched "2024 2026" in one
+  run, and it was killed before it wrote anything: the script writes the CSV only
+  at the end. A two-season run also exceeds Jolpica's 500 requests an hour, so
+  one season per run, detached, is the way to do it.
+- **OpenF1**: `Ops_LakeBackfill` (published as `LakeBackfill` on F1OpsApi) walks
+  `sessions?year=` and fetches every session's feeds through Sync_Fetch, so they
+  reach the lake exactly as live data does. Telemetry is left out. All 121 sessions
+  that have started now have their entry list in `openf1.drivers`. 111 have laps;
+  the other 10 are the cancelled Bahrain and Saudi Arabian weekends
+  (`is_cancelled`, 404 from OpenF1).
+
+### Why the first backfill lost a third of the season, silently
+
+The first run reported "131 sessions, 1572 requests, 951 empty", and 54 sessions
+that have data came back as `[]`. There were two causes, and Sync_Fetch turns both
+into an empty array, as it does with a 429 (§117's comment on it):
+
+1. **An expired token.** Ops_LakeBackfill fetched one token and passed it to the
+   whole run. A year is ~1,600 requests at about 2 s each, which is longer than
+   the token's 60 minutes, and every request after the expiry got a 401. This
+   devcontainer was also suspended for about an hour at a time, which pushes any
+   run past the expiry.
+2. **Two clients on one allowance.** The live sync kept polling during the first
+   run, each paced at 4 requests a second against OpenF1's 6. Single sessions
+   scattered through the season came back empty, and on a rerun a different set
+   came back empty.
+
+The fix is in Lake_Backfill. It asks Sync_EnsureToken for the token per session,
+which reuses the stored token until five minutes before it expires. It retries an
+empty `drivers` answer once, after ten seconds, because a session that has run
+always has an entry list. The sessions that stay empty are named in the result,
+and a new `sessions` parameter refetches only those. Future sessions are skipped.
+The runs were made with the live sync paused (`LiveSyncSet enabled=false`,
+re-enabled by a trap), with nothing live at the time.
+
+The general lesson is the one §117's Sync_Fetch comment already draws: an empty
+answer that means "failed" looks the same as one that means "nothing there". A
+backfill needs one feed that cannot be empty, and must check it.
