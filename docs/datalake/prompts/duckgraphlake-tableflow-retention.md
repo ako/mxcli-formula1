@@ -1,5 +1,7 @@
 # Improvement: keep topic tables' size in line with their data
 
+> **Status:** done in 44afee6 (FINDINGS §121): the lake's topic tables went from 727 MB to 40 MB with every record intact.
+
 For a coding agent working in ako/DuckGraphLake.
 
 ## The problem

@@ -10307,3 +10307,28 @@ init.sql stops there.
 The backend still builds replays (25-replay.mdl, SE_ReplayBuild every five
 minutes) into LiveForecast, which nothing on this screen reads any more. It can
 go once the live screens read the lake too.
+
+## 121. DuckGraphLake 44afee6: topic tables keep only the history they need
+
+The topic tables were 727 MB for about 23 MB of current data. Each flush was a
+new Iceberg snapshot, none was ever expired, the files compaction replaced
+stayed on disk, and every metadata file repeated the whole snapshot history
+(`docs/datalake/prompts/duckgraphlake-tableflow-retention.md`). 44afee6 adds a
+cleanup under `[kafka]`:
+- `keep_snapshots = 10`, and every snapshot younger than `keep_snapshots_for = "1h"`;
+- `metadata_versions = 10`;
+- files no kept snapshot references are deleted after `delete_files_after = "5m"`;
+- the cleanup also runs once at start-up for what earlier builds left behind.
+
+It was tested the same way as 46ec4c0 (§119): a copy of the data folder, test
+ports, two starts. Per topic table, the count and a checksum over (offset, value),
+up to the copy's offsets, were identical to the live lake, and so were the CDC
+state, the gold views and the replay views. The first start expired 1,450
+snapshots and deleted 5,399 files. The second removed one snapshot that had aged
+past the hour, and nothing changed.
+
+On the live lake the switch brought the tables from 727 MB to 40 MB and from
+7,490 files to 587. The content was identical before and after: the same four
+checksums, up to the offsets read before the switch. Afterwards CDC events kept
+arriving, all 15 pipeline steps were ready, and OData answered. 46ec4c0 stays
+installed under ~/.local/opt to switch back to.
