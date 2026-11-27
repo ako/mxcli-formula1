@@ -10237,3 +10237,73 @@ transactions' after-images carried a stale `RunCount`: 625 when the database had
 Each event's `cdc.changed` is `[SessionKey]`, and the lake now applies only that
 field. After both changes `formula1backend.livesyncstate` matched the database:
 SessionKey, RunCount and LastRunAt.
+
+## 120. The Replay screen reads the lake: every race of the season
+
+The Replay screen listed two races, Las Vegas and the Zandvoort sprint. It read
+the backend's admin service, and the backend only holds the sessions its live
+sync followed; 25-replay.mdl then ran the forecaster over them one lap at a
+time. The season's OpenF1 data was already in the lake (§118), so the screen now
+reads the lake, and lists all 27 races and sprints of 2026.
+
+### In the lake (lake/init.sql, lake/server.toml)
+
+- **`timing.*`, silver:** sessions, drivers, laps, positions, intervals, stints
+  and pits, which is the newest response per OpenF1 request, unpacked with the
+  backend's own column specs. Plain views.
+- **`replay.*`, gold, materialized hourly:**
+  - `replay.sessions`: the races and sprints with laps, and their distance from
+    f1db, matched on the year and the nearest date within a day. f1db dates Las
+    Vegas by UTC and the other races by the local day.
+  - `replay.laps`: the backend's GetOpenF1Laps for every session at once, 69,026
+    laps.
+  - `replay.drivers`.
+  - `replay.forecast`: the forecaster at every lap of every race, 1,366 laps and
+    29,266 rows.
+
+  They refresh on a timer, not on change, because the topic changes every minute
+  during a session.
+
+**Checked against the backend for Las Vegas:**
+- `replay.laps`: 988 of 988 rows identical (position, gap, lap time, compound,
+  tyre age, stops).
+- `replay.forecast`: laps used, laps remaining and stops left agree on all 1,028
+  rows. The Monte Carlo columns differ from the backend's stored forecasts by
+  exactly as much as two lake runs differ from each other: mean |Δ| of mean
+  position 0.085, of win probability 0.003. So the model is unchanged.
+
+**The forecast had to be reshaped to fit in memory.** The original simulates
+every car of every run as a row and ranks them with a window. For a whole season
+that is 52 million rows held at once, and the lake was killed: SIGKILL, with
+memory past 6 GB in six seconds, while DuckDB's default limit, 80% of RAM, was
+more than was free beside the two Mendix runtimes. The lake version keeps one row
+per simulation, with the cars as a list. It draws inside the list (`random()` is
+per element), sorts there and counts positions into a histogram per car. It is
+the same draws and the same statistics, `quantile_cont`'s interpolation
+included, and the whole season takes 26 s with RSS under 3.2 GB.
+
+The lake also got a memory cap, `[duckdb] memory_limit = "4GB"`. It has to be in
+server.toml: a `SET memory_limit` in init.sql works at start-up, but when the file
+is re-run on a live server the configuration is locked, the SET is refused, and
+init.sql stops there.
+
+### In the frontend (14-replay.mdl)
+
+- A database connection of its own, `F1LakeReplay`, with five queries: sessions,
+  classification, forecast, win probability chart, position chart. Every
+  parameter is CAST and compared with a column (§115).
+- `ReplaySession` (non-persistent) replaces `F1Admin.Sessions` for the chips.
+- The data-source microflows run the queries, and fall back to an empty list or
+  chart when the lake does not answer.
+- DSJ_ReplayWin and DSJ_ReplayPositions were dropped and created once in a run of
+  their own: their new shape could not be spliced (MDL-V1-REBUILD, as in §116).
+  The kept script is `create or modify` only.
+- mx check 0 errors, `reexec-all.sh` total writes 0. In a browser, as `fan`: 27
+  chips; Monza, stepped to lap 22, shows the classification, the forecast and
+  both charts up to lap 22.
+
+### Left behind
+
+The backend still builds replays (25-replay.mdl, SE_ReplayBuild every five
+minutes) into LiveForecast, which nothing on this screen reads any more. It can
+go once the live screens read the lake too.

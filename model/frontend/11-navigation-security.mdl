@@ -351,6 +351,7 @@ GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_NarrativeProb TO Formula1Fronten
  * screen builds. Writable, unlike everything else here -- the buttons change
  * it, and it is the only state this app owns. */
 GRANT READ *, WRITE * ON ENTITY Formula1Frontend.ReplayState TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.ReplaySession TO Formula1Frontend.Enthusiast;
 GRANT READ * ON ENTITY Formula1Frontend.ReplayEntry TO Formula1Frontend.Enthusiast;
 GRANT READ * ON ENTITY Formula1Frontend.ReplayCall TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_ReplayState TO Formula1Frontend.Enthusiast;

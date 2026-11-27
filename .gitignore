@@ -130,6 +130,8 @@
 # otel/ is the OpenTelemetry the apps send it (traces, metrics, logs as hourly
 # Parquet), and is just as disposable.
 /data/otel/
+# DuckDB spills to it when a statement outgrows [duckdb] memory_limit.
+/data/.tmp/
 
 # Same reasoning as the root /.ai-context/ and /.claude/skills/ above, applied
 # to the two app folders: 'mxcli init --sync-skills' writes 103 skill files and

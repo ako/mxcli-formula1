@@ -355,3 +355,431 @@ SELECT l.year, l.round, l.lap, x.rk, x.who AS driver, max(l.position) AS pos
 FROM f1.laps l
 JOIN top10 x ON x.year = l.year AND x.round = l.round AND x.driverRef = l.driverRef
 GROUP BY ALL;
+
+
+-- ---------------------------------------------------------- OpenF1, silver --
+-- The newest response the backend posted for each OpenF1 request, unpacked.
+-- The backend posts every changed response to the topic `openf1` (19-live-sync's
+-- Sync_LakePost), one event type per feed, the request path as the subject, so
+-- openf1.<feed> holds every version of 'laps?session_key=11420'; a finished
+-- session's last version is the whole session. The column specs are the
+-- backend's own (GetOpenF1Laps and friends in 01-foundation.mdl).
+--
+-- These read openf1.*, which the server makes from the topic during discovery,
+-- before this file runs. The topic exists once the backend has posted anything
+-- (scripts/run-weekend.sh, or the season backfill, FINDINGS §118); a lake
+-- started without it stops on the first of these views.
+
+CREATE SCHEMA IF NOT EXISTS timing;
+
+CREATE OR REPLACE VIEW timing.sessions AS
+SELECT DISTINCT ON (j.session_key)
+       j.session_key, j.session_name, j.session_type, j.meeting_key, j.location,
+       j.country_name, j.circuit_short_name, j.year,
+       CAST(j.date_start AS TIMESTAMPTZ) AS date_start,
+       CAST(j.date_end AS TIMESTAMPTZ) AS date_end,
+       -- f1db dates the day by the track's calendar (mostly; see replay.sessions)
+       CAST(CAST(j.date_start AS TIMESTAMPTZ) AT TIME ZONE 'UTC'
+            + CAST(j.gmt_offset AS INTERVAL) AS DATE) AS local_date,
+       COALESCE(j.is_cancelled, false) AS is_cancelled
+  FROM (SELECT event_time, kafka_offset,
+               unnest(from_json(payload, '[{"session_key":"BIGINT","session_name":"VARCHAR","session_type":"VARCHAR","meeting_key":"BIGINT","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","year":"BIGINT","date_start":"VARCHAR","date_end":"VARCHAR","gmt_offset":"VARCHAR","is_cancelled":"BOOLEAN"}]')) AS j
+          FROM openf1.sessions)
+ WHERE j.session_key IS NOT NULL
+ ORDER BY j.session_key, event_time DESC, kafka_offset DESC;
+
+CREATE OR REPLACE VIEW timing.drivers AS
+SELECT sk AS session_key, j.driver_number,
+       COALESCE(j.name_acronym, '') AS code,
+       COALESCE(j.full_name, j.broadcast_name, '') AS driver_name,
+       COALESCE(j.team_name, '') AS team, j.team_colour
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]')) AS j
+          FROM openf1.drivers
+         WHERE regexp_matches(subject, '^drivers\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+CREATE OR REPLACE VIEW timing.laps AS
+SELECT sk AS session_key, j.driver_number, j.lap_number, j.lap_duration,
+       j.duration_sector_1 AS sector_1, j.duration_sector_2 AS sector_2,
+       j.duration_sector_3 AS sector_3, j.i2_speed AS speed_trap, j.is_pit_out_lap,
+       CAST(j.date_start AS TIMESTAMP) AS date_start
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i2_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","date_start":"VARCHAR"}]')) AS j
+          FROM openf1.laps
+         WHERE regexp_matches(subject, '^laps\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+CREATE OR REPLACE VIEW timing.positions AS
+SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date, j.position
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","position":"BIGINT"}]')) AS j
+          FROM openf1.position
+         WHERE regexp_matches(subject, '^position\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+-- gap_to_leader stays text: a lapped car's is '+1 LAP', not seconds.
+CREATE OR REPLACE VIEW timing.intervals AS
+SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date,
+       j.gap_to_leader, j."interval"
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j
+          FROM openf1.intervals
+         WHERE regexp_matches(subject, '^intervals\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+CREATE OR REPLACE VIEW timing.stints AS
+SELECT sk AS session_key, j.driver_number, j.stint_number, j.compound,
+       j.lap_start, j.lap_end, j.tyre_age_at_start
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]')) AS j
+          FROM openf1.stints
+         WHERE regexp_matches(subject, '^stints\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+CREATE OR REPLACE VIEW timing.pits AS
+SELECT sk AS session_key, j.driver_number, j.lap_number, j.lane_duration
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]')) AS j
+          FROM openf1.pit
+         WHERE regexp_matches(subject, '^pit\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+
+-- ------------------------------------------------------------- replay, gold --
+-- What the frontend's Replay screen reads (14-replay.mdl): the races, the
+-- classification lap by lap, and the forecast as it would have been made at
+-- every lap. Materialized on a timer, not on change (lake/server.toml): the
+-- topic changes every minute during a session, and these are for races that
+-- have finished.
+
+CREATE SCHEMA IF NOT EXISTS replay;
+
+-- Races and sprints with laps, and how long each was scheduled to be. f1db is
+-- matched on the year and the nearest date within a day: it dates most races by
+-- the track's calendar, but Las Vegas by UTC. A session f1db does not have
+-- falls back to the laps run. A sprint's distance is f1db's sprintRaceLaps.
+CREATE OR REPLACE VIEW replay.sessions AS
+WITH ran AS (SELECT session_key, max(lap_number) AS last_lap FROM timing.laps GROUP BY ALL),
+races AS (
+  SELECT s.*, r.last_lap, s.session_name ILIKE '%sprint%' AS sprint
+    FROM timing.sessions s JOIN ran r USING (session_key)
+   WHERE s.session_type = 'Race'
+),
+sized AS (
+  SELECT x.*,
+         COALESCE((SELECT CASE WHEN x.sprint THEN f.sprintRaceLaps ELSE f.laps END
+                     FROM f1.races f
+                    WHERE f.year = x.year
+                      AND abs(date_diff('day', CASE WHEN x.sprint THEN f.sprintRaceDate ELSE f.date END, x.local_date)) <= 1
+                    ORDER BY abs(date_diff('day', CASE WHEN x.sprint THEN f.sprintRaceDate ELSE f.date END, x.local_date))
+                    LIMIT 1),
+                  x.last_lap) AS total_laps
+    FROM races x
+)
+SELECT session_key, session_name, location, country_name, year, date_start,
+       session_name || ' · ' || location || ' · ' || year AS label,
+       total_laps, last_lap,
+       least(last_lap, total_laps) AS max_lap
+  FROM sized;
+
+-- The entry list of each race on the Replay screen, materialized beside the
+-- rest so a step of the screen does not unpack the drivers' JSON again.
+CREATE OR REPLACE VIEW replay.drivers AS
+SELECT * FROM timing.drivers
+ WHERE session_key IN (SELECT session_key FROM replay.sessions);
+
+-- Each car's state at the end of each lap: the backend's GetOpenF1Laps, over
+-- every session in the lake at once. Position and gap are the newest samples at
+-- or before the lap ended (ASOF), the tyre comes from the stint the lap is in.
+-- Checked against the backend's LiveLap for Las Vegas: 988 of 988 rows identical
+-- (FINDINGS §120).
+CREATE OR REPLACE VIEW replay.laps AS
+WITH laps AS (
+  SELECT *, date_start + INTERVAL (COALESCE(lap_duration, 0)) SECOND AS t1
+    FROM timing.laps WHERE date_start IS NOT NULL
+),
+pits AS (SELECT * FROM timing.pits WHERE COALESCE(lane_duration, 0) BETWEEN 1 AND 180)
+SELECT l.session_key, l.driver_number, l.lap_number, p.position,
+       i.gap_to_leader, TRY_CAST(i.gap_to_leader AS DOUBLE) AS gap_seconds,
+       l.lap_duration AS lap_seconds, l.sector_1, l.sector_2, l.sector_3, l.speed_trap,
+       s.compound,
+       CASE WHEN s.lap_start IS NULL THEN NULL
+            ELSE COALESCE(s.tyre_age_at_start, 0) + (l.lap_number - s.lap_start) END AS tyre_age,
+       (SELECT count(*) FROM pits x
+         WHERE x.session_key = l.session_key AND x.driver_number = l.driver_number
+           AND x.lap_number <= l.lap_number) AS pit_stops,
+       d.code, d.driver_name, d.team
+  FROM laps l
+  ASOF LEFT JOIN timing.positions p
+         ON p.session_key = l.session_key AND p.driver_number = l.driver_number AND p.date <= l.t1
+  ASOF LEFT JOIN timing.intervals i
+         ON i.session_key = l.session_key AND i.driver_number = l.driver_number AND i.date <= l.t1
+  LEFT JOIN timing.stints s
+         ON s.session_key = l.session_key AND s.driver_number = l.driver_number
+        AND l.lap_number BETWEEN s.lap_start AND COALESCE(s.lap_end, 9999)
+  LEFT JOIN timing.drivers d
+         ON d.session_key = l.session_key AND d.driver_number = l.driver_number;
+
+-- The race forecaster (the backend's GetOpenF1Forecast, kept in
+-- spikes/forecaster/forecast.sql) at every lap of every race: what it would have
+-- said had it been running, from the laps completed before lap at_lap + 1
+-- started and nothing after. The model is unchanged; each step is keyed by
+-- (session, at_lap) so that one statement makes every forecast, where the
+-- backend ran it once per lap. As in the original, tyre life reads every stint
+-- of the session.
+--
+-- Two thousand simulations each, so a second run differs by sampling noise:
+-- for Las Vegas, the lake against itself and against the backend's stored
+-- forecasts differ by the same amount (mean |Δ| of win probability 0.003), and
+-- laps used, laps remaining and stops left agree exactly (FINDINGS §120).
+CREATE OR REPLACE VIEW replay.forecast AS
+WITH cuts AS (
+  SELECT r.session_key AS sk, c.cut, r.total_laps AS total,
+         COALESCE((SELECT min(l.date_start) FROM timing.laps l
+                    WHERE l.session_key = r.session_key AND l.lap_number = c.cut + 1),
+                  TIMESTAMP '2999-01-01') AS cut_t
+    FROM replay.sessions r, LATERAL (SELECT unnest(generate_series(2, r.max_lap)) AS cut) c
+),
+laps AS (
+  SELECT session_key AS sk, driver_number, lap_number, lap_duration, is_pit_out_lap, date_start AS t
+    FROM timing.laps
+   WHERE date_start IS NOT NULL AND session_key IN (SELECT session_key FROM replay.sessions)
+),
+st AS (
+  SELECT session_key AS sk, driver_number, lap_start, lap_end, compound, tyre_age_at_start
+    FROM timing.stints WHERE session_key IN (SELECT session_key FROM replay.sessions)
+),
+pits AS (
+  SELECT session_key AS sk, driver_number, lap_number
+    FROM timing.pits
+   WHERE COALESCE(lane_duration, 0) BETWEEN 1 AND 180
+     AND session_key IN (SELECT session_key FROM replay.sessions)
+),
+-- pits(sk, driver_number, lap_number), cuts(sk, cut, total, cut_t).
+aged AS (
+  SELECT c.sk, c.cut, l.driver_number, l.lap_number, l.lap_duration, l.is_pit_out_lap,
+         s.compound,
+         COALESCE(s.tyre_age_at_start,0) + (l.lap_number - s.lap_start) AS tyre_age
+    FROM cuts c
+    JOIN laps l ON l.sk = c.sk AND l.t < c.cut_t
+    LEFT JOIN st s ON s.sk = l.sk AND s.driver_number = l.driver_number
+         AND l.lap_number BETWEEN s.lap_start AND COALESCE(s.lap_end, 9999)
+),
+notpit AS (
+  SELECT a.* FROM aged a
+    LEFT JOIN pits p ON p.sk = a.sk AND p.driver_number = a.driver_number AND p.lap_number = a.lap_number
+   WHERE a.lap_duration IS NOT NULL AND a.is_pit_out_lap IS NOT TRUE
+     AND a.lap_number > 1 AND p.lap_number IS NULL
+),
+med AS (SELECT sk, cut, driver_number, median(lap_duration) AS m FROM notpit GROUP BY ALL),
+fieldmed AS (
+  SELECT c.sk, c.cut, COALESCE(median(d.m), 90.0) AS m
+    FROM cuts c LEFT JOIN med d ON d.sk = c.sk AND d.cut = c.cut GROUP BY ALL
+),
+clean AS (
+  SELECT n.*, n.lap_duration - d.m AS resid
+    FROM notpit n JOIN med d USING (sk, cut, driver_number)
+   WHERE n.lap_duration BETWEEN d.m * 0.93 AND d.m * 1.07
+),
+deg_raw AS (
+  SELECT sk, cut, compound, regr_slope(resid, tyre_age) AS fitted, count(*) AS n
+    FROM clean WHERE compound IS NOT NULL AND tyre_age IS NOT NULL GROUP BY ALL
+),
+prior AS (
+  SELECT * FROM (VALUES ('SOFT',0.060,20),('MEDIUM',0.040,30),('HARD',0.025,40),
+                        ('INTERMEDIATE',0.030,30),('WET',0.030,30))
+    AS t(compound, per_lap, max_life)
+),
+deg AS (
+  SELECT r.sk, r.cut, r.compound,
+         CASE WHEN isfinite(r.fitted)
+              THEN least(0.15, greatest(0.0,
+                     (r.n * r.fitted + 120 * pr.per_lap) / (r.n + 120)))
+              ELSE pr.per_lap END AS per_lap
+    FROM deg_raw r JOIN prior pr USING (compound)
+),
+fuel_raw AS (
+  SELECT c.sk, c.cut, regr_slope(c.resid - COALESCE(d.per_lap,0) * c.tyre_age, c.lap_number) AS v
+    FROM clean c LEFT JOIN deg d USING (sk, cut, compound) GROUP BY ALL
+),
+fuel AS (
+  SELECT c.sk, c.cut,
+         CASE WHEN isfinite(f.v) THEN greatest(-0.20, least(0.0, f.v)) ELSE -0.03 END AS per_lap
+    FROM cuts c LEFT JOIN fuel_raw f USING (sk, cut)
+),
+pace AS (
+  SELECT c.sk, c.cut, c.driver_number,
+         CASE WHEN isfinite(median(c.lap_duration - COALESCE(d.per_lap,0) * c.tyre_age - f.per_lap * c.lap_number))
+              THEN median(c.lap_duration - COALESCE(d.per_lap,0) * c.tyre_age - f.per_lap * c.lap_number)
+              ELSE median(c.lap_duration) END AS base,
+         CASE WHEN isfinite(stddev_samp(c.resid))
+              THEN greatest(0.05, least(2.0, stddev_samp(c.resid)))
+              ELSE 0.4 END AS noise,
+         count(*) AS laps_used
+    FROM clean c LEFT JOIN deg d USING (sk, cut, compound) JOIN fuel f USING (sk, cut)
+   GROUP BY ALL
+),
+pitloss AS (
+  SELECT a.sk, a.cut, median(a.lap_duration + o.lap_duration - 2 * m.m) AS secs
+    FROM pits p
+    JOIN aged a ON a.sk = p.sk AND a.driver_number = p.driver_number AND a.lap_number = p.lap_number
+    JOIN aged o ON o.sk = a.sk AND o.cut = a.cut AND o.driver_number = p.driver_number AND o.lap_number = p.lap_number + 1
+    JOIN med  m ON m.sk = a.sk AND m.cut = a.cut AND m.driver_number = p.driver_number
+   WHERE a.lap_duration IS NOT NULL AND o.lap_duration IS NOT NULL
+   GROUP BY ALL
+),
+loss AS (
+  SELECT c.sk, c.cut, CASE WHEN p.secs BETWEEN 12 AND 45 THEN p.secs ELSE 20.0 END AS secs
+    FROM cuts c LEFT JOIN pitloss p USING (sk, cut)
+),
+-- Like the original, tyre life reads every stint of the session, not only those before the cut.
+life AS (
+  SELECT ss.sk, pr.compound, greatest(COALESCE(o.max_life, 0), pr.max_life) AS max_life
+    FROM (SELECT DISTINCT sk FROM cuts) ss CROSS JOIN prior pr
+    LEFT JOIN (
+      SELECT s.sk, s.compound,
+             max(s.lap_end - s.lap_start + 1 + COALESCE(s.tyre_age_at_start,0)) AS max_life
+        FROM st s
+       WHERE EXISTS (SELECT 1 FROM pits p WHERE p.sk = s.sk AND p.driver_number = s.driver_number
+                       AND p.lap_number = s.lap_end)
+       GROUP BY ALL) o ON o.sk = ss.sk AND o.compound = pr.compound
+),
+last_lap AS (
+  SELECT DISTINCT ON (sk, cut, driver_number) sk, cut, driver_number, lap_number, compound, tyre_age
+    FROM aged WHERE lap_duration IS NOT NULL OR is_pit_out_lap
+   ORDER BY sk, cut, driver_number, lap_number DESC
+),
+elapsed AS (
+  SELECT a.sk, a.cut, a.driver_number,
+         sum(COALESCE(a.lap_duration, COALESCE(m.m, fm.m))) AS secs,
+         count(*) AS laps_done
+    FROM aged a LEFT JOIN med m USING (sk, cut, driver_number) JOIN fieldmed fm USING (sk, cut)
+   GROUP BY ALL
+),
+leadlap AS (SELECT sk, cut, max(laps_done) AS n FROM elapsed GROUP BY ALL),
+leader AS (
+  SELECT e.sk, e.cut, arg_min(e.driver_number, e.secs) AS driver_number
+    FROM elapsed e JOIN leadlap n USING (sk, cut)
+   WHERE e.laps_done = n.n GROUP BY ALL
+),
+leader_cum AS (
+  SELECT a.sk, a.cut, a.lap_number,
+         sum(COALESCE(a.lap_duration, fm.m)) OVER (PARTITION BY a.sk, a.cut ORDER BY a.lap_number) AS secs
+    FROM aged a JOIN leader ld USING (sk, cut, driver_number) JOIN fieldmed fm USING (sk, cut)
+),
+state AS (
+  SELECT ll.sk, ll.cut, ll.driver_number, ll.lap_number, ll.compound, COALESCE(ll.tyre_age, 10) AS tyre_age,
+         e.laps_done,
+         n.n - e.laps_done AS laps_down,
+         e.secs - COALESCE(lc.secs, 0) AS gap_s,
+         COALESCE(lc.secs, 0) AS at_secs,
+         greatest(0, c.total - e.laps_done) AS remaining,
+         c.total
+    FROM last_lap ll JOIN elapsed e USING (sk, cut, driver_number)
+    JOIN leadlap n USING (sk, cut) JOIN cuts c USING (sk, cut)
+    LEFT JOIN leader_cum lc ON lc.sk = e.sk AND lc.cut = e.cut AND lc.lap_number = e.laps_done
+),
+plan AS (
+  SELECT s.*,
+         COALESCE(p.base, fm.m + 0.5) AS base,
+         COALESCE(p.noise, 0.4) AS noise,
+         COALESCE(p.laps_used, 0) AS laps_used,
+         COALESCE(d.per_lap, 0.04) AS deg_per_lap,
+         s.laps_down >= 3 AS retired,
+         greatest(
+           CASE WHEN COALESCE(u.compounds_used,1) < 2 AND s.total > 40
+                     AND s.remaining > 0 THEN 1 ELSE 0 END,
+           CASE WHEN COALESCE(s.tyre_age,0) + s.remaining > COALESCE(l.max_life, 30)
+                     AND s.remaining > 4 THEN 1 ELSE 0 END) AS stops
+    FROM state s
+    JOIN fieldmed fm USING (sk, cut)
+    LEFT JOIN pace p USING (sk, cut, driver_number)
+    LEFT JOIN deg d ON d.sk = s.sk AND d.cut = s.cut AND d.compound = s.compound
+    LEFT JOIN life l ON l.sk = s.sk AND l.compound = s.compound
+    LEFT JOIN (SELECT l2.sk, l2.cut, l2.driver_number, count(DISTINCT s2.compound) AS compounds_used
+                 FROM last_lap l2 JOIN st s2 ON s2.sk = l2.sk AND s2.driver_number = l2.driver_number
+                WHERE s2.compound IS NOT NULL AND s2.lap_start <= l2.lap_number
+                GROUP BY ALL) u USING (sk, cut, driver_number)
+),
+plan2 AS (
+  SELECT p.*, p.tyre_age / (p.stops + 1.0) + p.remaining / (2.0 * (p.stops + 1.0)) AS mean_age
+    FROM plan p
+),
+-- The simulation, shaped to stream. The original draws every car in every
+-- simulation as a row and ranks them with a window: for a season that is
+-- fifty million rows held at once, more than the machine has. Here a
+-- simulation is one row whose cars are a list: the finishing times are drawn
+-- inside it (random() is drawn afresh per element), sorted there (retired cars
+-- last, then by time, as the original orders them), and the positions are
+-- counted straight into a histogram per car and position. The same draws as the
+-- original's, the same statistics, taken from the histogram.
+cars AS (
+  SELECT sk, cut,
+         list({'d': driver_number, 'retired': retired, 'remaining': remaining,
+               'at_secs': at_secs, 'gap_s': gap_s, 'base': base, 'deg': deg_per_lap,
+               'mean_age': mean_age, 'noise': noise, 'stops': stops}) AS cars
+    FROM plan2 GROUP BY ALL
+),
+sims AS (SELECT unnest(generate_series(1, 2000)) AS sim),
+runs AS (
+  SELECT c.sk, c.cut,
+         list_sort(list_transform(c.cars, lambda x: {
+           'out': x.retired OR random() < 1 - pow(1 - 0.0009, x.remaining),
+           'finish': x.at_secs + x.gap_s * compress
+                     + x.remaining * (x.base + x.deg * x.mean_age
+                                      + x.noise * (random() * 2 - 1) * 1.7)
+                     + x.stops * (ls.secs + random() * 3)
+                     + (random() * 2 - 1) * 2.0,
+           'd': x.d})) AS result
+    FROM cars c JOIN loss ls USING (sk, cut)
+    CROSS JOIN (SELECT sim, CASE WHEN random() < 0.35 THEN 0.30 ELSE 1.0 END AS compress FROM sims)
+),
+placed AS (
+  SELECT sk, cut, unnest(result) AS r, generate_subscripts(result, 1) AS pos FROM runs
+),
+hist AS (
+  SELECT sk, cut, r.d AS driver_number, pos, count(*) AS n,
+         sum(r.finish) FILTER (WHERE NOT r.out) AS finish_sum,
+         count(*) FILTER (WHERE NOT r.out) AS finishes
+    FROM placed GROUP BY ALL
+),
+cum AS (
+  SELECT *, sum(n) OVER (PARTITION BY sk, cut, driver_number ORDER BY pos) AS upto
+    FROM hist
+),
+-- quantile_cont over 2,000 positions, from the histogram: the k-th smallest
+-- (from 0) is the first position whose running count passes k, and h = 1999 q
+-- interpolates between the values at floor(h) and floor(h) + 1.
+stats AS (
+  SELECT sk, cut, driver_number,
+         sum(pos * n) / 2000.0 AS mean_pos,
+         min(pos) FILTER (WHERE upto > 999)  * 0.5 + min(pos) FILTER (WHERE upto > 1000) * 0.5 AS q50,
+         min(pos) FILTER (WHERE upto > 199)  * 0.1 + min(pos) FILTER (WHERE upto > 200)  * 0.9 AS q10,
+         min(pos) FILTER (WHERE upto > 1799) * 0.9 + min(pos) FILTER (WHERE upto > 1800) * 0.1 AS q90,
+         sum(n) FILTER (WHERE pos = 1)  AS wins,
+         sum(n) FILTER (WHERE pos <= 3) AS podiums,
+         sum(n) FILTER (WHERE pos <= 10) AS points,
+         sum(finish_sum) / nullif(sum(finishes), 0) AS finish_avg
+    FROM cum GROUP BY ALL
+)
+SELECT s.sk AS session_key, s.cut AS at_lap, s.driver_number,
+       pl.lap_number AS lap_now,
+       pl.remaining AS laps_remaining,
+       pl.stops AS stops_left,
+       pl.laps_used,
+       round(CASE WHEN isfinite(pl.base) THEN pl.base ELSE 0 END, 3) AS base_pace,
+       round(CASE WHEN isfinite(pl.deg_per_lap) THEN pl.deg_per_lap ELSE 0 END, 4) AS deg_per_lap,
+       round(ls.secs, 2) AS pit_loss,
+       round(s.mean_pos, 2) AS mean_position,
+       CAST(s.q50 AS BIGINT) AS median_position,
+       round(COALESCE(s.wins, 0) / 2000.0, 4) AS p_win,
+       round(COALESCE(s.podiums, 0) / 2000.0, 4) AS p_podium,
+       round(COALESCE(s.points, 0) / 2000.0, 4) AS p_points,
+       CAST(s.q10 AS BIGINT) AS best_case,
+       CAST(s.q90 AS BIGINT) AS worst_case,
+       round(CASE WHEN isfinite(s.finish_avg) THEN s.finish_avg ELSE 0 END, 1) AS projected_time
+  FROM stats s
+  JOIN plan2 pl USING (sk, cut, driver_number)
+  JOIN loss ls USING (sk, cut)
+;

@@ -28,12 +28,16 @@ mdl 1;
  *
  * ------------------------------------------------------- where the data is
  *
- * Nothing here is computed on this screen and nothing here is new. The backend
- * already stores every lap of every session it has captured, and the replay
- * builder in 25-replay.mdl has already run the forecaster at every lap of
- * every race it holds. Both are published from source on the admin service, so
- * a step is two filtered reads that Postgres answers from an index -- not a
- * recomputation.
+ * Nothing here is computed on this screen. Everything is read from the lake
+ * (lake/init.sql, replay.*), which has every race of the season: the OpenF1
+ * responses the backend posted (live, or by the season backfill, FINDINGS
+ * §118), unpacked into the classification lap by lap, and the forecaster run
+ * at every lap of every race. The lake recomputes them once an hour, so a step
+ * is a filtered read of a materialized table -- not a recomputation.
+ *
+ * This screen used to read the backend's admin service, where only the races
+ * the backend had followed live were held, replayed by 25-replay.mdl one lap
+ * at a time: two races of twenty-seven (FINDINGS §120).
  *
  * That is the reason this screen exists at all rather than the live one
  * gaining a mode. Narrate reads "the current session at the current lap"
@@ -59,32 +63,168 @@ create or modify persistent entity Formula1Frontend.ReplayState (
   MaxLap: long
 );
 
+/* -------------------------------------------------------------- the data -- */
+
+/* A race on offer, as a chip: replay.sessions. */
+create or modify non-persistent entity Formula1Frontend.ReplaySession (
+  SessionKey: string(20),
+  SessionName: string(80),
+  Location: string(80),
+  Label: string(160),
+  MaxLap: long
+);
+
 /*
- * The state row, created on first use.
- *
- * Opens on the newest race that has a forecast built, because the thing you
- * want to replay is almost always the last thing that happened.
+ * The classification as it stood, and the call the model made: what the two
+ * grids show, a row per car, with the driver's name joined in by the lake.
  */
+create or modify non-persistent entity Formula1Frontend.ReplayEntry (
+  Position: long, DriverNumber: long, Code: string(10), DriverName: string(120),
+  Team: string(120), LapNumber: long, GapToLeader: string(20),
+  LapSeconds: decimal, Compound: string(20), TyreAge: long, PitStops: long
+);
+
+create or modify non-persistent entity Formula1Frontend.ReplayCall (
+  MeanPosition: decimal, MedianPosition: long, DriverNumber: long,
+  Code: string(10), DriverName: string(120), PWin: decimal, PPodium: decimal,
+  PPoints: decimal, BestCase: long, WorstCase: long, StopsLeft: long,
+  LapsUsed: long, LapsRemaining: long,
+  /* Formatted here rather than in the grid. A probability shown as 0.684 is a
+   * number the reader has to convert, and the 10th-to-90th band is two columns
+   * saying one thing -- in a panel this narrow that is the difference between
+   * a table and a smear. */
+  Range: string(12), WinPct: string(8), PodiumPct: string(8), PointsPct: string(8)
+);
+
 /*
- * The sessions worth offering: the ones a forecast has been built for.
+ * The lake's replay tables (lake/init.sql), over its PostgreSQL endpoint.
  *
- * A session with laps but no forecast is a practice or a qualifying, and
- * stepping through a qualifying's predicted finishing order would be showing
- * a number the model does not claim to produce.
+ * A connection of its own beside 05-chart-data's F1Lake, the same constants, so
+ * the replay's queries sit with the entities they fill. Every parameter is CAST
+ * and compared with a column: a bare one costs the result its column names
+ * over this endpoint, and Mendix then cannot map them (FINDINGS §115).
+ */
+create or modify database connection Formula1Frontend.F1LakeReplay (
+Type: 'PostgreSQL',
+ConnectionString: @Formula1Frontend.LakeUrl,
+Username: @Formula1Frontend.LakeUser,
+Password: @Formula1Frontend.LakePassword )
+{
+  /*
+   * The races and sprints with a forecast, newest first. MaxLap is the last
+   * lap forecast: the scheduled distance, or the laps run if fewer.
+   */
+  query GetReplaySessions (
+    Sql: 'SELECT CAST(session_key AS VARCHAR) AS sessionKey, session_name AS sessionName,
+                 location, label, CAST(max_lap AS BIGINT) AS maxLap
+            FROM replay.sessions
+           WHERE max_lap >= 2
+           ORDER BY date_start DESC',
+    Returns: Formula1Frontend.ReplaySession,
+    Map: ( SessionKey = sessionKey, SessionName = sessionName, Location = location,
+           Label = label, MaxLap = maxLap ) )
+
+  /*
+   * Every car at its last completed lap at or before the chosen one, in
+   * position order. Not "every car on the chosen lap": a car a lap down has no
+   * row on it, and dropping it off the timing screen would be wrong -- the same
+   * rule the live classification follows.
+   */
+  query GetReplayOrder (
+    Sql: 'SELECT position, driver_number AS driverNumber, code, driver_name AS driverName,
+                 team, lap_number AS lapNumber, gap_to_leader AS gapToLeader,
+                 CAST(lap_seconds AS DECIMAL(10,3)) AS lapSeconds, compound,
+                 tyre_age AS tyreAge, pit_stops AS pitStops
+            FROM replay.laps
+           WHERE session_key = CAST({sessionKey} AS BIGINT)
+             AND lap_number <= CAST({atLap} AS BIGINT)
+         QUALIFY row_number() OVER (PARTITION BY driver_number ORDER BY lap_number DESC) = 1
+           ORDER BY position NULLS LAST, driver_number',
+    Parameters: ( sessionKey: string, atLap: string ),
+    Returns: Formula1Frontend.ReplayEntry,
+    Map: ( Position = position, DriverNumber = driverNumber, Code = code,
+           DriverName = driverName, Team = team, LapNumber = lapNumber,
+           GapToLeader = gapToLeader, LapSeconds = lapSeconds, Compound = compound,
+           TyreAge = tyreAge, PitStops = pitStops ) )
+
+  /* The forecast made at the chosen lap, in predicted order. */
+  query GetReplayForecast (
+    Sql: 'SELECT CAST(f.mean_position AS DECIMAL(8,2)) AS meanPosition,
+                 f.median_position AS medianPosition, f.driver_number AS driverNumber,
+                 COALESCE(d.code, '''') AS code, COALESCE(d.driver_name, '''') AS driverName,
+                 CAST(f.p_win AS DECIMAL(8,4)) AS pWin, CAST(f.p_podium AS DECIMAL(8,4)) AS pPodium,
+                 CAST(f.p_points AS DECIMAL(8,4)) AS pPoints,
+                 f.best_case AS bestCase, f.worst_case AS worstCase,
+                 f.stops_left AS stopsLeft, f.laps_used AS lapsUsed,
+                 f.laps_remaining AS lapsRemaining
+            FROM replay.forecast f
+            LEFT JOIN replay.drivers d
+              ON d.session_key = f.session_key AND d.driver_number = f.driver_number
+           WHERE f.session_key = CAST({sessionKey} AS BIGINT)
+             AND f.at_lap = CAST({atLap} AS BIGINT)
+           ORDER BY f.mean_position',
+    Parameters: ( sessionKey: string, atLap: string ),
+    Returns: Formula1Frontend.ReplayCall,
+    Map: ( MeanPosition = meanPosition, MedianPosition = medianPosition,
+           DriverNumber = driverNumber, Code = code, DriverName = driverName,
+           PWin = pWin, PPodium = pPodium, PPoints = pPoints, BestCase = bestCase,
+           WorstCase = worstCase, StopsLeft = stopsLeft, LapsUsed = lapsUsed,
+           LapsRemaining = lapsRemaining ) )
+
+  /*
+   * Win probability up to the chosen lap, for every car that was given more
+   * than 2% at some lap so far, as the chart's rows {code, lap, p}. A car
+   * without a code is named by its number.
+   */
+  query GetReplayWin (
+    Sql: 'WITH f AS (
+            SELECT f.at_lap, f.driver_number, f.p_win,
+                   COALESCE(NULLIF(d.code, ''''), CAST(f.driver_number AS VARCHAR)) AS code
+              FROM replay.forecast f
+              LEFT JOIN replay.drivers d
+                ON d.session_key = f.session_key AND d.driver_number = f.driver_number
+             WHERE f.session_key = CAST({sessionKey} AS BIGINT)
+               AND f.at_lap <= CAST({atLap} AS BIGINT))
+          SELECT COALESCE(CAST(to_json(list(
+                   {''code'': code, ''lap'': at_lap, ''p'': round(p_win * 100, 2)}
+                   ORDER BY at_lap, driver_number)) AS VARCHAR), ''[]'') AS json
+            FROM f
+           WHERE driver_number IN (SELECT driver_number FROM f WHERE p_win > 0.02)',
+    Parameters: ( sessionKey: string, atLap: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+
+  /* Position by lap up to the chosen lap, as the chart's rows {code, lap, pos}. */
+  query GetReplayPositions (
+    Sql: 'SELECT COALESCE(CAST(to_json(list(
+                   {''code'': code, ''lap'': lap_number, ''pos'': position}
+                   ORDER BY lap_number, driver_number)) AS VARCHAR), ''[]'') AS json
+            FROM replay.laps
+           WHERE session_key = CAST({sessionKey} AS BIGINT)
+             AND lap_number <= CAST({atLap} AS BIGINT)
+             AND position IS NOT NULL AND code <> ''''',
+    Parameters: ( sessionKey: string, atLap: string ),
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+};
+
+/*
+ * The races worth offering: the ones with a forecast, which is the races and
+ * sprints -- a practice or qualifying has no finishing order that pace
+ * predicts. An empty list when the lake does not answer: the screen then has
+ * nothing to pick, rather than an error.
  */
 CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplaySessions ()
-  RETURNS List of F1Admin.Sessions AS $Have
+  RETURNS List of Formula1Frontend.ReplaySession AS $Sessions
 BEGIN
-  $Have = CREATE LIST OF F1Admin.Sessions;
-  RETRIEVE $Sessions FROM F1Admin.Sessions SORT BY dateStart DESC;
-  LOOP $S IN $Sessions BEGIN
-    RETRIEVE $Fcst FROM F1Admin.Forecast
-      WHERE sessionKey = $S/sessionKey FIRST;
-    IF $Fcst != empty THEN
-      ADD $S TO $Have;
-    END IF;
-  END LOOP;
-  RETURN $Have;
+  $Sessions = execute database query Formula1Frontend.F1LakeReplay.GetReplaySessions
+    on error without rollback begin
+      log warning node 'F1Lake' 'Replay sessions: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $None = CREATE LIST OF Formula1Frontend.ReplaySession;
+      return $None;
+    end error;
+  RETURN $Sessions;
 END;
 
 /* ------------------------------------------------------------ the buttons -- */
@@ -92,13 +232,13 @@ END;
 /*
  * Choose a session: remember it, find how far the forecast goes, and rewind.
  *
- * MaxLap is the last lap a forecast exists for rather than the last lap of the
- * race. They are the same once the builder has caught up and they are not
- * while it is working, and a stepper that walks past the end of its own data
- * shows an empty grid and looks broken.
+ * MaxLap is the last lap a forecast exists for (replay.sessions' max_lap): the
+ * scheduled distance, or the laps run if the race ended early or is still
+ * running. A stepper that walks past the end of its own data shows an empty
+ * grid and looks broken.
  */
 CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_ReplayPick (
-  $Session: F1Admin.Sessions
+  $Session: Formula1Frontend.ReplaySession
 )
   RETURNS Boolean AS $Ok
 BEGIN
@@ -109,16 +249,13 @@ BEGIN
   END IF;
 
   DECLARE $Max Long = 2;
-  RETRIEVE $Last FROM F1Admin.Forecast
-    WHERE sessionKey = $Session/sessionKey SORT BY atLap DESC FIRST;
-  IF $Last != empty THEN
-    SET $Max = $Last/atLap;
+  IF $Session/MaxLap != empty AND $Session/MaxLap > 2 THEN
+    SET $Max = $Session/MaxLap;
   END IF;
 
   CHANGE $State (
-    SessionKey = $Session/sessionKey,
-    SessionLabel = $Session/sessionName + ' · ' + $Session/location
-                   + ' · ' + toString($Session/year),
+    SessionKey = $Session/SessionKey,
+    SessionLabel = $Session/Label,
     MaxLap = $Max,
     AtLap = 2
   ) COMMIT REFRESH;
@@ -223,72 +360,31 @@ END;
 /* ------------------------------------------------------------- the reads -- */
 
 /*
- * The classification as it stood, and the call the model made.
- *
- * Two view rows rather than binding the grids straight to the external
- * entities, because both want the driver's name against a number the timing
- * feed reports and neither carries it: F1Admin.Laps and F1Admin.Forecast are
- * keyed on driver_number, and the entry list is a third table.
- */
-create or modify non-persistent entity Formula1Frontend.ReplayEntry (
-  Position: long, DriverNumber: long, Code: string(10), DriverName: string(120),
-  Team: string(120), LapNumber: long, GapToLeader: string(20),
-  LapSeconds: decimal, Compound: string(20), TyreAge: long, PitStops: long
-);
-
-create or modify non-persistent entity Formula1Frontend.ReplayCall (
-  MeanPosition: decimal, MedianPosition: long, DriverNumber: long,
-  Code: string(10), DriverName: string(120), PWin: decimal, PPodium: decimal,
-  PPoints: decimal, BestCase: long, WorstCase: long, StopsLeft: long,
-  LapsUsed: long, LapsRemaining: long,
-  /* Formatted here rather than in the grid. A probability shown as 0.684 is a
-   * number the reader has to convert, and the 10th-to-90th band is two columns
-   * saying one thing -- in a panel this narrow that is the difference between
-   * a table and a smear. */
-  Range: string(12), WinPct: string(8), PodiumPct: string(8), PointsPct: string(8)
-);
-
-/*
  * Everyone's last completed lap at or before the chosen one.
  *
  * Not "everyone on the chosen lap": a car a lap down has no row on it, and
  * dropping it off the timing screen would be wrong -- the same rule the live
- * classification follows. Laps come back newest first and a driver is taken
- * the first time it is seen.
+ * classification follows. The lake takes each car's newest lap at or before
+ * the chosen one (GetReplayOrder).
  */
 CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplayOrder (
   $State: Formula1Frontend.ReplayState
 )
-  RETURNS List of Formula1Frontend.ReplayEntry AS $Ordered
+  RETURNS List of Formula1Frontend.ReplayEntry AS $Rows
 BEGIN
-  $Rows = CREATE LIST OF Formula1Frontend.ReplayEntry;
   IF $State = empty OR trim($State/SessionKey) = '' THEN
-    RETURN $Rows;
+    $NoState = CREATE LIST OF Formula1Frontend.ReplayEntry;
+    RETURN $NoState;
   END IF;
-
-  RETRIEVE $Laps FROM F1Admin.Laps
-    WHERE sessionKey = $State/SessionKey and lapNumber <= $State/AtLap
-    SORT BY lapNumber DESC;
-  RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
-
-  LOOP $L IN $Laps BEGIN
-    $Seen = FIND $Rows BY DriverNumber = $L/driverNumber;
-    IF $Seen = empty THEN
-      $D = FIND $Drivers BY driverNumber = $L/driverNumber;
-      $Row = CREATE Formula1Frontend.ReplayEntry (
-        Position = $L/position, DriverNumber = $L/driverNumber,
-        LapNumber = $L/lapNumber, GapToLeader = $L/gapToLeader,
-        LapSeconds = $L/lapSeconds, Compound = $L/compound,
-        TyreAge = $L/tyreAge, PitStops = $L/pitStops);
-      IF $D != empty THEN
-        CHANGE $Row (Code = $D/code, DriverName = $D/driverName, Team = $D/team);
-      END IF;
-      ADD $Row TO $Rows;
-    END IF;
-  END LOOP;
-
-  $Ordered = SORT $Rows BY Position;
-  RETURN $Ordered;
+  $Rows = execute database query Formula1Frontend.F1LakeReplay.GetReplayOrder
+    (sessionKey = $State/SessionKey, atLap = toString($State/AtLap))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Replay classification: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $None = CREATE LIST OF Formula1Frontend.ReplayEntry;
+      return $None;
+    end error;
+  RETURN $Rows;
 END;
 
 /*
@@ -297,37 +393,28 @@ END;
 CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_ReplayForecast (
   $State: Formula1Frontend.ReplayState
 )
-  RETURNS List of Formula1Frontend.ReplayCall AS $Ordered
+  RETURNS List of Formula1Frontend.ReplayCall AS $Rows
 BEGIN
-  $Rows = CREATE LIST OF Formula1Frontend.ReplayCall;
   IF $State = empty OR trim($State/SessionKey) = '' THEN
-    RETURN $Rows;
+    $NoState = CREATE LIST OF Formula1Frontend.ReplayCall;
+    RETURN $NoState;
   END IF;
-
-  RETRIEVE $Fcst FROM F1Admin.Forecast
-    WHERE sessionKey = $State/SessionKey and atLap = $State/AtLap;
-  RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
-
-  LOOP $F IN $Fcst BEGIN
-    $D = FIND $Drivers BY driverNumber = $F/driverNumber;
-    $Row = CREATE Formula1Frontend.ReplayCall (
-      MeanPosition = $F/meanPosition, MedianPosition = $F/medianPosition,
-      DriverNumber = $F/driverNumber, PWin = $F/pWin, PPodium = $F/pPodium,
-      PPoints = $F/pPoints, BestCase = $F/bestCase, WorstCase = $F/worstCase,
-      StopsLeft = $F/stopsLeft, LapsUsed = $F/lapsUsed,
-      LapsRemaining = $F/lapsRemaining,
-      Range = toString($F/bestCase) + '-' + toString($F/worstCase),
-      WinPct = formatDecimal($F/pWin * 100, '0') + '%',
-      PodiumPct = formatDecimal($F/pPodium * 100, '0') + '%',
-      PointsPct = formatDecimal($F/pPoints * 100, '0') + '%');
-    IF $D != empty THEN
-      CHANGE $Row (Code = $D/code, DriverName = $D/driverName);
-    END IF;
-    ADD $Row TO $Rows;
+  $Rows = execute database query Formula1Frontend.F1LakeReplay.GetReplayForecast
+    (sessionKey = $State/SessionKey, atLap = toString($State/AtLap))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Replay forecast: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $None = CREATE LIST OF Formula1Frontend.ReplayCall;
+      return $None;
+    end error;
+  LOOP $F IN $Rows BEGIN
+    CHANGE $F (
+      Range = toString($F/BestCase) + '-' + toString($F/WorstCase),
+      WinPct = formatDecimal($F/PWin * 100, '0') + '%',
+      PodiumPct = formatDecimal($F/PPodium * 100, '0') + '%',
+      PointsPct = formatDecimal($F/PPoints * 100, '0') + '%');
   END LOOP;
-
-  $Ordered = SORT $Rows BY MeanPosition;
-  RETURN $Ordered;
+  RETURN $Rows;
 END;
 
 /* ------------------------------------------------------------ the charts -- */
@@ -339,47 +426,28 @@ END;
  * greyed out is the entire point: what you are watching is the model without
  * hindsight. A chart that showed where the lines were going would answer the
  * question the stepping is there to ask.
+ *
+ * Only the cars that were given more than 2% at some lap so far: twenty lines
+ * hugging zero would bury the four that matter (GetReplayWin).
  */
 CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ReplayWin (
   $State: Formula1Frontend.ReplayState
 )
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  IF $State != empty AND trim($State/SessionKey) != '' THEN
-    RETRIEVE $Fcst FROM F1Admin.Forecast
-      WHERE sessionKey = $State/SessionKey and atLap <= $State/AtLap
-      SORT BY atLap ASC;
-    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
-
-    /* Only cars the model has ever given a real chance. Twenty-two lines of
-     * which fifteen are flat on the axis hide the six that matter. */
-    DECLARE $Keep String = '|';
-    LOOP $F IN $Fcst BEGIN
-      IF $F/pWin != empty AND $F/pWin > 0.02
-         AND contains($Keep, '|' + toString($F/driverNumber) + '|') = false THEN
-        SET $Keep = $Keep + toString($F/driverNumber) + '|';
-      END IF;
-    END LOOP;
-
-    LOOP $P IN $Fcst BEGIN
-      IF contains($Keep, '|' + toString($P/driverNumber) + '|') THEN
-        $D = FIND $Drivers BY driverNumber = $P/driverNumber;
-        DECLARE $Code String = toString($P/driverNumber);
-        IF $D != empty AND trim($D/code) != '' THEN
-          SET $Code = $D/code;
-        END IF;
-        SET $Json = $Json + $Sep
-          + '{"code":"' + $Code + '","lap":' + toString($P/atLap)
-          + ',"p":' + toString(round($P/pWin * 100, 2)) + '}';
-        SET $Sep = ',';
-      END IF;
-    END LOOP;
+  IF $State = empty OR trim($State/SessionKey) = '' THEN
+    $NoState = create Formula1Frontend.Chart (json = '[]');
+    RETURN $NoState;
   END IF;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  $Rows = execute database query Formula1Frontend.F1LakeReplay.GetReplayWin
+    (sessionKey = $State/SessionKey, atLap = toString($State/AtLap))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Replay win probability: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -391,28 +459,19 @@ CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ReplayPositions (
 )
   RETURNS Formula1Frontend.Chart AS $Chart
 BEGIN
-  DECLARE $Json String = '[';
-  DECLARE $Sep String = '';
-  IF $State != empty AND trim($State/SessionKey) != '' THEN
-    RETRIEVE $Laps FROM F1Admin.Laps
-      WHERE sessionKey = $State/SessionKey and lapNumber <= $State/AtLap
-      SORT BY lapNumber ASC;
-    RETRIEVE $Drivers FROM F1Admin.Drivers WHERE sessionKey = $State/SessionKey;
-    LOOP $L IN $Laps BEGIN
-      IF $L/position != empty THEN
-        $D = FIND $Drivers BY driverNumber = $L/driverNumber;
-        IF $D != empty AND trim($D/code) != '' THEN
-          SET $Json = $Json + $Sep
-            + '{"code":"' + $D/code + '","lap":' + toString($L/lapNumber)
-            + ',"pos":' + toString($L/position) + '}';
-          SET $Sep = ',';
-        END IF;
-      END IF;
-    END LOOP;
+  IF $State = empty OR trim($State/SessionKey) = '' THEN
+    $NoState = create Formula1Frontend.Chart (json = '[]');
+    RETURN $NoState;
   END IF;
-  SET $Json = $Json + ']';
-
-  $Chart = CREATE Formula1Frontend.Chart (json = $Json);
+  $Rows = execute database query Formula1Frontend.F1LakeReplay.GetReplayPositions
+    (sessionKey = $State/SessionKey, atLap = toString($State/AtLap))
+    on error without rollback begin
+      log warning node 'F1Lake' 'Replay positions: the lake did not answer: {1}'
+        with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
   RETURN $Chart;
 END;
 
@@ -464,17 +523,17 @@ create or modify page Formula1Frontend.Replay
         }
       }
 
-      /* Which race. Every session a forecast has been built for, newest first. */
+      /* Which race. Every race and sprint of the season in the lake, newest first. */
       container rChips (class: 'chips-row') {
         listview lvSessions (datasource: MICROFLOW Formula1Frontend.DS_ReplaySessions,
-                             PageSize: 12) {
+                             PageSize: 40) {
           container chipSession (
             class: 'chip-pick',
-            dynamicclasses: if $currentObject/sessionKey = $dvReplay/SessionKey then 'is-picked' else '',
+            dynamicclasses: if $currentObject/SessionKey = $dvReplay/SessionKey then 'is-picked' else '',
             OnClick: CALL MICROFLOW Formula1Frontend.ACT_ReplayPick(Session = $currentObject)
           ) {
             dynamictext chipName (content: '{1} {2}',
-              contentparams: ({1} = location, {2} = sessionName))
+              contentparams: ({1} = Location, {2} = SessionName))
           }
         }
       }
