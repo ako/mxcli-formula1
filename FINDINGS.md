@@ -10441,3 +10441,40 @@ with their drivers) take 0.1–0.8 s; queries across every kind of result for a
 driver or a race take 1–3 s. Counting all 188,879 results through the superclass
 takes 12 s. That count dedupes across 16 tables, so the unique keys now declared in
 `[rdf] unique_keys` do not help it.
+
+## 124. OpenF1's MQTT stream in FP1: 2–3 s behind, against 36 s for the poll
+
+During Qatar FP1 (session 11421) two clients subscribed to OpenF1's MQTT broker
+(`mqtt.openf1.org:8883`, openf1.org/auth.html): a Python client for 18 minutes,
+and the backend through Mendix's MQTT Connector (28-mqtt-probe.mdl). The live sync
+ran as usual, and the backend's LiveLap table was polled every 2 s.
+
+**Logging in.** The password is the OAuth2 access token, and the username must be
+the account's email. A made-up username is refused with "Not authorized",
+although the documentation says any non-empty string will do.
+
+**The stream** (Python client, 1,903 messages):
+
+| Topic | Messages | Delay behind OpenF1's own timestamps |
+|---|---|---|
+| `v1/position` | 378 | median 2.3 s, 90th percentile 2.5 s, maximum 2.8 s |
+| `v1/laps` | 1,525 | median 2.2 s, 90th percentile 2.5 s (from the lap's start plus its duration) |
+| `v1/intervals` | none | OpenF1 publishes gaps in races and sprints only |
+
+**Against the poll.** The backend creates a lap's row when the lap starts. For
+189 laps it appeared a median of 36 s after the stream had announced that lap,
+61 s at the 90th percentile and 78 s at most. The causes are the poll interval
+and the one-minute transaction (§122). So the live page was about 38 s behind
+the track on a typical lap and up to 80 s at worst; over the stream it would be
+2–3 s.
+
+**The connector and an expiring token.** The backend's probe connected at 12:11
+with a token that expired at 12:19. At 13:25 it was disconnected and subscribed
+again with a fresh token, valid until 14:09. The broker refused that: "Subscribe
+operation failed Bad User Name or Password". Seven minutes later the Python
+client logged in with the same token and username. The connector keeps its
+broker connections in a registry keyed by client id, and Disconnect does not
+remove an entry, so the new subscription reused the connection set up with the
+old token. The backend therefore received nothing during FP1. The live version
+needs a new client id for each new token, or the connection's options replaced,
+and it must disconnect the old one by its own id.
