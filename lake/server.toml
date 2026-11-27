@@ -26,8 +26,9 @@ init_sql = "init.sql"
 # (Driver, Constructor, Race). Both reload when they change.
 mapping = "mapping/*.ttl"
 ontology = "ontology/*.ttl"
-# f1db ids are unique and non-null; saying so lets SPARQL skip the checks.
-unique_keys = "f1.drivers(id); f1.constructors(id)"
+# f1db ids are unique and non-null; saying so lets SPARQL skip the checks. The
+# result tables are unique on (race, display order), as their IRIs are.
+unique_keys = """f1.drivers(id); f1.constructors(id); f1.races(id); f1.circuits(id); f1.circuit_layouts(id); f1.countries(id); f1.continents(id); f1.grands_prix(id); f1.engine_manufacturers(id); f1.tyre_manufacturers(id); f1.engines(id); f1.chassis(id); f1.entrants(id); f1.seasons(year); f1.race_results(raceId, positionDisplayOrder); f1.sprint_results(raceId, positionDisplayOrder); f1.qualifying_results(raceId, positionDisplayOrder); f1.qualifying_1_results(raceId, positionDisplayOrder); f1.qualifying_2_results(raceId, positionDisplayOrder); f1.pre_qualifying_results(raceId, positionDisplayOrder); f1.sprint_qualifying_results(raceId, positionDisplayOrder); f1.fp1_results(raceId, positionDisplayOrder); f1.fp2_results(raceId, positionDisplayOrder); f1.fp3_results(raceId, positionDisplayOrder); f1.fp4_results(raceId, positionDisplayOrder); f1.warming_up_results(raceId, positionDisplayOrder); f1.starting_grid(raceId, positionDisplayOrder); f1.sprint_starting_grid(raceId, positionDisplayOrder); f1.fastest_laps(raceId, positionDisplayOrder); f1.pit_stops(raceId, positionDisplayOrder); f1.driver_of_the_day(raceId, positionDisplayOrder); f1.race_driver_standings(raceId, positionDisplayOrder); f1.race_constructor_standings(raceId, positionDisplayOrder); f1.season_driver_standings(year, positionDisplayOrder); f1.season_constructor_standings(year, positionDisplayOrder)"""
 
 # gold.* is what the frontend reads: keep the results, and recompute a view
 # when a file it reads changes (a refreshed f1db release, for instance).

@@ -783,3 +783,103 @@ SELECT s.sk AS session_key, s.cut AS at_lap, s.driver_number,
   JOIN plan2 pl USING (sk, cut, driver_number)
   JOIN loss ls USING (sk, cut)
 ;
+
+
+-- ------------------------------------------------------- f1db, the rest --
+-- Every f1db file the views above leave out, so the graph (lake/mapping,
+-- scripts/datalake/build-graph.py) can cover all of f1db. Plain inference, as
+-- above; one view per file, named after it.
+
+CREATE OR REPLACE VIEW f1.continents AS SELECT * FROM read_csv('f1db/f1db-continents.csv');
+CREATE OR REPLACE VIEW f1.circuit_layouts AS SELECT * FROM read_csv('f1db/f1db-circuits-layouts.csv');
+CREATE OR REPLACE VIEW f1.chassis AS SELECT * FROM read_csv('f1db/f1db-chassis.csv');
+CREATE OR REPLACE VIEW f1.constructor_chronology AS SELECT * FROM read_csv('f1db/f1db-constructors-chronology.csv');
+CREATE OR REPLACE VIEW f1.driver_family_relationships AS SELECT * FROM read_csv('f1db/f1db-drivers-family-relationships.csv');
+CREATE OR REPLACE VIEW f1.engine_manufacturers AS SELECT * FROM read_csv('f1db/f1db-engine-manufacturers.csv');
+CREATE OR REPLACE VIEW f1.engines AS SELECT * FROM read_csv('f1db/f1db-engines.csv');
+CREATE OR REPLACE VIEW f1.entrants AS SELECT * FROM read_csv('f1db/f1db-entrants.csv');
+CREATE OR REPLACE VIEW f1.tyre_manufacturers AS SELECT * FROM read_csv('f1db/f1db-tyre-manufacturers.csv');
+CREATE OR REPLACE VIEW f1.driver_of_the_day AS SELECT * FROM read_csv('f1db/f1db-races-driver-of-the-day-results.csv');
+CREATE OR REPLACE VIEW f1.fp4_results AS SELECT * FROM read_csv('f1db/f1db-races-free-practice-4-results.csv');
+CREATE OR REPLACE VIEW f1.pre_qualifying_results AS SELECT * FROM read_csv('f1db/f1db-races-pre-qualifying-results.csv');
+CREATE OR REPLACE VIEW f1.qualifying_1_results AS SELECT * FROM read_csv('f1db/f1db-races-qualifying-1-results.csv');
+CREATE OR REPLACE VIEW f1.qualifying_2_results AS SELECT * FROM read_csv('f1db/f1db-races-qualifying-2-results.csv');
+CREATE OR REPLACE VIEW f1.sprint_qualifying_results AS SELECT * FROM read_csv('f1db/f1db-races-sprint-qualifying-results.csv');
+CREATE OR REPLACE VIEW f1.sprint_starting_grid AS SELECT * FROM read_csv('f1db/f1db-races-sprint-starting-grid-positions.csv');
+CREATE OR REPLACE VIEW f1.warming_up_results AS SELECT * FROM read_csv('f1db/f1db-races-warming-up-results.csv');
+CREATE OR REPLACE VIEW f1.season_drivers AS SELECT * FROM read_csv('f1db/f1db-seasons-drivers.csv');
+CREATE OR REPLACE VIEW f1.season_constructors AS SELECT * FROM read_csv('f1db/f1db-seasons-constructors.csv');
+CREATE OR REPLACE VIEW f1.season_engine_manufacturers AS SELECT * FROM read_csv('f1db/f1db-seasons-engine-manufacturers.csv');
+CREATE OR REPLACE VIEW f1.season_tyre_manufacturers AS SELECT * FROM read_csv('f1db/f1db-seasons-tyre-manufacturers.csv');
+CREATE OR REPLACE VIEW f1.season_entrants AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants.csv');
+CREATE OR REPLACE VIEW f1.season_entrant_constructors AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants-constructors.csv');
+CREATE OR REPLACE VIEW f1.season_entrant_drivers AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants-drivers.csv');
+CREATE OR REPLACE VIEW f1.season_entrant_chassis AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants-chassis.csv');
+CREATE OR REPLACE VIEW f1.season_entrant_engines AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants-engines.csv');
+CREATE OR REPLACE VIEW f1.season_entrant_tyre_manufacturers AS SELECT * FROM read_csv('f1db/f1db-seasons-entrants-tyre-manufacturers.csv');
+
+-- Jolpica's lap positions (f1.laps) with f1db's race and driver ids, so a lap
+-- links to its race and driver like every other result. A driverRef is matched
+-- as gold.lap_chart matches it: the f1db id ('_' -> '-'), else the last name
+-- among the race's starters, a suffix allowed ('sainz' is 'Sainz Jr.'); a lap whose driver is not found keeps no driver.
+CREATE OR REPLACE VIEW f1.lap_positions AS
+WITH dref AS (
+  SELECT x.year, x.round, x.driverRef, COALESCE(
+    (SELECT d.id FROM f1.drivers d WHERE d.id = replace(x.driverRef, '_', '-') LIMIT 1),
+    (SELECT d.id FROM f1.drivers d JOIN f1.race_results rr ON rr.driverId = d.id
+      WHERE rr.year = x.year AND rr.round = x.round
+        AND (lower(strip_accents(d.lastName)) = x.driverRef
+             OR lower(strip_accents(d.lastName)) LIKE x.driverRef || ' %') LIMIT 1)) AS driverId
+  FROM (SELECT DISTINCT year, round, driverRef FROM f1.laps) x
+)
+SELECT r.id AS raceId, l.year, l.round, l.lap, l.driverRef, dref.driverId,
+       l.position, l.time, l.timeMillis
+  FROM f1.laps l
+  JOIN f1.races r ON r.year = l.year AND r.round = l.round
+  JOIN dref ON dref.year = l.year AND dref.round = l.round AND dref.driverRef = l.driverRef;
+
+
+-- ------------------------------------------------------- OpenF1 ↔ f1db --
+-- Which f1db race weekend an OpenF1 session belongs to, and which f1db driver
+-- an OpenF1 entry is.
+--
+-- A session belongs to the f1db race of its year whose race day is within a
+-- day before to four days after the session's own day: practice is on Friday,
+-- the race on Sunday, and f1db dates a race by the track's day (mostly; Las
+-- Vegas by UTC, replay.sessions).
+CREATE OR REPLACE VIEW timing.session_races AS
+SELECT s.session_key, arg_min(r.id, abs(date_diff('day', s.local_date, r.date))) AS race_id
+  FROM timing.sessions s
+  JOIN f1.races r ON r.year = s.year AND date_diff('day', s.local_date, r.date) BETWEEN -1 AND 4
+ GROUP BY s.session_key;
+
+-- An entry is the f1db driver with the entry's three-letter code who drove that
+-- season, the one with the entry's car number when two share a code.
+CREATE OR REPLACE VIEW timing.session_drivers AS
+SELECT t.session_key, t.driver_number, t.code, t.driver_name, t.team, t.team_colour,
+       (SELECT d.id FROM f1.drivers d
+         WHERE d.abbreviation = t.code
+           AND d.id IN (SELECT e.driverId FROM f1.season_entrant_drivers e WHERE e.year = s.year)
+         ORDER BY (d.permanentNumber = t.driver_number) DESC NULLS LAST, d.id
+         LIMIT 1) AS driver_id
+  FROM timing.drivers t JOIN timing.sessions s USING (session_key);
+
+-- Race control's messages and the weather, as the other feeds above.
+CREATE OR REPLACE VIEW timing.race_control AS
+SELECT sk AS session_key, row_number() OVER (PARTITION BY sk ORDER BY j.date, j.message) AS seq,
+       CAST(j.date AS TIMESTAMP) AS date, j.category, j.flag, j.scope, j.sector,
+       j.driver_number, j.lap_number, j.message
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j
+          FROM openf1.race_control
+         WHERE regexp_matches(subject, '^race_control\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+CREATE OR REPLACE VIEW timing.weather AS
+SELECT sk AS session_key, CAST(j.date AS TIMESTAMP) AS date, j.air_temperature, j.track_temperature,
+       j.humidity, j.pressure, j.rainfall, j.wind_direction, j.wind_speed
+  FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
+               unnest(from_json(payload, '[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","pressure":"DOUBLE","rainfall":"DOUBLE","wind_direction":"DOUBLE","wind_speed":"DOUBLE"}]')) AS j
+          FROM openf1.weather
+         WHERE regexp_matches(subject, '^weather\?session_key=\d+$')
+       QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
