@@ -714,6 +714,8 @@ create or modify published odata service Formula1Backend.F1OpsApi (
   /* Backfill a season's OpenF1 data into the lake. Takes minutes. */
   publish microflow Formula1Backend.Ops_LakeBackfill as 'LakeBackfill'
     expose ( Year as 'year', Sessions as 'sessions' );
+  publish microflow Formula1Backend.Ops_MqttProbe as 'MqttProbe'
+    expose ( Enabled as 'enabled' );
 };
 
 /*
@@ -737,6 +739,8 @@ GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.Ap
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveSyncNow TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LakeBackfill TO Formula1Backend.ApiUser;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LakeBackfill TO Formula1Backend.DataAdmin;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_MqttProbe TO Formula1Backend.ApiUser;
+GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_MqttProbe TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_Live TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Sync_EnsureToken TO Formula1Backend.DataAdmin;
 GRANT EXECUTE ON MICROFLOW Formula1Backend.Ops_LiveCycleNow TO Formula1Backend.ApiUser;

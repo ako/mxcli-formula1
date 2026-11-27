@@ -1,0 +1,140 @@
+mdl 1;
+/*
+ * OpenF1's MQTT stream, through the backend: a probe.
+ * ===================================================
+ *
+ * OpenF1 pushes live data over MQTT (mqtt.openf1.org:8883) and WebSockets to
+ * accounts with live access (openf1.org/auth.html), with topics named after the
+ * REST paths: v1/laps, v1/position, v1/intervals, ... The live sync polls the
+ * REST API instead, so it is a poll interval behind the stream, and its cycle
+ * commits once a minute (FINDINGS §122).
+ *
+ * This is the first step of moving the live lane onto the stream, through the
+ * backend so that every external source keeps going through one place, with
+ * its metrics, traces and logs. It changes nothing the live sync does:
+ * Ops_MqttProbe subscribes, every message is stored with the time it arrived
+ * (MqttMessage), and the delays are measured afterwards in SQL.
+ *
+ * The connector is Mendix's MQTT Connector (Marketplace 119508, 3.1.0). Each
+ * message runs the handler in a transaction of its own, one after another on
+ * the client's thread, so the handler stays small.
+ *
+ * ------------------------------------------------------------ the password --
+ *
+ * OpenF1's broker takes the OAuth2 access token as the password and the
+ * account's username (its email) as the user name; a made-up user name is
+ * refused ("Not authorized"), although the documentation says any will do.
+ *
+ * The token is 914 characters, 1,263 once the connector has encrypted it, and
+ * the connector's ConnectionDetail.Password holds 200. Mendix enforces that when
+ * the value is set, not only on commit, so building the object in memory is not
+ * enough: the attribute is widened below. That is a local change to a
+ * Marketplace module, and `mxcli marketplace update` of MqttConnector has to
+ * keep it (`marketplace diff` shows it).
+ *
+ * The connection detail is still built in memory for each call and never
+ * committed, which the connector's own SampleUsage describes, so the token
+ * stays out of the database. The connector decrypts the password when it
+ * connects, so it is encrypted with the connector's key first.
+ *
+ * A token lasts an hour, and the client's automatic reconnect would retry with
+ * the one it connected with. Fine for a probe; the live version has to
+ * reconnect with a fresh token when Sync_EnsureToken renews it.
+ */
+
+/* An OpenF1 access token does not fit the connector's 200 characters. */
+alter entity MqttConnector.ConnectionDetail
+  modify attribute Password: String(unlimited);
+
+/* ------------------------------------------------------------- the message -- */
+
+/* One message as it arrived. Payload is OpenF1's JSON, unparsed. */
+create or modify persistent entity Formula1Backend.MqttMessage (
+  Topic: String(80),
+  Payload: String(unlimited),
+  ReceivedAt: DateTime
+);
+
+/*
+ * The subscription's handler: keep the message and count it, nothing else.
+ * Metrics as in Sync_Fetch, tagged by topic, so the lake-sync dashboard can
+ * put the stream beside the polls.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_OnMessage (
+  $Topic: String,
+  $Payload: String
+)
+BEGIN
+  $Msg = CREATE Formula1Backend.MqttMessage (
+    Topic = $Topic, Payload = $Payload, ReceivedAt = [%CurrentDateTime%]);
+  COMMIT $Msg;
+  increment counter 'f1.mqtt.messages' (Tags: ('topic': $Topic));
+  increment counter 'f1.mqtt.chars' by length($Payload) (Tags: ('topic': $Topic));
+END;
+
+/* --------------------------------------------------------- the connection -- */
+
+create or modify constant Formula1Backend.OpenF1MqttHost (
+  Type: String, DefaultValue: 'mqtt.openf1.org');
+create or modify constant Formula1Backend.OpenF1MqttPort (
+  Type: Integer, DefaultValue: 8883);
+
+/*
+ * The broker connection, in memory (see the top of this file). The client id
+ * is fixed, so a later Unsubscribe or Disconnect reaches the same connection.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Connection ()
+  RETURNS MqttConnector.ConnectionDetail AS $Conn
+BEGIN
+  $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+  $Secret = CALL JAVA ACTION MqttConnector.Encrypt(
+    key = @MqttConnector.EncryptionKey, plainString = $Token);
+  $Conn = CREATE MqttConnector.ConnectionDetail (
+    Name = 'OpenF1',
+    BrokerHost = @Formula1Backend.OpenF1MqttHost,
+    BrokerPort = @Formula1Backend.OpenF1MqttPort,
+    SSL = true,
+    AuthenticationMethod = MqttConnector.AuthenticationMethod.BASIC,
+    UserName = @Formula1Backend.OpenF1Username,
+    Password = $Secret,
+    CleanSession = true,
+    AutoReconnect = true,
+    KeepAliveTime = 60,
+    TimeOut = 30,
+    UseCustomClientId = true,
+    ClientId = 'formula1backend-openf1');
+  RETURN $Conn;
+END;
+
+/*
+ * Subscribe to the fast feeds, or unsubscribe and disconnect. Published on the
+ * ops service as MqttProbe(enabled).
+ */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_MqttProbe (
+  $Enabled: Boolean
+)
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+  $Conn = CALL MICROFLOW Formula1Backend.Mqtt_Connection();
+  IF $Enabled THEN
+    $SubLaps = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/laps',
+      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+    $SubPos = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/position',
+      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+    $SubItv = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/intervals',
+      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+    $SubRc = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/race_control',
+      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+    SET $Result = 'subscribed: v1/laps, v1/position, v1/intervals, v1/race_control';
+  ELSE
+    $UnLaps = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/laps');
+    $UnPos = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/position');
+    $UnItv = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/intervals');
+    $UnRc = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/race_control');
+    $Gone = CALL JAVA ACTION MqttConnector.Disconnect(ConnectionDetail = $Conn);
+    SET $Result = 'unsubscribed and disconnected';
+  END IF;
+  LOG INFO NODE 'F1Mqtt' 'MQTT probe: ' + $Result;
+  RETURN $Result;
+END;
