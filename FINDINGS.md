@@ -10570,3 +10570,31 @@ The tower and header queries take about 0.24 s. Not included: radio transcripts
 (OpenF1 publishes recordings), pedal traces and live speed (they need the
 telemetry stream). It is as fresh as the backend's poll, about 40 s behind the
 track (§124), until the stream feeds the lake.
+
+## 127. The MQTT stream feeds the lake, and the Timing page prefers it
+
+The stream stopped in the backend: Mqtt_OnMessage stored each message in
+MqttMessage and counted it, and the lake's OpenF1 data still came from the REST
+poll, about 40 s behind the track (§124).
+
+- **Backend:** Mqtt_OnMessage also posts each message to the lake as a business
+  event on a topic of its own, `openf1stream` (constant LakeStreamUrl). Its type
+  is the feed (`laps`, `position`, `intervals`, `race_control`), its subject
+  OpenF1's `_key`, which names the object the message updates; the handler reads
+  it from the JSON with string functions. A failed post is logged and counted
+  (`f1.lake.stream_failures`), never thrown; posts are counted as
+  `f1.lake.stream_posted`.
+- **Lake:**
+  - `live.stream` keeps the newest message per type and key for the live session.
+  - `live.laps` takes the stream's version of a lap where it has one, and the
+    poll's otherwise.
+  - `live.positions` and `live.intervals` add the stream's samples to the
+    poll's, so the newest per car wins.
+  - `live.race_control` merges both, each message once.
+- **Setting up:** the topic's table has to exist before init.sql names it, so a
+  marker event (type `marker`) was posted first. A test lap for car 99 in FP1
+  (no such car) checked the views end to end: `live.laps` went from 591 to 592
+  with its 1:30.5.
+
+The backend was restarted with the new handler at 15:44, and the stream
+reconnected within a minute.

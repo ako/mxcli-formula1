@@ -65,10 +65,21 @@ create or modify persistent entity Formula1Backend.MqttMessage (
   ReceivedAt: DateTime
 );
 
+/* Where stream messages go in the lake: a topic of their own (FINDINGS §127). */
+create or modify constant Formula1Backend.LakeStreamUrl (
+  Type: String, DefaultValue: 'http://127.0.0.1:9495/events/openf1stream');
+
 /*
- * The subscription's handler: keep the message and count it, nothing else.
- * Metrics as in Sync_Fetch, tagged by topic, so the lake-sync dashboard can
- * put the stream beside the polls.
+ * The subscription's handler: keep the message, count it, and pass it on to
+ * the lake, which is how the Timing page gets the stream (live.stream in
+ * lake/init.sql).
+ *
+ * To the lake it goes as a business event on the topic `openf1stream`: its
+ * type is the feed (laps, position, intervals, race_control) and its subject
+ * OpenF1's `_key`, which names the object the message updates -- a driver's
+ * lap, say -- so the lake keeps the newest message per key. A message is a few
+ * hundred bytes, against a REST response's megabytes. A failed post is logged
+ * and counted, never thrown: the stream must not stop over the lake.
  */
 CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_OnMessage (
   $Topic: String,
@@ -80,6 +91,49 @@ BEGIN
   COMMIT $Msg;
   increment counter 'f1.mqtt.messages' (Tags: ('topic': $Topic));
   increment counter 'f1.mqtt.chars' by length($Payload) (Tags: ('topic': $Topic));
+
+  DECLARE $Feed String = $Topic;
+  DECLARE $Key String = '';
+  DECLARE $Rest String = '';
+  DECLARE $End Integer = -1;
+  DECLARE $At Integer = find($Payload, '"_key":');
+  IF startsWith($Topic, 'v1/') THEN
+    SET $Feed = substring($Topic, 3);
+  END IF;
+  IF $At >= 0 THEN
+    SET $Rest = trim(substring($Payload, $At + 7));
+    IF startsWith($Rest, '"') THEN
+      SET $Rest = substring($Rest, 1);
+      SET $End = find($Rest, '"');
+    ELSE
+      SET $End = find($Rest, ',');
+      IF $End < 0 THEN
+        SET $End = find($Rest, '}');
+      END IF;
+    END IF;
+    IF $End > 0 THEN
+      SET $Key = trim(substring($Rest, 0, $End));
+    END IF;
+  END IF;
+
+  IF @Formula1Backend.LakeIngestEnabled THEN
+    $Resp = call rest service post @Formula1Backend.LakeStreamUrl (
+        Headers: ('Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + @Formula1Backend.LakeToken,
+                  'ce_type': $Feed,
+                  'ce_source': '/OpenF1/Mqtt/',
+                  'ce_subject': $Key),
+        Body: $Payload,
+        Timeout: 10
+      ) returns response
+      on error without rollback begin
+        log warning node 'F1Lake' 'MQTT {1} not posted to the lake: {2}'
+          with ({1} = $Topic, {2} = $latestError/Message);
+        increment counter 'f1.lake.stream_failures' (Tags: ('feed': $Feed));
+        return;
+      end error;
+    increment counter 'f1.lake.stream_posted' (Tags: ('feed': $Feed));
+  END IF;
 END;
 
 /* --------------------------------------------------------- the connection -- */

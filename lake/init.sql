@@ -933,9 +933,32 @@ QUALIFY row_number() OVER (PARTITION BY type ORDER BY event_time DESC, kafka_off
 CREATE OR REPLACE MACRO live.latest(feed) AS (
   SELECT payload FROM live.payloads WHERE type = feed);
 
+-- OpenF1's MQTT stream, as the backend forwards it (Mqtt_OnMessage): one small
+-- event per message on the topic openf1stream, its type the feed and its
+-- subject OpenF1's _key, the object the message updates. The newest message per
+-- key is that object now. Two to three seconds behind the track, against the
+-- REST poll's forty (FINDINGS §124, §127). The topic's table exists from its
+-- first event (a marker posted when it was set up); a lake without it stops here.
+CREATE OR REPLACE VIEW live.stream AS
+SELECT type, key, payload FROM (
+  SELECT warpstream.headers['ce_type'] AS type, warpstream.headers['ce_subject'] AS key,
+         warpstream.offset AS kafka_offset, CAST(decode(warpstream.value) AS JSON) AS payload
+    FROM main.local__openf1stream
+   WHERE warpstream.headers['ce_type'] IN ('laps', 'position', 'intervals', 'race_control'))
+ WHERE CAST(payload->>'session_key' AS BIGINT) = (SELECT session_key FROM live.session)
+QUALIFY row_number() OVER (PARTITION BY type, key ORDER BY kafka_offset DESC) = 1;
+
+-- Laps: the stream's version of a lap where it has one, the poll's otherwise.
 CREATE OR REPLACE VIEW live.laps AS
-SELECT j.* FROM (SELECT unnest(from_json(live.latest('laps'),
-  '[{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"TIMESTAMPTZ","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i1_speed":"BIGINT","i2_speed":"BIGINT","st_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","segments_sector_1":"BIGINT[]","segments_sector_2":"BIGINT[]","segments_sector_3":"BIGINT[]"}]')) AS j);
+WITH stream AS (
+  SELECT j.* FROM (SELECT from_json(payload, '{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"TIMESTAMPTZ","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i1_speed":"BIGINT","i2_speed":"BIGINT","st_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","segments_sector_1":"BIGINT[]","segments_sector_2":"BIGINT[]","segments_sector_3":"BIGINT[]"}') AS j FROM live.stream WHERE type = 'laps')
+), polled AS (
+  SELECT j.* FROM (SELECT unnest(from_json(live.latest('laps'), '[{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"TIMESTAMPTZ","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i1_speed":"BIGINT","i2_speed":"BIGINT","st_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","segments_sector_1":"BIGINT[]","segments_sector_2":"BIGINT[]","segments_sector_3":"BIGINT[]"}]')) AS j)
+)
+SELECT * FROM stream
+UNION ALL
+SELECT p.* FROM polled p
+ WHERE NOT EXISTS (SELECT 1 FROM stream s WHERE s.driver_number = p.driver_number AND s.lap_number = p.lap_number);
 
 CREATE OR REPLACE VIEW live.drivers AS
 SELECT j.* FROM (SELECT unnest(from_json(live.latest('drivers'),
@@ -945,17 +968,24 @@ CREATE OR REPLACE VIEW live.stints AS
 SELECT j.* FROM (SELECT unnest(from_json(live.latest('stints'),
   '[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]')) AS j);
 
+-- The poll's samples and the stream's, together: the newest per car wins.
 CREATE OR REPLACE VIEW live.positions AS
-SELECT j.* FROM (SELECT unnest(from_json(live.latest('position'),
-  '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","position":"BIGINT"}]')) AS j);
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('position'), '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","position":"BIGINT"}]')) AS j)
+UNION ALL
+SELECT j.* FROM (SELECT from_json(payload, '{"driver_number":"BIGINT","date":"TIMESTAMPTZ","position":"BIGINT"}') AS j FROM live.stream WHERE type = 'position');
 
+-- The poll's samples and the stream's, together: the newest per car wins.
 CREATE OR REPLACE VIEW live.intervals AS
-SELECT j.* FROM (SELECT unnest(from_json(live.latest('intervals'),
-  '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j);
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('intervals'), '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j)
+UNION ALL
+SELECT j.* FROM (SELECT from_json(payload, '{"driver_number":"BIGINT","date":"TIMESTAMPTZ","gap_to_leader":"VARCHAR","interval":"VARCHAR"}') AS j FROM live.stream WHERE type = 'intervals');
 
+-- Race control from the poll and the stream, each message once.
 CREATE OR REPLACE VIEW live.race_control AS
-SELECT j.* FROM (SELECT unnest(from_json(live.latest('race_control'),
-  '[{"date":"TIMESTAMPTZ","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j);
+SELECT DISTINCT * FROM (
+  SELECT j.* FROM (SELECT unnest(from_json(live.latest('race_control'), '[{"date":"TIMESTAMPTZ","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j)
+  UNION ALL
+  SELECT j.* FROM (SELECT from_json(payload, '{"date":"TIMESTAMPTZ","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}') AS j FROM live.stream WHERE type = 'race_control'));
 
 CREATE OR REPLACE VIEW live.weather AS
 SELECT j.* FROM (SELECT unnest(from_json(live.latest('weather'),
