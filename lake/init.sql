@@ -1156,3 +1156,41 @@ SELECT CAST(s.session_key AS VARCHAR) AS sessionKey,
        printf('%.1f mbar', w.pressure) AS pressure,
        COALESCE(tick.t, '') AS ticker
   FROM s LEFT JOIN w ON true LEFT JOIN flag ON true LEFT JOIN tick ON true;
+
+-- Where each car on track probably is now, for the Timing page's animated map:
+-- an anchor (a moment and how far round the lap the car was then) and a pace,
+-- and the browser moves the car on from there ten times a second (a Vega timer).
+--
+--   * The anchor is the start of the current lap, or the end of its last
+--     completed sector; the fraction of the lap at a sector's end is that share
+--     of the car's best lap. The map's outline is one car's lap sampled evenly in
+--     time, so a time fraction picks the right point of it, corners and all.
+--   * The pace is the car's best lap scaled by how this lap is going: its
+--     completed sectors against its best ones, or before the first, its last lap
+--     against its best (an in- or out-lap is slow), between 1 and 1.8.
+--   * Cars in the pits are left out (live.tower's status).
+CREATE OR REPLACE VIEW live.map_cars AS
+WITH l AS (SELECT * FROM live.laps),
+cur AS (SELECT DISTINCT ON (driver_number) * FROM l WHERE date_start IS NOT NULL
+         ORDER BY driver_number, lap_number DESC),
+pb AS (SELECT driver_number, min(lap_duration) AS best, min(duration_sector_1) AS b1,
+              min(duration_sector_2) AS b2 FROM l GROUP BY 1),
+lastlap AS (SELECT DISTINCT ON (driver_number) driver_number, lap_duration FROM l
+             WHERE lap_duration IS NOT NULL ORDER BY driver_number, lap_number DESC),
+t AS (SELECT driver_number, code, colour, status FROM live.tower),
+e AS (
+  SELECT t.code, t.colour,
+         epoch_ms(cur.date_start) + CAST(1000 * CASE
+             WHEN cur.duration_sector_2 IS NOT NULL THEN cur.duration_sector_1 + cur.duration_sector_2
+             WHEN cur.duration_sector_1 IS NOT NULL THEN cur.duration_sector_1 ELSE 0 END AS BIGINT) AS ta,
+         CASE WHEN cur.duration_sector_2 IS NOT NULL THEN (pb.b1 + pb.b2) / pb.best
+              WHEN cur.duration_sector_1 IS NOT NULL THEN pb.b1 / pb.best ELSE 0 END AS fa,
+         least(1.8, greatest(1.0, CASE
+             WHEN cur.duration_sector_2 IS NOT NULL THEN (cur.duration_sector_1 + cur.duration_sector_2) / (pb.b1 + pb.b2)
+             WHEN cur.duration_sector_1 IS NOT NULL THEN cur.duration_sector_1 / pb.b1
+             ELSE COALESCE(lastlap.lap_duration / pb.best, 1.0) END)) AS ratio,
+         pb.best
+    FROM t JOIN cur USING (driver_number) JOIN pb USING (driver_number) LEFT JOIN lastlap USING (driver_number)
+   WHERE t.status IS NULL AND pb.best IS NOT NULL AND pb.b1 IS NOT NULL AND pb.b2 IS NOT NULL
+)
+SELECT code, colour, ta, round(fa, 4) AS fa, CAST(1000 * best * ratio AS BIGINT) AS lapms FROM e;

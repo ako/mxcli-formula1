@@ -84,7 +84,17 @@ export function VegaChart(props: VegaChartContainerProps): ReactElement {
             return parsedSpec.value;
         }
         const next = { ...(parsedSpec.value as Record<string, unknown>) };
-        if (datasetName) {
+        // A Vega spec (not Vega-Lite) has no `datasets`: its data is an array of
+        // named data sets, and the one with the given name gets the values. That
+        // is what lets a Vega spec with timer signals animate between two data
+        // updates, which Vega-Lite cannot express.
+        const isVega =
+            typeof next.$schema === "string" && /\/schema\/vega\/v/.test(next.$schema) && Array.isArray(next.data);
+        if (datasetName && isVega) {
+            next.data = (next.data as Array<Record<string, unknown>>).map(d =>
+                d.name === datasetName ? { ...d, values: parsedData.value } : d
+            );
+        } else if (datasetName) {
             next.datasets = { ...((next.datasets as object) ?? {}), [datasetName]: parsedData.value };
         } else {
             next.data = { values: parsedData.value };

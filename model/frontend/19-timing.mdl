@@ -13,7 +13,8 @@ mdl 1;
  * started last. The tower and the sector board arrive as cells -- each box and
  * text with its position and colours -- and one generic Vega spec draws them,
  * which is how a chart widget gives a timing tower's look. The track map is
- * Narrate's.
+ * Narrate's outline with each car's estimated position, animated in the browser
+ * (live.map_cars; FINDINGS §129).
  *
  * It refreshes like Narrate (06-narrate.mdl): an Events widget changes the
  * viewer's LiveTick every five seconds, and every panel reads through a
@@ -46,6 +47,13 @@ Password: @Formula1Frontend.LakePassword )
            AirTemp = airTemp, Humidity = humidity, Pressure = pressure, Ticker = ticker ) )
   query GetTowerCells (
     Sql: 'SELECT COALESCE(CAST(to_json(list({''k'': k, ''xt'': xt, ''yt'': yt, ''x'': x, ''x2'': x2, ''y'': y, ''y2'': y2, ''t'': text, ''fg'': fg, ''bg'': bg, ''s'': size})) AS VARCHAR), ''[]'') AS json FROM live.tower_cells',
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  /* Each car on track as an anchor and a pace (live.map_cars), for the map's
+   * animation; the outline comes from the backend, as on Narrate. */
+  query GetMapCars (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''kind'': ''est'', ''code'': code, ''colour'': colour,
+                 ''ta'': ta, ''fa'': fa, ''lapms'': lapms})) AS VARCHAR), ''[]'') AS json FROM live.map_cars',
     Returns: Formula1Frontend.Chart,
     Map: ( json = json ) )
   query GetSectorCells (
@@ -99,11 +107,51 @@ BEGIN
   RETURN $Chart;
 END;
 
+/*
+ * The map: Narrate's outline and measured cars (DSJ_TrackMap, from the backend),
+ * plus each car's estimate from the lake. The spec draws the estimates and moves
+ * them itself, ten times a second, between the five-second refreshes; the
+ * measured positions are as old as the backend's poll and are not drawn.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TimingMapAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Map = CALL MICROFLOW Formula1Frontend.DSJ_TrackMap ();
+  DECLARE $M String = '[]';
+  IF $Map != empty AND $Map/json != empty THEN
+    SET $M = $Map/json;
+  END IF;
+  DECLARE $C String = '[]';
+  $Rows = execute database query Formula1Frontend.F1LakeLive.GetMapCars
+    on error without rollback begin
+      log warning node 'F1Lake' 'Timing map: the lake did not answer: {1}' with ({1} = $latestError/Message);
+      $OnlyMap = create Formula1Frontend.Chart (json = $M);
+      return $OnlyMap;
+    end error;
+  $Cars = head $Rows;
+  IF $Cars != empty AND $Cars/json != empty THEN
+    SET $C = $Cars/json;
+  END IF;
+  DECLARE $Json String = $M;
+  IF length($C) > 2 THEN
+    IF length($M) > 2 THEN
+      SET $Json = substring($M, 0, length($M) - 1) + ',' + substring($C, 1);
+    ELSE
+      SET $Json = $C;
+    END IF;
+  END IF;
+  $Chart = create Formula1Frontend.Chart (json = $Json);
+  RETURN $Chart;
+END;
+
 /* Granted here, not in 11: the page below uses them (CE0106). */
 GRANT READ * ON ENTITY Formula1Frontend.TimingHeader TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TimingHeaderAt TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TowerAt TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SectorsAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TimingMapAt TO Formula1Frontend.Enthusiast;
 
 create or modify page Formula1Frontend.Timing
 (
@@ -153,14 +201,14 @@ create or modify page Formula1Frontend.Timing
         }
       }
       container tSide (class: 'panel') {
-        dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMapAt(Tick = $dvTick)) {
+        dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TimingMapAt(Tick = $dvTick)) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTimingMap (
             chartData: json,
             datasetName: 'table',
             chartHeight: 0,
             renderer: 'svg',
             showActions: false,
-            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":430,"height":430,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":10,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":120,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":8,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+            spec: '{"$schema":"https://vega.github.io/schema/vega/v5.json","width":430,"height":430,"padding":0,"background":null,"signals":[{"name":"t","update":"now()","on":[{"events":"timer{100}","update":"now()"}]}],"data":[{"name":"table","values":[]},{"name":"track","source":"table","transform":[{"type":"filter","expr":"datum.kind === ''track''"},{"type":"window","sort":{"field":"seq"},"ops":["row_number"],"as":["i"]}]},{"name":"trackn","source":"track","transform":[{"type":"aggregate","ops":["count"],"as":["n"]}]},{"name":"cars","source":"table","transform":[{"type":"filter","expr":"datum.kind === ''est''"},{"type":"formula","as":"el","expr":"t - datum.ta"},{"type":"filter","expr":"datum.el >= 0 && datum.el < (1 - datum.fa) * datum.lapms + 15000"},{"type":"formula","as":"f","expr":"min(0.999, datum.fa + datum.el / datum.lapms)"},{"type":"formula","as":"i","expr":"floor(datum.f * (length(data(''trackn'')) ? data(''trackn'')[0].n : 1)) + 1"},{"type":"lookup","from":"track","key":"i","fields":["i"],"values":["x","y"]},{"type":"filter","expr":"isValid(datum.x)"}]}],"scales":[{"name":"x","type":"linear","domain":[0,1000],"range":"width","zero":false,"nice":false},{"name":"y","type":"linear","domain":[0,1000],"range":"height","zero":false,"nice":false}],"marks":[{"type":"line","from":{"data":"track"},"encode":{"enter":{"x":{"scale":"x","field":"x"},"y":{"scale":"y","field":"y"},"stroke":{"value":"#2E3743"},"strokeWidth":{"value":10},"strokeJoin":{"value":"round"},"strokeCap":{"value":"round"}}}},{"type":"line","from":{"data":"track"},"encode":{"enter":{"x":{"scale":"x","field":"x"},"y":{"scale":"y","field":"y"},"stroke":{"value":"#2DD4BF"},"strokeWidth":{"value":2},"strokeJoin":{"value":"round"},"strokeCap":{"value":"round"}}}},{"type":"symbol","from":{"data":"cars"},"encode":{"update":{"x":{"scale":"x","field":"x"},"y":{"scale":"y","field":"y"},"size":{"value":230},"fill":{"field":"colour"},"stroke":{"value":"#0E1116"},"strokeWidth":{"value":1.5},"tooltip":{"signal":"datum.code"}}}},{"type":"text","from":{"data":"cars"},"encode":{"update":{"x":{"scale":"x","field":"x"},"y":{"scale":"y","field":"y","offset":-10},"text":{"field":"code"},"fill":{"value":"#E6EDF3"},"fontSize":{"value":10},"font":{"value":"JetBrains Mono"},"fontWeight":{"value":700},"align":{"value":"center"},"baseline":{"value":"bottom"}}}}]}')
         }
         dataview dvSectors (datasource: MICROFLOW Formula1Frontend.DSJ_SectorsAt(Tick = $dvTick)) {
           pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartSectors (

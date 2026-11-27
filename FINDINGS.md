@@ -10623,3 +10623,34 @@ The changes:
 - **`scripts/lake-watchdog.sh`:** logs the lake's RSS every 20 s to
   `.mxcli-obs/lake-watchdog.log`, and restarts the lake after two failed health
   checks in a row, as `keep-app-running.sh` does for the apps.
+
+## 129. The Timing map animates each car's estimated position
+
+The map's car dots were the backend's last measured locations, as old as its
+poll. Now each car on track is estimated and moved in the browser.
+
+- **The reference lap.** The outline is one car's lap of location samples, about
+  3.7 a second, evenly spaced in time. So a time fraction of the lap picks the
+  right point of it, slow corners and fast straights included.
+- **The estimate (`live.map_cars`).** For each car there is an anchor and a pace:
+  - the anchor is the current lap's start from the stream, or the end of its
+    last completed sector, at that sector's share of the car's best lap;
+  - the pace is the best lap scaled by this lap's completed sectors against the
+    best ones, or before the first sector, last lap against best, between 1 and
+    1.8;
+  - cars in the pits are left out.
+- **The animation.** A full Vega spec with a 100 ms timer signal computes
+  fraction = anchor + elapsed / lap time and looks the point up on the outline.
+  A car that has run 15 s past the end of its lap is hidden; one past the line
+  waits there for its next lap.
+- **The widget.** Our VegaChart widget handed data over as Vega-Lite `datasets`,
+  which a Vega spec ignores. It now fills the Vega data set with the configured
+  name (`.claude/skills/mendix-vega-charts/widget`, rebuilt into
+  `Formula1Frontend/widgets`). Vega-Lite specs are unchanged.
+
+Checked in FP2: cars in team colours along the outline, and 14 of the labels
+moved within two seconds (Piastri from (1214, 162) to (1195, 180)), with no
+errors. The estimate's accuracy against the measured locations is not checked
+yet. The sector shares are taken from the car's own best lap and the outline is
+another car's lap, so on a slow lap a car can be some way off; mini-sector
+progress (the segments) would anchor it more often.
