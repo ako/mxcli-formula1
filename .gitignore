@@ -152,3 +152,6 @@
 !/Formula1Frontend/.claude/skills/mendix-bulk-oql-dml/
 !/Formula1Backend/.claude/skills/widgets/
 !/Formula1Frontend/.claude/skills/widgets/
+
+# Copies of lake state moved out of data/ while recovering the lake (FINDINGS §125).
+/.lake-backup/

@@ -365,12 +365,26 @@ GROUP BY ALL;
 -- session's last version is the whole session. The column specs are the
 -- backend's own (GetOpenF1Laps and friends in 01-foundation.mdl).
 --
--- These read openf1.*, which the server makes from the topic during discovery,
--- before this file runs. The topic exists once the backend has posted anything
--- (scripts/run-weekend.sh, or the season backfill, FINDINGS §118); a lake
--- started without it stops on the first of these views.
+-- They read the topic's table, main.local__openf1, through timing.events, not
+-- the openf1.<type> views the server makes for business events. Those turned out
+-- not to be there when this file runs: after the lake had been killed on
+-- 27 Nov they were missing at start-up, and init.sql stopped on the first of
+-- these views (FINDINGS §125). The topic's table is discovered before this file
+-- runs. It exists once the backend has posted anything (scripts/run-weekend.sh,
+-- or the season backfill, FINDINGS §118); a lake started without it still stops
+-- here.
 
 CREATE SCHEMA IF NOT EXISTS timing;
+
+-- Every OpenF1 response the backend posted, as the openf1.<type> views showed
+-- them: its feed (the CloudEvents type), the request path (subject), the JSON.
+CREATE OR REPLACE VIEW timing.events AS
+SELECT warpstream.headers['ce_type'] AS type,
+       warpstream.headers['ce_subject'] AS subject,
+       warpstream.timestamp AS event_time,
+       warpstream.offset AS kafka_offset,
+       CAST(decode(warpstream.value) AS JSON) AS payload
+  FROM main.local__openf1;
 
 CREATE OR REPLACE VIEW timing.sessions AS
 SELECT DISTINCT ON (j.session_key)
@@ -381,10 +395,11 @@ SELECT DISTINCT ON (j.session_key)
        -- f1db dates the day by the track's calendar (mostly; see replay.sessions)
        CAST(CAST(j.date_start AS TIMESTAMPTZ) AT TIME ZONE 'UTC'
             + CAST(j.gmt_offset AS INTERVAL) AS DATE) AS local_date,
-       COALESCE(j.is_cancelled, false) AS is_cancelled
+       COALESCE(j.is_cancelled, false) AS is_cancelled,
+       CAST(j.gmt_offset AS INTERVAL) AS gmt_offset
   FROM (SELECT event_time, kafka_offset,
                unnest(from_json(payload, '[{"session_key":"BIGINT","session_name":"VARCHAR","session_type":"VARCHAR","meeting_key":"BIGINT","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","year":"BIGINT","date_start":"VARCHAR","date_end":"VARCHAR","gmt_offset":"VARCHAR","is_cancelled":"BOOLEAN"}]')) AS j
-          FROM openf1.sessions)
+          FROM (SELECT * FROM timing.events WHERE type = 'sessions'))
  WHERE j.session_key IS NOT NULL
  ORDER BY j.session_key, event_time DESC, kafka_offset DESC;
 
@@ -395,7 +410,7 @@ SELECT sk AS session_key, j.driver_number,
        COALESCE(j.team_name, '') AS team, j.team_colour
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]')) AS j
-          FROM openf1.drivers
+          FROM (SELECT * FROM timing.events WHERE type = 'drivers')
          WHERE regexp_matches(subject, '^drivers\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -406,7 +421,7 @@ SELECT sk AS session_key, j.driver_number, j.lap_number, j.lap_duration,
        CAST(j.date_start AS TIMESTAMP) AS date_start
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i2_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","date_start":"VARCHAR"}]')) AS j
-          FROM openf1.laps
+          FROM (SELECT * FROM timing.events WHERE type = 'laps')
          WHERE regexp_matches(subject, '^laps\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -414,7 +429,7 @@ CREATE OR REPLACE VIEW timing.positions AS
 SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date, j.position
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","position":"BIGINT"}]')) AS j
-          FROM openf1.position
+          FROM (SELECT * FROM timing.events WHERE type = 'position')
          WHERE regexp_matches(subject, '^position\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -424,7 +439,7 @@ SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date,
        j.gap_to_leader, j."interval"
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j
-          FROM openf1.intervals
+          FROM (SELECT * FROM timing.events WHERE type = 'intervals')
          WHERE regexp_matches(subject, '^intervals\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -433,7 +448,7 @@ SELECT sk AS session_key, j.driver_number, j.stint_number, j.compound,
        j.lap_start, j.lap_end, j.tyre_age_at_start
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]')) AS j
-          FROM openf1.stints
+          FROM (SELECT * FROM timing.events WHERE type = 'stints')
          WHERE regexp_matches(subject, '^stints\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -441,7 +456,7 @@ CREATE OR REPLACE VIEW timing.pits AS
 SELECT sk AS session_key, j.driver_number, j.lap_number, j.lane_duration
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]')) AS j
-          FROM openf1.pit
+          FROM (SELECT * FROM timing.events WHERE type = 'pit')
          WHERE regexp_matches(subject, '^pit\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -871,7 +886,7 @@ SELECT sk AS session_key, row_number() OVER (PARTITION BY sk ORDER BY j.date, j.
        j.driver_number, j.lap_number, j.message
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j
-          FROM openf1.race_control
+          FROM (SELECT * FROM timing.events WHERE type = 'race_control')
          WHERE regexp_matches(subject, '^race_control\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -880,6 +895,234 @@ SELECT sk AS session_key, CAST(j.date AS TIMESTAMP) AS date, j.air_temperature, 
        j.humidity, j.pressure, j.rainfall, j.wind_direction, j.wind_speed
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","pressure":"DOUBLE","rainfall":"DOUBLE","wind_direction":"DOUBLE","wind_speed":"DOUBLE"}]')) AS j
-          FROM openf1.weather
+          FROM (SELECT * FROM timing.events WHERE type = 'weather')
          WHERE regexp_matches(subject, '^weather\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
+
+
+
+-- ------------------------------------------------------------- live, gold --
+-- The frontend's Timing page (model/frontend/19-timing.mdl): the session on
+-- now, or the last one that ran, from the newest responses the backend posted.
+-- Plain views over one session's payloads, cheap enough to read every few
+-- seconds.
+--
+-- The tower is handed over as cells, not columns: live.tower_cells gives every
+-- box and text of the timing tower with its position and colours, and one
+-- generic Vega spec draws them, which is how the page gets a broadcast tower's
+-- look out of a chart widget.
+
+CREATE SCHEMA IF NOT EXISTS live;
+
+-- The session that started last (or starts within twenty minutes).
+CREATE OR REPLACE VIEW live.session AS
+SELECT * FROM timing.sessions
+ WHERE date_start <= now() + INTERVAL 20 MINUTE
+ ORDER BY date_start DESC LIMIT 1;
+
+-- The newest response of each feed for the live session: a dozen rows,
+-- materialized every ten seconds (lake/server.toml), so the Timing page's six
+-- queries every five seconds read these instead of each scanning the topic's
+-- table. They did, and together they ran the lake out of its memory cap
+-- (FINDINGS §125).
+CREATE OR REPLACE VIEW live.payloads AS
+SELECT type, payload FROM timing.events
+ WHERE subject = type || '?session_key=' || (SELECT session_key FROM live.session)
+QUALIFY row_number() OVER (PARTITION BY type ORDER BY event_time DESC, kafka_offset DESC) = 1;
+
+CREATE OR REPLACE MACRO live.latest(feed) AS (
+  SELECT payload FROM live.payloads WHERE type = feed);
+
+CREATE OR REPLACE VIEW live.laps AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('laps'),
+  '[{"driver_number":"BIGINT","lap_number":"BIGINT","date_start":"TIMESTAMPTZ","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i1_speed":"BIGINT","i2_speed":"BIGINT","st_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","segments_sector_1":"BIGINT[]","segments_sector_2":"BIGINT[]","segments_sector_3":"BIGINT[]"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.drivers AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('drivers'),
+  '[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.stints AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('stints'),
+  '[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.positions AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('position'),
+  '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","position":"BIGINT"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.intervals AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('intervals'),
+  '[{"driver_number":"BIGINT","date":"TIMESTAMPTZ","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.race_control AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('race_control'),
+  '[{"date":"TIMESTAMPTZ","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.weather AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('weather'),
+  '[{"date":"TIMESTAMPTZ","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","pressure":"DOUBLE","rainfall":"DOUBLE","wind_direction":"DOUBLE","wind_speed":"DOUBLE"}]')) AS j);
+
+CREATE OR REPLACE VIEW live.team_radio AS
+SELECT j.* FROM (SELECT unnest(from_json(live.latest('team_radio'),
+  '[{"date":"TIMESTAMPTZ","driver_number":"BIGINT","recording_url":"VARCHAR"}]')) AS j);
+
+-- m:ss.sss, as timing screens write a lap.
+CREATE OR REPLACE MACRO live.laptime(t) AS
+  CASE WHEN t IS NULL THEN NULL
+       WHEN t >= 60 THEN printf('%d:%06.3f', CAST(floor(t / 60) AS BIGINT), t - 60 * floor(t / 60))
+       ELSE printf('%.3f', t) END;
+
+-- One row per car: what the tower shows.
+--   * Position: the position feed in a race or sprint, else the order of best
+--     laps, as practice and qualifying are timed.
+--   * Sectors are the current lap's, as they complete, falling back to the last
+--     completed lap's; purple is the session's best sector, green the car's own
+--     best, yellow neither.
+--   * IN PIT: nothing from the car for three minutes (the data is behind the
+--     track by the backend's poll); PIT OUT: on its out lap.
+CREATE OR REPLACE VIEW live.tower AS
+WITH s AS (SELECT * FROM live.session),
+l AS (SELECT * FROM live.laps),
+cur AS (SELECT DISTINCT ON (driver_number) * FROM l ORDER BY driver_number, lap_number DESC),
+done AS (SELECT DISTINCT ON (driver_number) * FROM l WHERE lap_duration IS NOT NULL
+          ORDER BY driver_number, lap_number DESC),
+pb AS (SELECT driver_number, min(lap_duration) AS best, min(duration_sector_1) AS b1,
+              min(duration_sector_2) AS b2, min(duration_sector_3) AS b3, max(lap_number) AS laps,
+              max(COALESCE(date_start + INTERVAL (COALESCE(lap_duration, 0)) SECOND, date_start)) AS seen
+         FROM l GROUP BY 1),
+ob AS (SELECT min(lap_duration) AS best, min(duration_sector_1) AS b1, min(duration_sector_2) AS b2,
+              min(duration_sector_3) AS b3 FROM l),
+st AS (SELECT DISTINCT ON (driver_number) * FROM live.stints ORDER BY driver_number, stint_number DESC),
+pos AS (SELECT DISTINCT ON (driver_number) driver_number, position FROM live.positions
+         ORDER BY driver_number, date DESC),
+itv AS (SELECT DISTINCT ON (driver_number) driver_number, gap_to_leader FROM live.intervals
+         ORDER BY driver_number, date DESC),
+cars AS (
+  SELECT d.driver_number, d.name_acronym AS code, '#' || COALESCE(d.team_colour, '888888') AS colour,
+         pb.best, pb.b1, pb.b2, pb.b3, pb.laps, pb.seen,
+         done.lap_duration AS last_lap,
+         -- the current lap's sectors as they complete, else the last full lap's
+         CASE WHEN cur.duration_sector_1 IS NOT NULL OR done.lap_number IS NULL THEN cur.lap_number ELSE done.lap_number END AS shown_lap,
+         cur.is_pit_out_lap AND cur.duration_sector_1 IS NULL AS pit_out,
+         COALESCE(done.st_speed, cur.st_speed) AS st_speed,
+         st.compound, COALESCE(st.tyre_age_at_start, 0) + (COALESCE(cur.lap_number, st.lap_start) - st.lap_start) AS tyre_age,
+         pos.position AS feed_position, itv.gap_to_leader
+    FROM live.drivers d
+    LEFT JOIN pb USING (driver_number) LEFT JOIN cur USING (driver_number) LEFT JOIN done USING (driver_number)
+    LEFT JOIN st USING (driver_number) LEFT JOIN pos USING (driver_number) LEFT JOIN itv USING (driver_number)
+)
+SELECT c.*,
+       row_number() OVER (ORDER BY CASE WHEN (SELECT session_type FROM s) = 'Race' THEN c.feed_position END NULLS LAST,
+                                   c.best NULLS LAST, c.driver_number) AS pos,
+       sh.duration_sector_1 AS s1, sh.duration_sector_2 AS s2, sh.duration_sector_3 AS s3,
+       sh.segments_sector_1 AS seg1, sh.segments_sector_2 AS seg2, sh.segments_sector_3 AS seg3,
+       c.b1 + c.b2 + c.b3 AS theoretical,
+       CASE WHEN (SELECT session_type FROM s) = 'Race' THEN c.gap_to_leader
+            WHEN c.best IS NULL THEN NULL
+            WHEN c.best = (SELECT best FROM ob) THEN ''
+            ELSE printf('+%.3f', c.best - (SELECT best FROM ob)) END AS gap,
+       c.best IS NOT NULL AND c.best = (SELECT best FROM ob) AS fastest,
+       CASE WHEN c.pit_out THEN 'PIT OUT'
+            WHEN c.seen IS NULL OR c.seen < now() - INTERVAL 3 MINUTE THEN 'IN PIT' END AS status,
+       (SELECT b1 FROM ob) AS ob1, (SELECT b2 FROM ob) AS ob2, (SELECT b3 FROM ob) AS ob3
+  FROM cars c LEFT JOIN l sh ON sh.driver_number = c.driver_number AND sh.lap_number = c.shown_lap;
+
+-- The tower as cells for the Vega spec: x/x2 and y/y2 in pixels from the top
+-- left, a fill (bg) for boxes, a colour (fg) for text. Row 0 is the header.
+CREATE OR REPLACE VIEW live.tower_cells AS
+WITH t AS (SELECT * FROM live.tower),
+col(name, x, w) AS (VALUES ('P', 0, 26), ('Driver', 28, 50), ('Last lap', 84, 78), ('Best lap', 166, 78),
+  ('Tyre', 248, 30), ('Age', 280, 30), ('Gap', 312, 70), ('Sector 1', 388, 72), ('Sector 2', 464, 72),
+  ('Sector 3', 540, 72), ('Laps', 616, 36), ('ST speed', 656, 70), ('Theo. lap', 730, 80)),
+r AS (SELECT *, 26 * pos AS y0 FROM t),
+cells AS (
+  -- header
+  SELECT 'text' AS k, c.x + c.w / 2 AS xt, 13 AS yt, NULL::INT AS x, NULL::INT AS x2, NULL::INT AS y, NULL::INT AS y2,
+         c.name AS text, '#8B949E' AS fg, NULL AS bg, 10 AS size FROM col c
+  UNION ALL
+  -- row background
+  SELECT 'box', NULL, NULL, 0, 812, y0 + 1, y0 + 25, NULL, NULL,
+         CASE WHEN pos % 2 = 0 THEN '#161B22' ELSE '#0D1117' END, NULL FROM r
+  UNION ALL SELECT 'box', NULL, NULL, 2, 24, y0 + 3, y0 + 23, NULL, NULL, colour, NULL FROM r
+  UNION ALL SELECT 'text', 13, y0 + 13, NULL, NULL, NULL, NULL, CAST(pos AS VARCHAR), '#0D1117', NULL, 12 FROM r
+  UNION ALL SELECT 'box', NULL, NULL, 30, 76, y0 + 3, y0 + 23, NULL, NULL, '#0D1117', NULL FROM r
+  UNION ALL SELECT 'text', 53, y0 + 13, NULL, NULL, NULL, NULL, code, colour, NULL, 12 FROM r
+  -- last lap, or the pit status in its place
+  UNION ALL SELECT 'box', NULL, NULL, 88, 158, y0 + 5, y0 + 21, NULL, NULL, '#DA3633', NULL FROM r WHERE status IS NOT NULL
+  UNION ALL SELECT 'text', 123, y0 + 13, NULL, NULL, NULL, NULL,
+         COALESCE(status, live.laptime(last_lap), '—'), CASE WHEN status IS NOT NULL THEN '#FFFFFF' ELSE '#E6EDF3' END, NULL, 12 FROM r
+  -- best lap, purple when it is the session's best
+  UNION ALL SELECT 'box', NULL, NULL, 170, 240, y0 + 5, y0 + 21, NULL, NULL, '#8B5CF6', NULL FROM r WHERE fastest
+  UNION ALL SELECT 'text', 205, y0 + 13, NULL, NULL, NULL, NULL, COALESCE(live.laptime(best), '—'), '#E6EDF3', NULL, 12 FROM r
+  -- tyre: a ring in the compound's colour with its letter
+  UNION ALL SELECT 'tyre', 263, y0 + 13, NULL, NULL, NULL, NULL, left(compound, 1),
+         CASE compound WHEN 'SOFT' THEN '#E8002D' WHEN 'MEDIUM' THEN '#FFD12E' WHEN 'HARD' THEN '#F0F0F0'
+                       WHEN 'INTERMEDIATE' THEN '#43B02A' WHEN 'WET' THEN '#0067AD' ELSE '#8B949E' END, NULL, 11
+    FROM r WHERE compound IS NOT NULL
+  UNION ALL SELECT 'text', 295, y0 + 13, NULL, NULL, NULL, NULL, CAST(tyre_age AS VARCHAR), '#E6EDF3', NULL, 12 FROM r WHERE compound IS NOT NULL
+  UNION ALL SELECT 'text', 347, y0 + 13, NULL, NULL, NULL, NULL, COALESCE(NULLIF(gap, ''), CASE WHEN gap = '' THEN '—' END), '#E6EDF3', NULL, 12 FROM r
+  -- sectors: the time, coloured, over its mini-sectors
+  UNION ALL SELECT 'text', 424 + 76 * (k - 1), y0 + 11, NULL, NULL, NULL, NULL, printf('%.3f', v),
+         CASE WHEN v <= ob THEN '#A371F7' WHEN v <= own THEN '#3FB950' ELSE '#E3B341' END, NULL, 12
+    FROM (SELECT y0, 1 AS k, s1 AS v, b1 AS own, ob1 AS ob FROM r UNION ALL SELECT y0, 2, s2, b2, ob2 FROM r
+          UNION ALL SELECT y0, 3, s3, b3, ob3 FROM r) WHERE v IS NOT NULL
+  UNION ALL SELECT 'box', NULL, NULL, CAST(390 + 76 * (k - 1) + (i - 1) * (68.0 / n) AS INT),
+         CAST(390 + 76 * (k - 1) + i * (68.0 / n) - 1 AS INT), y0 + 20, y0 + 23, NULL, NULL,
+         CASE seg WHEN 2051 THEN '#A371F7' WHEN 2049 THEN '#3FB950' WHEN 2048 THEN '#E3B341'
+                  WHEN 2064 THEN '#58A6FF' ELSE '#30363D' END, NULL
+    FROM (SELECT y0, k, segs, len(segs) AS n, unnest(segs) AS seg, generate_subscripts(segs, 1) AS i
+            FROM (SELECT y0, 1 AS k, seg1 AS segs FROM r UNION ALL SELECT y0, 2, seg2 FROM r UNION ALL SELECT y0, 3, seg3 FROM r)
+           WHERE segs IS NOT NULL AND len(segs) > 0)
+  UNION ALL SELECT 'text', 634, y0 + 13, NULL, NULL, NULL, NULL, CAST(laps AS VARCHAR), '#E6EDF3', NULL, 12 FROM r WHERE laps IS NOT NULL
+  UNION ALL SELECT 'text', 691, y0 + 13, NULL, NULL, NULL, NULL, st_speed || ' km/h', '#E3B341', NULL, 12 FROM r WHERE st_speed IS NOT NULL
+  UNION ALL SELECT 'text', 770, y0 + 13, NULL, NULL, NULL, NULL, live.laptime(theoretical), '#E6EDF3', NULL, 12 FROM r WHERE theoretical IS NOT NULL
+)
+SELECT * FROM cells;
+
+-- The three fastest of each sector, as cells in three columns.
+CREATE OR REPLACE VIEW live.sector_cells AS
+WITH l AS (SELECT * FROM live.laps), d AS (SELECT * FROM live.drivers),
+best AS (
+  SELECT k, driver_number, min(v) AS v FROM (
+    SELECT 1 AS k, driver_number, duration_sector_1 AS v FROM l UNION ALL
+    SELECT 2, driver_number, duration_sector_2 FROM l UNION ALL
+    SELECT 3, driver_number, duration_sector_3 FROM l) WHERE v IS NOT NULL GROUP BY ALL),
+top AS (SELECT *, row_number() OVER (PARTITION BY k ORDER BY v, driver_number) AS rk FROM best QUALIFY rk <= 3),
+r AS (SELECT t.*, d.name_acronym AS code, '#' || COALESCE(d.team_colour, '888888') AS colour,
+             (k - 1) * 272 AS x0, 22 + (rk - 1) * 30 AS y0 FROM top t JOIN d USING (driver_number))
+SELECT 'text' AS k, (k - 1) * 272 + 36 AS xt, 10 AS yt, NULL::INT AS x, NULL::INT AS x2, NULL::INT AS y, NULL::INT AS y2,
+       'Sector ' || k AS text, '#8B949E' AS fg, NULL AS bg, 11 AS size
+  FROM (SELECT DISTINCT k FROM top)
+UNION ALL SELECT 'box', NULL, NULL, x0 + 4, x0 + 30, y0, y0 + 24, NULL, NULL, colour, NULL FROM r
+UNION ALL SELECT 'text', x0 + 17, y0 + 12, NULL, NULL, NULL, NULL, CAST(rk AS VARCHAR), '#0D1117', NULL, 13 FROM r
+UNION ALL SELECT 'box', NULL, NULL, x0 + 32, x0 + 100, y0, y0 + 24, NULL, NULL, '#0D1117', NULL FROM r
+UNION ALL SELECT 'text', x0 + 66, y0 + 12, NULL, NULL, NULL, NULL, code, colour, NULL, 13 FROM r
+UNION ALL SELECT 'text', x0 + 190, y0 + 12, NULL, NULL, NULL, NULL, printf('%.3f', v), '#E6EDF3', NULL, 13 FROM r;
+
+-- The header line and the race-control ticker, as one row.
+CREATE OR REPLACE VIEW live.header AS
+WITH s AS (SELECT * FROM live.session),
+w AS (SELECT * FROM live.weather ORDER BY date DESC LIMIT 1),
+flag AS (SELECT flag, message FROM live.race_control
+          WHERE category = 'Flag' AND (scope = 'Track' OR flag IN ('RED', 'CHEQUERED'))
+          ORDER BY date DESC LIMIT 1),
+tick AS (SELECT string_agg(message, '  ·  ' ORDER BY date DESC) AS t
+           FROM (SELECT * FROM live.race_control ORDER BY date DESC LIMIT 8))
+SELECT CAST(s.session_key AS VARCHAR) AS sessionKey,
+       s.country_name || ' · ' || s.session_name AS title,
+       s.location AS location,
+       CASE WHEN now() < s.date_start THEN 'starts in ' || strftime(TIMESTAMP '2000-01-01' + (s.date_start - now()), '%H:%M:%S')
+            WHEN now() < s.date_end THEN strftime(TIMESTAMP '2000-01-01' + (s.date_end - now()), '%H:%M:%S')
+            ELSE '—' END AS remaining,
+       CASE WHEN now() >= s.date_end THEN 'Finished'
+            WHEN flag.flag = 'RED' THEN 'Red flag'
+            WHEN flag.flag IN ('YELLOW', 'DOUBLE YELLOW') THEN 'Yellow flag'
+            WHEN flag.flag = 'CHEQUERED' THEN 'Chequered flag'
+            ELSE 'Track clear' END AS trackStatus,
+       strftime(CAST(now() AT TIME ZONE 'UTC' + s.gmt_offset AS TIMESTAMP), '%H:%M:%S') AS trackTime,
+       printf('%.1f km/h', w.wind_speed * 3.6) AS wind,
+       printf('%.1f °C', w.track_temperature) AS trackTemp,
+       printf('%.1f °C', w.air_temperature) AS airTemp,
+       printf('%.1f %%', w.humidity) AS humidity,
+       printf('%.1f mbar', w.pressure) AS pressure,
+       COALESCE(tick.t, '') AS ticker
+  FROM s LEFT JOIN w ON true LEFT JOIN flag ON true LEFT JOIN tick ON true;

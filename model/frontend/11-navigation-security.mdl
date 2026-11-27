@@ -150,6 +150,7 @@ END;
 
 GRANT VIEW ON PAGE Formula1Frontend.Narrate TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Replay TO Formula1Frontend.Enthusiast;
+GRANT VIEW ON PAGE Formula1Frontend.Timing TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Narrative TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Season TO Formula1Frontend.Enthusiast;
 GRANT VIEW ON PAGE Formula1Frontend.Weekend TO Formula1Frontend.Enthusiast;
@@ -267,6 +268,7 @@ create or modify navigation Responsive
   {
     MENU ITEM 'Narrate' ( OnClick: SHOW PAGE Formula1Frontend.Narrate, Icon: Atlas_Core.Atlas."time-clock" )
     MENU ITEM 'Replay' ( OnClick: SHOW PAGE Formula1Frontend.Replay, Icon: Atlas_Core.Atlas."time-clock" )
+    MENU ITEM 'Timing' ( OnClick: SHOW PAGE Formula1Frontend.Timing, Icon: Atlas_Core.Atlas."stopwatch" )
     MENU ITEM 'Narrative' ( OnClick: SHOW PAGE Formula1Frontend.Narrative, Icon: Atlas_Core.Atlas.flag )
     MENU ITEM 'Season' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Season, Icon: Atlas_Core.Atlas.calendar )
     MENU ITEM 'Race weekend' ( OnClick: CALL MICROFLOW Formula1Frontend.NAV_Weekend, Icon: Atlas_Core.Atlas.flag )

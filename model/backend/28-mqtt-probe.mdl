@@ -37,9 +37,19 @@ mdl 1;
  * stays out of the database. The connector decrypts the password when it
  * connects, so it is encrypted with the connector's key first.
  *
- * A token lasts an hour, and the client's automatic reconnect would retry with
- * the one it connected with. Fine for a probe; the live version has to
- * reconnect with a fresh token when Sync_EnsureToken renews it.
+ * ------------------------------------------------------- the token's hour --
+ *
+ * A token lasts an hour, and the connector keeps its broker connections in a
+ * registry keyed by client id, which Disconnect does not clear. So reconnecting
+ * under the same client id with a fresh token reuses the connection set up with
+ * the old one, and the broker refuses it: "Bad User Name or Password" (FINDINGS
+ * §124, Qatar FP1: the token was valid, a Python client logged in with it).
+ *
+ * So the client id names the token it connects with: its expiry, plus an id of
+ * the running JVM, since a restart loses the connection but not the state row.
+ * A new token or a restart gives a new client id, so a new connection, and the
+ * old one is disconnected under its own id. Mqtt_Keep checks every minute
+ * (SE_MqttKeep); MqttProbe(enabled) only switches the stream on or off.
  */
 
 /* An OpenF1 access token does not fit the connector's 200 characters. */
@@ -79,11 +89,52 @@ create or modify constant Formula1Backend.OpenF1MqttHost (
 create or modify constant Formula1Backend.OpenF1MqttPort (
   Type: Integer, DefaultValue: 8883);
 
+/* Whether the stream should be on, and which connection carries it. One row. */
+create or modify persistent entity Formula1Backend.MqttState (
+  Enabled: Boolean default false,
+  ClientId: String(120),
+  TokenExpiresAt: DateTime,
+  ConnectedAt: DateTime,
+  LastResult: String(500)
+);
+
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_State ()
+  RETURNS Formula1Backend.MqttState AS $State
+BEGIN
+  RETRIEVE $State FROM Formula1Backend.MqttState FIRST;
+  IF $State = empty THEN
+    $Created = CREATE Formula1Backend.MqttState (Enabled = false, ClientId = '', LastResult = '') COMMIT;
+    RETURN $Created;
+  END IF;
+  RETURN $State;
+END;
+
 /*
- * The broker connection, in memory (see the top of this file). The client id
- * is fixed, so a later Unsubscribe or Disconnect reaches the same connection.
+ * An id for this run of the runtime: the same for every call until a restart.
+ * Kept in a JVM system property, since a Java action holds no state of its own.
  */
-CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Connection ()
+create or modify java action Formula1Backend.Mqtt_RuntimeId () RETURNS String
+AS $$
+    String id = System.getProperty("formula1backend.runtimeId");
+    if (id == null) {
+        synchronized (System.class) {
+            id = System.getProperty("formula1backend.runtimeId");
+            if (id == null) {
+                id = java.util.UUID.randomUUID().toString().substring(0, 8);
+                System.setProperty("formula1backend.runtimeId", id);
+            }
+        }
+    }
+    return id;
+$$;
+
+/*
+ * The broker connection for a client id, in memory (see the top of this file),
+ * with the backend's current token as the password.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Connection (
+  $ClientId: String
+)
   RETURNS MqttConnector.ConnectionDetail AS $Conn
 BEGIN
   $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
@@ -102,39 +153,122 @@ BEGIN
     KeepAliveTime = 60,
     TimeOut = 30,
     UseCustomClientId = true,
-    ClientId = 'formula1backend-openf1');
+    ClientId = $ClientId);
   RETURN $Conn;
 END;
 
+/* Close a connection by its client id. A connection this runtime never opened
+ * (the state row outlives a restart) is not an error. */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Close (
+  $ClientId: String
+)
+BEGIN
+  IF trim($ClientId) = '' THEN
+    RETURN;
+  END IF;
+  $Old = CALL MICROFLOW Formula1Backend.Mqtt_Connection(ClientId = $ClientId);
+  $Gone = CALL JAVA ACTION MqttConnector.Disconnect(ConnectionDetail = $Old)
+    ON ERROR WITHOUT ROLLBACK BEGIN
+      LOG INFO NODE 'F1Mqtt' 'MQTT: closing ' + $ClientId + ': ' + $latestError/Message;
+    END ERROR;
+END;
+
+/* Subscribe a connection to the fast feeds. */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Subscribe (
+  $Conn: MqttConnector.ConnectionDetail
+)
+BEGIN
+  $SubLaps = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/laps',
+    OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+  $SubPos = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/position',
+    OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+  $SubItv = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/intervals',
+    OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+  $SubRc = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/race_control',
+    OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
+END;
+
 /*
- * Subscribe to the fast feeds, or unsubscribe and disconnect. Published on the
- * ops service as MqttProbe(enabled).
+ * Make the connection match the state: closed when the stream is off, and when
+ * it is on, connected under the client id of the current token and runtime.
+ * A subscription that fails leaves no client id, so the next minute tries
+ * again.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Keep ()
+  RETURNS String AS $Result
+BEGIN
+  DECLARE $Result String = '';
+  $State = CALL MICROFLOW Formula1Backend.Mqtt_State();
+  IF $State/Enabled != true THEN
+    IF trim($State/ClientId) != '' THEN
+      CALL MICROFLOW Formula1Backend.Mqtt_Close(ClientId = $State/ClientId);
+      CHANGE $State (ClientId = '', LastResult = 'stream off, disconnected') COMMIT;
+      LOG INFO NODE 'F1Mqtt' 'MQTT: stream off, disconnected';
+    END IF;
+    SET $Result = 'off';
+    RETURN $Result;
+  END IF;
+
+  $Token = CALL MICROFLOW Formula1Backend.Sync_EnsureToken();
+  RETRIEVE $Tok FROM Formula1Backend.LiveToken SORT BY ExpiresAt DESC FIRST;
+  IF $Tok = empty OR $Tok/ExpiresAt = empty THEN
+    SET $Result = 'no token';
+    CHANGE $State (LastResult = $Result) COMMIT;
+    RETURN $Result;
+  END IF;
+  $Run = CALL JAVA ACTION Formula1Backend.Mqtt_RuntimeId();
+  DECLARE $Wanted String = 'formula1backend-' + formatDateTimeUTC($Tok/ExpiresAt, 'yyyyMMddHHmm') + '-' + $Run;
+  IF $Wanted = $State/ClientId THEN
+    SET $Result = 'connected as ' + $Wanted;
+    RETURN $Result;
+  END IF;
+
+  DECLARE $Why String = 'new token';
+  IF trim($State/ClientId) = '' THEN
+    SET $Why = 'connect';
+  ELSE
+    IF NOT(endsWith($State/ClientId, '-' + $Run)) THEN
+      SET $Why = 'restart';
+    END IF;
+  END IF;
+  CALL MICROFLOW Formula1Backend.Mqtt_Close(ClientId = $State/ClientId);
+  CHANGE $State (ClientId = '') COMMIT;
+  $Conn = CALL MICROFLOW Formula1Backend.Mqtt_Connection(ClientId = $Wanted);
+  CALL MICROFLOW Formula1Backend.Mqtt_Subscribe(Conn = $Conn)
+    ON ERROR WITHOUT ROLLBACK BEGIN
+      increment counter 'f1.mqtt.connect_failures';
+      LOG WARNING NODE 'F1Mqtt' 'MQTT: subscribing as ' + $Wanted + ' failed: ' + $latestError/Message;
+      CHANGE $State (LastResult = 'failed: ' + substring($latestError/Message, 0, min(400, length($latestError/Message)))) COMMIT;
+      RETURN 'failed';
+    END ERROR;
+  CHANGE $State (ClientId = $Wanted, TokenExpiresAt = $Tok/ExpiresAt,
+    ConnectedAt = [%CurrentDateTime%], LastResult = $Why + ': connected as ' + $Wanted) COMMIT;
+  increment counter 'f1.mqtt.connects' (Tags: ('reason': $Why));
+  SET $Result = $Why + ': connected as ' + $Wanted;
+  LOG INFO NODE 'F1Mqtt' 'MQTT: ' + $Result;
+  RETURN $Result;
+END;
+
+/* Every minute: a new token or a restart reconnects within a minute. */
+CREATE OR MODIFY SCHEDULED EVENT Formula1Backend.SE_MqttKeep (
+  Microflow: Formula1Backend.Mqtt_Keep,
+  Enabled: true,
+  Repeat: Minutely,
+  Multiplier: 1,
+  TimeZone: Server
+);
+
+/*
+ * Switch the stream on or off, and bring the connection in line at once.
+ * Published on the ops service as MqttProbe(enabled).
  */
 CREATE OR MODIFY MICROFLOW Formula1Backend.Ops_MqttProbe (
   $Enabled: Boolean
 )
   RETURNS String AS $Result
 BEGIN
-  DECLARE $Result String = '';
-  $Conn = CALL MICROFLOW Formula1Backend.Mqtt_Connection();
-  IF $Enabled THEN
-    $SubLaps = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/laps',
-      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
-    $SubPos = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/position',
-      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
-    $SubItv = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/intervals',
-      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
-    $SubRc = CALL JAVA ACTION MqttConnector.Subscribe(ConnectionDetail = $Conn, Topic = 'v1/race_control',
-      OnMessageMicroflow = 'Formula1Backend.Mqtt_OnMessage', QoS = MqttConnector.QoS.AtMostOnce);
-    SET $Result = 'subscribed: v1/laps, v1/position, v1/intervals, v1/race_control';
-  ELSE
-    $UnLaps = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/laps');
-    $UnPos = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/position');
-    $UnItv = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/intervals');
-    $UnRc = CALL JAVA ACTION MqttConnector.Unsubscribe(ConnectionDetail = $Conn, Topic = 'v1/race_control');
-    $Gone = CALL JAVA ACTION MqttConnector.Disconnect(ConnectionDetail = $Conn);
-    SET $Result = 'unsubscribed and disconnected';
-  END IF;
-  LOG INFO NODE 'F1Mqtt' 'MQTT probe: ' + $Result;
+  $State = CALL MICROFLOW Formula1Backend.Mqtt_State();
+  CHANGE $State (Enabled = $Enabled) COMMIT;
+  $Result = CALL MICROFLOW Formula1Backend.Mqtt_Keep();
   RETURN $Result;
 END;

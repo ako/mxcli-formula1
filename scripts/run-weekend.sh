@@ -36,6 +36,12 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OBS="$ROOT/.mxcli-obs"
 OTLP=http://127.0.0.1:4318
 METRICS="Metrics.Registries=[{\"type\":\"opentelemetry\",\"settings\":{\"url\":\"$OTLP/v1/metrics\",\"step\":\"30s\"}}]"
+# One trace in ten. Every microflow is traced, and in Qatar FP1 the hour's spans
+# (358 part files) were more than the lake could merge at 14:00: it was killed
+# for memory, and again at every start until that hour was moved out of
+# data/otel (FINDINGS §125). Metrics and logs are not sampled.
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
 
 supervisors() { ps -e -o pid=,args= | grep "[k]eep-app-running.sh $1" | awk '{print $1}'; }
 

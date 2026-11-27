@@ -10478,3 +10478,95 @@ remove an entry, so the new subscription reused the connection set up with the
 old token. The backend therefore received nothing during FP1. The live version
 needs a new client id for each new token, or the connection's options replaced,
 and it must disconnect the old one by its own id.
+
+### The fix: a client id per token and per runtime
+
+28-mqtt-probe.mdl now keeps the stream's state in `MqttState`. Its client id is
+`formula1backend-<token expiry>-<runtime id>`, where the runtime id is a JVM
+system property set once per start (`Mqtt_RuntimeId`). `Mqtt_Keep` runs every
+minute (SE_MqttKeep): when the wanted client id differs from the connected one,
+it disconnects the old connection under its own id and subscribes under the new
+one. `MqttProbe(enabled)` only switches the stream on or off. All three cases
+were seen to work:
+- the first connect (14:32);
+- a backend restart, reconnected within a minute under a new runtime id (14:42);
+- a token renewal by the live sync, reconnected by itself (15:00:52, "new token").
+
+## 125. The lake was killed in FP1: an hour of traces, then a missing schema
+
+At 14:00:41, in the middle of FP1, the lake was killed for memory, and so was
+every restart. Peak RSS was 6–7 GB within two seconds, past the 4 GB DuckDB cap,
+so it was memory DuckDB does not account for.
+
+Bisected on test ports: it is killed even with no config but the data folder,
+and it survives once `data/otel/spans` is moved out. That hour, 13:00, was 358
+part files and a half-written `tmp_13.parquet.tmp`. The lake merges an hour's
+OpenTelemetry part files when the hour ends; FP1's hour (every microflow of both
+apps traced, the live sync busy) was more than that merge could hold, and every
+start retried it. The other hours are one file of 16–23 MB.
+
+Ruled out on the way, with the evidence:
+- **The OpenF1 topic's Kafka log** (576 MB, one file, kept forever by design) and
+  the topic's table (491 MB after FP1, since the backend posts each changed
+  response whole). Both moved out, it was still killed; both back, it starts
+  (peak 1.35 GB).
+- **The previous lake build (46ec4c0):** killed the same way.
+- **The mapping:** killed with the old three-class mapping too.
+
+Recovery: the 13:00 hour's spans moved to `.lake-backup/otel/spans-hour13`
+(git-ignored), everything else back. The backend's LakePost records for FP1
+were deleted, so its next cycles posted FP1's newest responses again.
+
+What else broke, and the fixes:
+- **init.sql depended on views the lake makes later.** `openf1.<type>` (the
+  business-event views) were missing at start-up after the crash, and init.sql
+  stopped on them; even after the topic loaded, they did not come back. The
+  timing views now read the topic's table through `timing.events`
+  (`main.local__openf1`, with the CloudEvents headers `ce_type` and `ce_subject`),
+  which is discovered before init.sql runs.
+- **replay.forecast ran out of the 4 GB cap** (DuckDB's own error, not a kill)
+  when it refreshed beside the other steps on ten threads. With
+  `[duckdb] threads = 4` it ran in 25 s.
+- **Traces are sampled:** one in ten (`OTEL_TRACES_SAMPLER=parentbased_traceidratio`,
+  argument 0.1, in `scripts/run-weekend.sh`), so a session's hour stays small.
+
+Still open, for DuckGraphLake:
+- the hourly span merge holds an hour in memory outside DuckDB's cap, and is
+  retried at every start;
+- the Kafka log of a topic has no retention;
+- the business-event views are not there when init_sql runs.
+
+For the apps: posting whole responses makes a session about 470 MB in the topic.
+Posting only what changed, or moving to the MQTT stream, is the real fix.
+
+## 126. A Timing page for live sessions
+
+A broadcast-style timing screen (model/frontend/19-timing.mdl, url `timing`,
+menu "Timing"):
+- **Tower:** position, code in team colours, last and best lap (purple for the
+  session's best), tyre ring and age, gap, the three sectors coloured purple,
+  green or yellow with their mini-sectors (OpenF1's `segments_sector_*`: 2051
+  purple, 2049 green, 2048 yellow, 2064 pit lane), laps, speed trap and
+  theoretical best; IN PIT and PIT OUT.
+- **Around it:** the track map (Narrate's), the three fastest of each sector,
+  the conditions, and race control's messages underneath.
+
+It is all lake views (`live.*` in init.sql) over the session that started last:
+- `live.payloads` holds the newest response of each feed for that session. It is
+  materialized every ten seconds, because six queries every five seconds, each
+  scanning the topic's 491 MB table, ran the lake out of its memory cap.
+- The tower and the sector board are handed over as cells (each box and text
+  with its position and colours) for one generic Vega spec: that is how a chart
+  widget gets a timing tower's look.
+- It refreshes every five seconds, like Narrate (§122).
+
+Against the overlay screenshot of FP1 it reproduces exactly:
+- best laps and gaps: ANT 1:23.217, RUS +0.507, HAD +0.661, NOR +0.850;
+- theoretical laps: ANT 1:23.142, PIA 1:24.047;
+- every sector leader: 30.518 / 30.768 / 30.835, 27.932 / 28.001 / 28.093,
+  24.623 / 24.781 / 24.788.
+
+The tower and header queries take about 0.24 s. Not included: radio transcripts
+(OpenF1 publishes recordings), pedal traces and live speed (they need the
+telemetry stream). It is as fresh as the backend's poll, about 40 s behind the
+track (§124), until the stream feeds the lake.

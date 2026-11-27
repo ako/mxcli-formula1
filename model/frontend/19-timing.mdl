@@ -1,0 +1,184 @@
+mdl 1;
+/*
+ * Screen 7 -- Timing.
+ * ===================
+ *
+ * A broadcast-style timing screen for the session on now: the tower (position,
+ * last and best lap, tyre, gap, sectors with their mini-sectors, laps, speed
+ * trap, theoretical best), the cars on the track map, the three fastest of each
+ * sector, the conditions, and race control's messages running underneath.
+ *
+ * Everything is read from the lake (lake/init.sql, live.*), which works it out
+ * from the newest OpenF1 responses the backend posted, for whichever session
+ * started last. The tower and the sector board arrive as cells -- each box and
+ * text with its position and colours -- and one generic Vega spec draws them,
+ * which is how a chart widget gives a timing tower's look. The track map is
+ * Narrate's.
+ *
+ * It refreshes like Narrate (06-narrate.mdl): an Events widget changes the
+ * viewer's LiveTick every five seconds, and every panel reads through a
+ * microflow that takes the tick. How fresh it is depends on the backend: about
+ * forty seconds behind the track on the REST poll (FINDINGS §124).
+ *
+ * Not here, and why: team radio transcripts (OpenF1 publishes the recordings,
+ * not text), pedal traces and live speed (they need the car telemetry stream).
+ */
+
+/* The header line and the ticker: live.header. */
+create or modify non-persistent entity Formula1Frontend.TimingHeader (
+  SessionKey: string(20), Title: string(120), Location: string(80), Remaining: string(40),
+  TrackStatus: string(40), TrackTime: string(20), Wind: string(30), TrackTemp: string(20),
+  AirTemp: string(20), Humidity: string(20), Pressure: string(30), Ticker: string(unlimited)
+);
+
+create or modify database connection Formula1Frontend.F1LakeLive (
+Type: 'PostgreSQL',
+ConnectionString: @Formula1Frontend.LakeUrl,
+Username: @Formula1Frontend.LakeUser,
+Password: @Formula1Frontend.LakePassword )
+{
+  query GetTimingHeader (
+    Sql: 'SELECT sessionKey, title, location, remaining, trackStatus, trackTime, wind, trackTemp,
+                 airTemp, humidity, pressure, ticker FROM live.header',
+    Returns: Formula1Frontend.TimingHeader,
+    Map: ( SessionKey = sessionKey, Title = title, Location = location, Remaining = remaining,
+           TrackStatus = trackStatus, TrackTime = trackTime, Wind = wind, TrackTemp = trackTemp,
+           AirTemp = airTemp, Humidity = humidity, Pressure = pressure, Ticker = ticker ) )
+  query GetTowerCells (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''k'': k, ''xt'': xt, ''yt'': yt, ''x'': x, ''x2'': x2, ''y'': y, ''y2'': y2, ''t'': text, ''fg'': fg, ''bg'': bg, ''s'': size})) AS VARCHAR), ''[]'') AS json FROM live.tower_cells',
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+  query GetSectorCells (
+    Sql: 'SELECT COALESCE(CAST(to_json(list({''k'': k, ''xt'': xt, ''yt'': yt, ''x'': x, ''x2'': x2, ''y'': y, ''y2'': y2, ''t'': text, ''fg'': fg, ''bg'': bg, ''s'': size})) AS VARCHAR), ''[]'') AS json FROM live.sector_cells',
+    Returns: Formula1Frontend.Chart,
+    Map: ( json = json ) )
+};
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_TimingHeaderAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.TimingHeader AS $Header
+BEGIN
+  $Rows = execute database query Formula1Frontend.F1LakeLive.GetTimingHeader
+    on error without rollback begin
+      log warning node 'F1Lake' 'Timing header: the lake did not answer: {1}' with ({1} = $latestError/Message);
+      $None = create Formula1Frontend.TimingHeader (Title = 'Timing', Remaining = '', TrackStatus = 'No data', Ticker = '');
+      return $None;
+    end error;
+  $Header = head $Rows;
+  RETURN $Header;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TowerAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = execute database query Formula1Frontend.F1LakeLive.GetTowerCells
+    on error without rollback begin
+      log warning node 'F1Lake' 'Timing tower: the lake did not answer: {1}' with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_SectorsAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Rows = execute database query Formula1Frontend.F1LakeLive.GetSectorCells
+    on error without rollback begin
+      log warning node 'F1Lake' 'Timing sectors: the lake did not answer: {1}' with ({1} = $latestError/Message);
+      $NoData = create Formula1Frontend.Chart (json = '[]');
+      return $NoData;
+    end error;
+  $Chart = head $Rows;
+  RETURN $Chart;
+END;
+
+/* Granted here, not in 11: the page below uses them (CE0106). */
+GRANT READ * ON ENTITY Formula1Frontend.TimingHeader TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TimingHeaderAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TowerAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SectorsAt TO Formula1Frontend.Enthusiast;
+
+create or modify page Formula1Frontend.Timing
+(
+  title: 'Timing',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'timing'
+)
+{
+  container pageBody (class: 'narrate-dense') {
+  dataview dvTick (datasource: MICROFLOW Formula1Frontend.DS_LiveTick) {
+
+    pluggablewidget 'com.mendix.widget.web.events.Events' evTick (
+      onComponentLoad: microflow Formula1Frontend.ACT_LiveTick(Tick = $currentObject),
+      componentLoadDelayParameterType: 'number',
+      componentLoadDelay: 5000,
+      componentLoadRepeat: true,
+      componentLoadRepeatIntervalParameterType: 'number',
+      componentLoadRepeatInterval: 5000
+    )
+
+    dataview dvHead (datasource: MICROFLOW Formula1Frontend.DS_TimingHeaderAt(Tick = $currentObject)) {
+      container tHead (class: 'live-bar') {
+        container tHeadMain (class: 'pagehead') {
+          container tHeadLeft (class: 'pagehead-main') {
+            dynamictext tTitle (content: '{1}', contentparams: ({1} = Title), class: 'pagehead-eyebrow')
+            dynamictext tRemaining (content: '{1}  ·  {2}', contentparams: ({1} = Remaining, {2} = TrackStatus),
+                                    rendermode: H2, class: 'pagehead-title')
+          }
+          container tHeadBadge (class: 'pagehead-badge') {
+            dynamictext tCond (content: 'Track time {1}  ·  Wind {2}  ·  Track {3}  ·  Air {4}  ·  Humidity {5}  ·  {6}',
+              contentparams: ({1} = TrackTime, {2} = Wind, {3} = TrackTemp, {4} = AirTemp, {5} = Humidity, {6} = Pressure))
+          }
+        }
+      }
+    }
+
+    container tMain (class: 'replay-fold') {
+      container tTowerPanel (class: 'panel') {
+        dataview dvTower (datasource: MICROFLOW Formula1Frontend.DSJ_TowerAt(Tick = $dvTick)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTower (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":812,"height":600,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"JetBrains Mono"},"layer":[{"transform":[{"filter":"datum.k===''box''"}],"mark":{"type":"rect","cornerRadius":3},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,812],"range":[0,812]},"axis":null},"x2":{"field":"x2"},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,600],"range":[0,600]},"axis":null},"y2":{"field":"y2"},"fill":{"field":"bg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''tyre''"}],"mark":{"type":"point","shape":"circle","size":230,"strokeWidth":2.5,"filled":false},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,812],"range":[0,812]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,600],"range":[0,600]},"axis":null},"stroke":{"field":"fg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''text'' || datum.k===''tyre''"}],"mark":{"type":"text","baseline":"middle","align":"center","fontWeight":600},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,812],"range":[0,812]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,600],"range":[0,600]},"axis":null},"text":{"field":"t"},"color":{"field":"fg","type":"nominal","scale":null,"legend":null},"size":{"field":"s","type":"quantitative","scale":null,"legend":null}}}]}')
+        }
+      }
+      container tSide (class: 'panel') {
+        dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMapAt(Tick = $dvTick)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTimingMap (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"Space Grotesk","legend":{"disable":true}},"width":430,"height":430,"layer":[{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":10,"color":"#2E3743","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","axis":null,"scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''track''"}],"mark":{"type":"line","strokeWidth":2,"color":"#2DD4BF","strokeJoin":"round","strokeCap":"round"},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"order":{"field":"seq","type":"quantitative"}}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"point","filled":true,"size":120,"color":"#E3B341","stroke":"#0E1116","strokeWidth":1.5},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"tooltip":[{"field":"car","title":"Car"}]}},{"transform":[{"filter":"datum.kind === ''car''"}],"mark":{"type":"text","fontSize":8,"font":"JetBrains Mono","color":"#06231F","dy":1},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,1000],"nice":false,"zero":false}},"text":{"field":"car","type":"nominal"}}}]}')
+        }
+        dataview dvSectors (datasource: MICROFLOW Formula1Frontend.DSJ_SectorsAt(Tick = $dvTick)) {
+          pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartSectors (
+            chartData: json,
+            datasetName: 'table',
+            chartHeight: 0,
+            renderer: 'svg',
+            showActions: false,
+            spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":816,"height":112,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"JetBrains Mono"},"layer":[{"transform":[{"filter":"datum.k===''box''"}],"mark":{"type":"rect","cornerRadius":3},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,816],"range":[0,816]},"axis":null},"x2":{"field":"x2"},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,112],"range":[0,112]},"axis":null},"y2":{"field":"y2"},"fill":{"field":"bg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''tyre''"}],"mark":{"type":"point","shape":"circle","size":230,"strokeWidth":2.5,"filled":false},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,816],"range":[0,816]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,112],"range":[0,112]},"axis":null},"stroke":{"field":"fg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''text'' || datum.k===''tyre''"}],"mark":{"type":"text","baseline":"middle","align":"center","fontWeight":600},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,816],"range":[0,816]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,112],"range":[0,112]},"axis":null},"text":{"field":"t"},"color":{"field":"fg","type":"nominal","scale":null,"legend":null},"size":{"field":"s","type":"quantitative","scale":null,"legend":null}}}]}')
+        }
+      }
+    }
+
+    dataview dvTicker (datasource: MICROFLOW Formula1Frontend.DS_TimingHeaderAt(Tick = $currentObject)) {
+      container tTicker (class: 'callout') {
+        dynamictext tTickerText (content: '{1}', contentparams: ({1} = Ticker))
+      }
+    }
+  }
+  }
+};

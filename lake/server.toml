@@ -13,6 +13,9 @@
 # is re-run on a live server, which locks its configuration.
 [duckdb]
 memory_limit = "4GB"
+# Fewer threads, less memory held at once: replay.forecast ran out of the 4 GB
+# on all ten while other steps refreshed beside it (FINDINGS §125).
+threads = 4
 
 [data]
 directory = "../data"
@@ -40,9 +43,16 @@ refresh = "on_change"
 # changes every minute during a session: recompute on a timer, not on change.
 # The season's forecast takes about half a minute; once an hour is plenty for
 # races already run (refresh one by hand: POST /api/steps/<name>/refresh).
+# The live session's newest OpenF1 responses, which the Timing page reads every
+# five seconds: ten seconds old at most, one scan of the topic per refresh.
+[[materialize]]
+views = "live.payloads"
+refresh = "every 10s"
+
 [[materialize]]
 views = "replay.*"
 refresh = "every 1h"
+
 
 [mcp]
 # The MCP endpoint is for agents, the frontend's chat agent included, and an
