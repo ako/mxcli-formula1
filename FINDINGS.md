@@ -10192,3 +10192,26 @@ re-enabled by a trap), with nothing live at the time.
 The general lesson is the one §117's Sync_Fetch comment already draws: an empty
 answer that means "failed" looks the same as one that means "nothing there". A
 backfill needs one feed that cannot be empty, and must check it.
+
+## 119. DuckGraphLake c88bda5 cannot take over this lake
+
+The new build was meant to bring the per-field CDC apply (the §105 fix). Started on
+this lake's data folder, it aborted (SIGABRT, exit 134, no message) right after
+listing its sources. The lake went back to 206c9e4 within minutes, and every
+baseline count matched (schemas, 967 OpenF1 events, the gold views, races).
+
+The cause was found by bisecting a copy of the data folder on test ports:
+
+- c88bda5 does not register the Iceberg tables an earlier build wrote under
+  `warpstream/_tableflow/`: OpenF1 events and the three CDC topics. They are on
+  disk but not in the catalog.
+- It writes an empty `_tableflow/.iceberg-namespace`, and with that marker next to
+  a CDC table, whose name contains dots, every later start aborts. 206c9e4 writes
+  the same marker and is fine with it.
+
+A clean data folder would hide the bug, but would also throw away the season's
+OpenF1 events and the CDC history, so the lake stays on 206c9e4 until a fixed build
+arrives. The report for the DuckGraphLake agent is
+`docs/datalake/prompts/duckgraphlake-c88bda5-tableflow-abort.md`. A fixed build
+gets the same check before it goes in: run it on a copy on test ports, restart it
+once, and compare the baseline.
