@@ -1508,3 +1508,16 @@
     .live-forecast { grid-template-columns: minmax(0, 1fr); }
   }
 }
+
+// The Timing page: the tower, the map and the sector column side by side, each
+// as wide as its chart. They wrap rather than overlap: the charts have a fixed
+// size, and with larger text a grid of fractions put the sector board over the
+// map.
+.timing-fold {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.timing-fold > .panel { flex: 0 0 auto; margin-bottom: 0; }

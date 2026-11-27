@@ -149,7 +149,10 @@ create or modify persistent entity Formula1Backend.MqttState (
   ClientId: String(120),
   TokenExpiresAt: DateTime,
   ConnectedAt: DateTime,
-  LastResult: String(500)
+  LastResult: String(500),
+  /* Bumped when a silent stream is reconnected, so the client id is new and
+   * the connector cannot hand back the dead connection. */
+  Generation: Integer default 0
 );
 
 CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_State ()
@@ -244,9 +247,19 @@ END;
 
 /*
  * Make the connection match the state: closed when the stream is off, and when
- * it is on, connected under the client id of the current token and runtime.
- * A subscription that fails leaves no client id, so the next minute tries
- * again.
+ * it is on, connected under the client id of the current token, runtime and
+ * generation. A subscription that fails leaves no client id, so the next
+ * minute tries again.
+ *
+ * A connection can also go quiet without anyone noticing. In Qatar FP2 the
+ * client lost its connection during a red flag (17:43, "connection lost auto
+ * retry begins"); its automatic reconnect came back without the subscriptions,
+ * since a clean session drops them, and the connector does not renew them.
+ * Nothing arrived for the rest of the session (FINDINGS §130). So during a
+ * session's live window -- the newest session started under three hours ago or
+ * starts within thirty minutes -- three minutes without a message, on a
+ * connection older than that, counts as dead: the generation goes up, and the
+ * stream is reconnected under a new client id.
  */
 CREATE OR MODIFY MICROFLOW Formula1Backend.Mqtt_Keep ()
   RETURNS String AS $Result
@@ -271,7 +284,30 @@ BEGIN
     RETURN $Result;
   END IF;
   $Run = CALL JAVA ACTION Formula1Backend.Mqtt_RuntimeId();
-  DECLARE $Wanted String = 'formula1backend-' + formatDateTimeUTC($Tok/ExpiresAt, 'yyyyMMddHHmm') + '-' + $Run;
+
+  /* Is the connection silent during a live window? */
+  DECLARE $Silent Boolean = false;
+  IF trim($State/ClientId) != '' AND $State/ConnectedAt != empty
+     AND $State/ConnectedAt < addMinutes([%CurrentDateTime%], -3) THEN
+    RETRIEVE $Sess FROM Formula1Backend.LiveSessionRow SORT BY DateStart DESC FIRST;
+    IF $Sess != empty AND $Sess/DateStart != empty AND length($Sess/DateStart) >= 19 THEN
+      DECLARE $Start DateTime = parseDateTimeUTC(substring($Sess/DateStart, 0, 19), 'yyyy-MM-dd''T''HH:mm:ss');
+      IF $Start < addMinutes([%CurrentDateTime%], 30) AND $Start > addHours([%CurrentDateTime%], -3) THEN
+        RETRIEVE $Last FROM Formula1Backend.MqttMessage SORT BY ReceivedAt DESC FIRST;
+        IF $Last = empty OR $Last/ReceivedAt < addMinutes([%CurrentDateTime%], -3) THEN
+          SET $Silent = true;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  IF $Silent THEN
+    CHANGE $State (Generation = $State/Generation + 1) COMMIT;
+    increment counter 'f1.mqtt.silent_reconnects';
+    LOG WARNING NODE 'F1Mqtt' 'MQTT: no message for three minutes during a session, reconnecting';
+  END IF;
+
+  DECLARE $Wanted String = 'formula1backend-' + formatDateTimeUTC($Tok/ExpiresAt, 'yyyyMMddHHmm') + '-' + $Run
+    + '-' + toString($State/Generation);
   IF $Wanted = $State/ClientId THEN
     SET $Result = 'connected as ' + $Wanted;
     RETURN $Result;
@@ -281,8 +317,12 @@ BEGIN
   IF trim($State/ClientId) = '' THEN
     SET $Why = 'connect';
   ELSE
-    IF NOT(endsWith($State/ClientId, '-' + $Run)) THEN
-      SET $Why = 'restart';
+    IF $Silent THEN
+      SET $Why = 'silent';
+    ELSE
+      IF NOT(contains($State/ClientId, '-' + $Run)) THEN
+        SET $Why = 'restart';
+      END IF;
     END IF;
   END IF;
   CALL MICROFLOW Formula1Backend.Mqtt_Close(ClientId = $State/ClientId);

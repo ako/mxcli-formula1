@@ -10661,3 +10661,31 @@ from before the stoppage, so the map hid them, as intended. But a car on its
 out-lap is on track, and the estimate had left PIT OUT cars out with the pitted
 ones. It now includes them, from the start of the out-lap at its slow pace:
 right after the change, 12 of 18 estimated cars were on the map.
+
+## 130. A silent stream after a red flag, and a Timing page that fits
+
+**The stream went silent.** In FP2's second stoppage the MQTT client lost its
+connection (17:43:07, "connection lost auto retry begins"), and nothing arrived
+after that, although the client id, the token (valid until 17:55) and the
+keeper's state all looked fine. The connector's automatic reconnect comes back
+with a clean session, which drops the subscriptions, and it does not renew them.
+So Mqtt_Keep now also checks for silence: during a session's live window (the
+newest session started under three hours ago, or starts within thirty minutes),
+no message for three minutes on a connection older than that counts as dead. It
+then raises `MqttState.Generation`, which is part of the client id
+(`formula1backend-<token expiry>-<runtime>-<generation>`), so the connector
+cannot hand back the dead connection, and it reconnects. Mqtt_Keep was dropped
+and created once, because its new shape could not be spliced. Its first real
+case was the backend restart at 17:51: "silent: connected as …-1", and 173 lap
+messages arrived in the next two minutes.
+
+**The page did not fit with larger text.** The charts have a fixed size, and
+`.replay-fold`'s grid of fractions laid the 816-pixel sector board over the
+map. Now:
+- `.timing-fold` (theme `_f1-layout.scss`) is a wrapping flex row;
+- the sector top three are one column (210 × 336, `live.sector_cells`) under the
+  map, which is 360 pixels;
+- at 125% zoom the tower and the map with its sector column fit side by side.
+
+**Also:** a tyre age could read −1 just after a change, when the new stint
+arrived before its first lap. It is now at least 0.

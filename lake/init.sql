@@ -1034,7 +1034,7 @@ cars AS (
          CASE WHEN cur.duration_sector_1 IS NOT NULL OR done.lap_number IS NULL THEN cur.lap_number ELSE done.lap_number END AS shown_lap,
          cur.is_pit_out_lap AND cur.duration_sector_1 IS NULL AS pit_out,
          COALESCE(done.st_speed, cur.st_speed) AS st_speed,
-         st.compound, COALESCE(st.tyre_age_at_start, 0) + (COALESCE(cur.lap_number, st.lap_start) - st.lap_start) AS tyre_age,
+         st.compound, greatest(0, COALESCE(st.tyre_age_at_start, 0) + (COALESCE(cur.lap_number, st.lap_start) - st.lap_start)) AS tyre_age,
          pos.position AS feed_position, itv.gap_to_leader
     FROM live.drivers d
     LEFT JOIN pb USING (driver_number) LEFT JOIN cur USING (driver_number) LEFT JOIN done USING (driver_number)
@@ -1108,7 +1108,8 @@ cells AS (
 )
 SELECT * FROM cells;
 
--- The three fastest of each sector, as cells in three columns.
+-- The three fastest of each sector, as cells: one narrow column, the sectors
+-- one above the other (210 wide, 112 per sector), beside the map.
 CREATE OR REPLACE VIEW live.sector_cells AS
 WITH l AS (SELECT * FROM live.laps), d AS (SELECT * FROM live.drivers),
 best AS (
@@ -1118,15 +1119,15 @@ best AS (
     SELECT 3, driver_number, duration_sector_3 FROM l) WHERE v IS NOT NULL GROUP BY ALL),
 top AS (SELECT *, row_number() OVER (PARTITION BY k ORDER BY v, driver_number) AS rk FROM best QUALIFY rk <= 3),
 r AS (SELECT t.*, d.name_acronym AS code, '#' || COALESCE(d.team_colour, '888888') AS colour,
-             (k - 1) * 272 AS x0, 22 + (rk - 1) * 30 AS y0 FROM top t JOIN d USING (driver_number))
-SELECT 'text' AS k, (k - 1) * 272 + 36 AS xt, 10 AS yt, NULL::INT AS x, NULL::INT AS x2, NULL::INT AS y, NULL::INT AS y2,
+             (k - 1) * 112 + 24 + (rk - 1) * 28 AS y0 FROM top t JOIN d USING (driver_number))
+SELECT 'text' AS k, 36 AS xt, (k - 1) * 112 + 11 AS yt, NULL::INT AS x, NULL::INT AS x2, NULL::INT AS y, NULL::INT AS y2,
        'Sector ' || k AS text, '#8B949E' AS fg, NULL AS bg, 11 AS size
   FROM (SELECT DISTINCT k FROM top)
-UNION ALL SELECT 'box', NULL, NULL, x0 + 4, x0 + 30, y0, y0 + 24, NULL, NULL, colour, NULL FROM r
-UNION ALL SELECT 'text', x0 + 17, y0 + 12, NULL, NULL, NULL, NULL, CAST(rk AS VARCHAR), '#0D1117', NULL, 13 FROM r
-UNION ALL SELECT 'box', NULL, NULL, x0 + 32, x0 + 100, y0, y0 + 24, NULL, NULL, '#0D1117', NULL FROM r
-UNION ALL SELECT 'text', x0 + 66, y0 + 12, NULL, NULL, NULL, NULL, code, colour, NULL, 13 FROM r
-UNION ALL SELECT 'text', x0 + 190, y0 + 12, NULL, NULL, NULL, NULL, printf('%.3f', v), '#E6EDF3', NULL, 13 FROM r;
+UNION ALL SELECT 'box', NULL, NULL, 4, 30, y0, y0 + 24, NULL, NULL, colour, NULL FROM r
+UNION ALL SELECT 'text', 17, y0 + 12, NULL, NULL, NULL, NULL, CAST(rk AS VARCHAR), '#0D1117', NULL, 13 FROM r
+UNION ALL SELECT 'box', NULL, NULL, 32, 100, y0, y0 + 24, NULL, NULL, '#0D1117', NULL FROM r
+UNION ALL SELECT 'text', 66, y0 + 12, NULL, NULL, NULL, NULL, code, colour, NULL, 13 FROM r
+UNION ALL SELECT 'text', 156, y0 + 12, NULL, NULL, NULL, NULL, printf('%.3f', v), '#E6EDF3', NULL, 13 FROM r;
 
 -- The header line and the race-control ticker, as one row.
 CREATE OR REPLACE VIEW live.header AS
