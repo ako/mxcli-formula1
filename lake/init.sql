@@ -1168,7 +1168,8 @@ SELECT CAST(s.session_key AS VARCHAR) AS sessionKey,
 --   * The pace is the car's best lap scaled by how this lap is going: its
 --     completed sectors against its best ones, or before the first, its last lap
 --     against its best (an in- or out-lap is slow), between 1 and 1.8.
---   * Cars in the pits are left out (live.tower's status).
+--   * Cars in the pits are left out (live.tower's status IN PIT); a car on its
+--     out-lap is on track, from the start of that lap, at its slow pace.
 CREATE OR REPLACE VIEW live.map_cars AS
 WITH l AS (SELECT * FROM live.laps),
 cur AS (SELECT DISTINCT ON (driver_number) * FROM l WHERE date_start IS NOT NULL
@@ -1191,6 +1192,6 @@ e AS (
              ELSE COALESCE(lastlap.lap_duration / pb.best, 1.0) END)) AS ratio,
          pb.best
     FROM t JOIN cur USING (driver_number) JOIN pb USING (driver_number) LEFT JOIN lastlap USING (driver_number)
-   WHERE t.status IS NULL AND pb.best IS NOT NULL AND pb.b1 IS NOT NULL AND pb.b2 IS NOT NULL
+   WHERE (t.status IS NULL OR t.status = 'PIT OUT') AND pb.best IS NOT NULL AND pb.b1 IS NOT NULL AND pb.b2 IS NOT NULL
 )
 SELECT code, colour, ta, round(fa, 4) AS fa, CAST(1000 * best * ratio AS BIGINT) AS lapms FROM e;

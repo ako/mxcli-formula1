@@ -10654,3 +10654,10 @@ errors. The estimate's accuracy against the measured locations is not checked
 yet. The sector shares are taken from the car's own best lap and the outline is
 another car's lap, so on a slow lap a car can be some way off; mini-sector
 progress (the segments) would anchor it more often.
+
+The map was empty at 17:34 UTC because of a red flag (17:28, SESSION ABORTED) and
+the restart at 17:34: 8 cars IN PIT, 12 on PIT OUT, and the 2 others' anchors
+from before the stoppage, so the map hid them, as intended. But a car on its
+out-lap is on track, and the estimate had left PIT OUT cars out with the pitted
+ones. It now includes them, from the start of the out-lap at its slow pace:
+right after the change, 12 of 18 estimated cars were on the map.
