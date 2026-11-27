@@ -43,11 +43,13 @@ refresh = "on_change"
 # changes every minute during a session: recompute on a timer, not on change.
 # The season's forecast takes about half a minute; once an hour is plenty for
 # races already run (refresh one by hand: POST /api/steps/<name>/refresh).
-# The live session's newest OpenF1 responses, which the Timing page reads every
-# five seconds: ten seconds old at most, one scan of the topic per refresh.
+# The live session's newest OpenF1 polled responses, which the Timing page reads
+# every five seconds. Every 30 s: each refresh scans the topic's table, which
+# cost up to 2 GB a time (FINDINGS §128). Laps, positions and gaps come from the
+# MQTT stream (live.stream) and do not wait for this.
 [[materialize]]
 views = "live.payloads"
-refresh = "every 10s"
+refresh = "every 30s"
 
 [[materialize]]
 views = "replay.*"

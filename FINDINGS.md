@@ -10598,3 +10598,28 @@ poll, about 40 s behind the track (§124).
 
 The backend was restarted with the new handler at 15:44, and the stream
 reconnected within a minute.
+
+## 128. The lake died again at 16:09: refresh spikes on a growing table
+
+The Replay page showed nothing at 16:38 because the lake had been down since
+about 16:09, killed without a word in its log. It was not an hour boundary: the
+15:00 and 16:00 hours of spans merged normally.
+
+After a restart, RSS swung between 250 MB and 2 GB in step with the refreshes of
+`live.payloads` (every 10 s), each of which reads the OpenF1 topic's table. The
+backend was posting whole `laps`, `position` and `intervals` responses on every
+change, so during a session the table grows quickly: FP1 put about 470 MB into
+it. The spikes grow with it.
+
+The changes:
+- **Backend:** Sync_LakePost posts `laps`, `position`, `intervals`, `car_data`
+  and `location` at most once every ten minutes per request path, counted as
+  `f1.lake.posts_throttled`. The Timing page takes those feeds from the MQTT
+  stream (§127); Replay gets each session's final version, at most ten minutes
+  late. Sync_LakePost was dropped and created once, because the new branch could
+  not be spliced in (no room beside the end event); the script keeps the
+  `create or modify`.
+- **Lake:** `live.payloads` refreshes every 30 s.
+- **`scripts/lake-watchdog.sh`:** logs the lake's RSS every 20 s to
+  `.mxcli-obs/lake-watchdog.log`, and restarts the lake after two failed health
+  checks in a row, as `keep-app-running.sh` does for the apps.

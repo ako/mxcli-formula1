@@ -535,6 +535,19 @@ begin
     return $Posted;
   end if;
 
+  /* The big, fast-changing feeds at most once every ten minutes per request.
+   * Posted whole on every change, a session's laps, positions and intervals
+   * put about 470 MB into the topic in FP1, and the lake reads that table for
+   * the live page (FINDINGS §128). The live page gets these feeds from the MQTT
+   * stream now (Mqtt_OnMessage); the lake keeps them for Replay, and a
+   * session's final version still arrives, at most ten minutes late. */
+  if ($Feed = 'laps' or $Feed = 'position' or $Feed = 'intervals' or $Feed = 'car_data' or $Feed = 'location')
+     and $State/PostedAt != empty
+     and $State/PostedAt > addMinutes([%CurrentDateTime%], -10) then
+    increment counter 'f1.lake.posts_throttled' (Tags: ('feed': $Feed));
+    return $Posted;
+  end if;
+
   $Resp = call rest service post @Formula1Backend.LakeEventsUrl (
       Headers: ('Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + @Formula1Backend.LakeToken,
