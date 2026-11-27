@@ -29,6 +29,162 @@ mdl 1;
  * and the panel below is built from it.
  */
 
+/* ---------------------------------------------------------- the refresh -- */
+/*
+ * The page follows the race by itself: every five seconds it reads the live
+ * tables again, without a reload.
+ *
+ * Mendix re-runs a microflow data source only when something it depends on
+ * changes, and every panel here reads parameterless microflows -- they would
+ * show the first answer they got for as long as the page is open. So the page
+ * sits in a dataview over a tick, a non-persistent object of each viewer's own,
+ * that the Events widget changes every five seconds with a refresh. The session
+ * dataview reads the tick as its parameter, so it runs again on every change,
+ * and the panels inside it run again with the new session object. Non-persistent
+ * on purpose: a tick per viewer, no database writes.
+ *
+ * Five seconds is about the backend's best case: OpenF1 is ~3 s behind the
+ * track and the sync commits once per cycle (FINDINGS §122).
+ */
+create or modify non-persistent entity Formula1Frontend.LiveTick (
+  N: long
+);
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveTick ()
+  RETURNS Formula1Frontend.LiveTick AS $Tick
+BEGIN
+  $Tick = CREATE Formula1Frontend.LiveTick (N = 0);
+  RETURN $Tick;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.ACT_LiveTick (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = true;
+  IF $Tick = empty THEN
+    RETURN $Ok;
+  END IF;
+  CHANGE $Tick (N = $Tick/N + 1) REFRESH;
+  RETURN $Ok;
+END;
+
+/* The session as of this tick: DS_LiveSession, with the tick as the dependency. */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveSessionAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS F1Now.Session AS $Session
+BEGIN
+  $Session = CALL MICROFLOW Formula1Frontend.DS_LiveSession ();
+  RETURN $Session;
+END;
+
+/*
+ * The same for every panel. The session dataview re-runs on each tick, but the
+ * panels inside it do not: the session comes back as the same object, so they
+ * have nothing new to depend on (measured: two requests per tick, the tick and
+ * the session). Each panel therefore reads through a wrapper that takes the
+ * tick, and the original microflows, which the smoke tests call, keep their
+ * signatures.
+ */
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveOrderAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS List of F1Now.Order AS $Rows
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveOrder ();
+  RETURN $Rows;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_TrackMapAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_TrackMap ();
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LiveGapsAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_LiveGaps ();
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LivePositionsAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_LivePositions ();
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_LiveStintsAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_LiveStints ();
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DSJ_ForecastWinAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS Formula1Frontend.Chart AS $Chart
+BEGIN
+  $Chart = CALL MICROFLOW Formula1Frontend.DSJ_ForecastWin ();
+  RETURN $Chart;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveForecastAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS List of F1Now.Forecast AS $Rows
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveForecast ();
+  RETURN $Rows;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveStoryAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS List of F1Now.Story AS $Rows
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveStory ();
+  RETURN $Rows;
+END;
+
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_LiveMessagesAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS List of F1Now.Messages AS $Rows
+BEGIN
+  $Rows = CALL MICROFLOW Formula1Frontend.DS_LiveMessages ();
+  RETURN $Rows;
+END;
+
+/* Granted here, not in 11: the page below uses them, and a page cannot
+ * reference a microflow no role may run (CE0106). */
+GRANT READ *, WRITE * ON ENTITY Formula1Frontend.LiveTick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveTick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.ACT_LiveTick TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveSessionAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveOrderAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TrackMapAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveGapsAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LivePositionsAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_LiveStintsAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_ForecastWinAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveForecastAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveStoryAt TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_LiveMessagesAt TO Formula1Frontend.Enthusiast;
+
 create or modify page Formula1Frontend.Narrate
 (
   title: 'Narrate',
@@ -37,8 +193,18 @@ create or modify page Formula1Frontend.Narrate
 )
 {
   container pageBody (class: 'narrate-dense') {
+  dataview dvTick (datasource: MICROFLOW Formula1Frontend.DS_LiveTick) {
 
-    dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSession) {
+    pluggablewidget 'com.mendix.widget.web.events.Events' evTick (
+      onComponentLoad: microflow Formula1Frontend.ACT_LiveTick(Tick = $currentObject),
+      componentLoadDelayParameterType: 'number',
+      componentLoadDelay: 5000,
+      componentLoadRepeat: true,
+      componentLoadRepeatIntervalParameterType: 'number',
+      componentLoadRepeatInterval: 5000
+    )
+
+    dataview dvSession (datasource: MICROFLOW Formula1Frontend.DS_LiveSessionAt(Tick = $currentObject)) {
 
       /*
        * Identity and conditions on one line.
@@ -155,7 +321,7 @@ create or modify page Formula1Frontend.Narrate
             }
             container orderGrid (class: 'grid-dense') {
               datagrid dgOrder (
-                datasource: MICROFLOW Formula1Frontend.DS_LiveOrder,
+                datasource: MICROFLOW Formula1Frontend.DS_LiveOrderAt(Tick = $dvTick),
                 PageSize: 24,
                 PagingPosition: bottom
               ) {
@@ -211,7 +377,7 @@ create or modify page Formula1Frontend.Narrate
                 class: 'panel-sub')
             }
             container trackFigure (class: 'circuit-figure') {
-              dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMap) {
+              dataview dvTrackMap (datasource: MICROFLOW Formula1Frontend.DSJ_TrackMapAt(Tick = $dvTick)) {
                 pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartTrackMap (
                   chartData: json,
                   datasetName: 'table',
@@ -242,7 +408,7 @@ create or modify page Formula1Frontend.Narrate
                 content: 'the five cars at the front · seconds · a lapped car stops having a gap, so its line ends',
                 class: 'panel-sub')
             }
-            dataview dvGaps (datasource: MICROFLOW Formula1Frontend.DSJ_LiveGaps) {
+            dataview dvGaps (datasource: MICROFLOW Formula1Frontend.DSJ_LiveGapsAt(Tick = $dvTick)) {
               pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartGaps (
                 chartData: json,
                 datasetName: 'table',
@@ -260,7 +426,7 @@ create or modify page Formula1Frontend.Narrate
                 content: 'every car, lap one to now · first place at the top · the crossings are the race',
                 class: 'panel-sub')
             }
-            dataview dvPositions (datasource: MICROFLOW Formula1Frontend.DSJ_LivePositions) {
+            dataview dvPositions (datasource: MICROFLOW Formula1Frontend.DSJ_LivePositionsAt(Tick = $dvTick)) {
               pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartPositions (
                 chartData: json,
                 datasetName: 'table',
@@ -278,7 +444,7 @@ create or modify page Formula1Frontend.Narrate
                 content: 'one bar per stint, coloured by compound · a stint still running is closed at the lead lap',
                 class: 'panel-sub')
             }
-            dataview dvStints (datasource: MICROFLOW Formula1Frontend.DSJ_LiveStints) {
+            dataview dvStints (datasource: MICROFLOW Formula1Frontend.DSJ_LiveStintsAt(Tick = $dvTick)) {
               pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartStints (
                 chartData: json,
                 datasetName: 'table',
@@ -314,7 +480,7 @@ create or modify page Formula1Frontend.Narrate
                 content: 'how the forecast has moved · one line per car that has ever been above 2%',
                 class: 'panel-sub')
             }
-            dataview dvFcWin (datasource: MICROFLOW Formula1Frontend.DSJ_ForecastWin) {
+            dataview dvFcWin (datasource: MICROFLOW Formula1Frontend.DSJ_ForecastWinAt(Tick = $dvTick)) {
               pluggablewidget 'f1.widget.web.vegachart.VegaChart' chartForecastWin (
                 chartData: json,
                 datasetName: 'table',
@@ -334,7 +500,7 @@ create or modify page Formula1Frontend.Narrate
             }
             container fcGrid (class: 'grid-dense') {
               datagrid dgForecast (
-                datasource: MICROFLOW Formula1Frontend.DS_LiveForecast,
+                datasource: MICROFLOW Formula1Frontend.DS_LiveForecastAt(Tick = $dvTick),
                 PageSize: 24,
                 PagingPosition: bottom
               ) {
@@ -374,7 +540,7 @@ create or modify page Formula1Frontend.Narrate
                                   class: 'panel-sub')
           }
           container storyList (class: 'card-list') {
-            listview lvStory (datasource: MICROFLOW Formula1Frontend.DS_LiveStory,
+            listview lvStory (datasource: MICROFLOW Formula1Frontend.DS_LiveStoryAt(Tick = $dvTick),
                               PageSize: 60) {
               container storyCard (
                 class: 'story-card',
@@ -406,7 +572,7 @@ create or modify page Formula1Frontend.Narrate
             dynamictext rcSub (content: 'every message, newest first', class: 'panel-sub')
           }
           container rcList (class: 'card-list') {
-            listview lvMessages (datasource: MICROFLOW Formula1Frontend.DS_LiveMessages,
+            listview lvMessages (datasource: MICROFLOW Formula1Frontend.DS_LiveMessagesAt(Tick = $dvTick),
                                  PageSize: 60) {
               container rcCard (class: 'story-card story-rc') {
                 container rcCardTop (class: 'card-meta') {
@@ -429,5 +595,6 @@ create or modify page Formula1Frontend.Narrate
       dynamictext noteBody (
         content: 'Timing, tyres and race control are OpenF1 (openf1.org), an unofficial free API with a documented ~3 second delay during a session. This screen reads the tables the in-app sync writes, so it follows the session the sync is following and shows the last cycle''s state; the header says when that was. Everything on the other four screens comes from f1db instead, and is official.')
     }
+  }
   }
 };

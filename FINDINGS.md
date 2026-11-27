@@ -10332,3 +10332,46 @@ On the live lake the switch brought the tables from 727 MB to 40 MB and from
 checksums, up to the offsets read before the switch. Afterwards CDC events kept
 arriving, all 15 pipeline steps were ready, and OData answered. 46ec4c0 stays
 installed under ~/.local/opt to switch back to.
+
+## 122. Narrate refreshes itself every five seconds
+
+The live page read its panels once, on page load, so following a race meant
+reloading it. The latency from the track to the screen, measured or read from
+the code:
+- OpenF1 is about 3 s behind the track.
+- The backend's poll comes every 20 s or so, in three passes a minute.
+- The whole one-minute sync cycle is one transaction (Sync_Cycle says so), so
+  nothing a pass writes is visible until the minute ends. The CDC timings of
+  §121 show the same thing: three commits, published together at about :50.
+- Then the viewer had to reload.
+
+That is between a few seconds and over a minute, and only on a reload. The lake
+already had each OpenF1 response about a second after the backend fetched it,
+because Sync_LakePost's HTTP call does not wait for the transaction.
+
+This step changes only the frontend (06-narrate.mdl):
+- The page sits in a dataview over `LiveTick`, a non-persistent object, so each
+  viewer has their own tick and nothing is written to the database.
+- Mendix's Events widget (already in the project, 1.3.1) calls ACT_LiveTick
+  every 5 s, which changes the tick with a client refresh.
+- The session dataview reads `DS_LiveSessionAt(Tick)`. That alone was not enough:
+  measured in a browser, a tick made two requests, the tick and the session. The
+  panels inside did not re-run, because the session came back as the same
+  object.
+- So every panel reads through a thin wrapper, `<name>At(Tick = $dvTick)`, that
+  calls the original microflow. The originals keep their signatures, because the
+  smoke tests call them. Measured again: 11 requests per tick, the tick, the
+  session and the nine panels, with no console errors, and the page renders as
+  before.
+- The grants for the new microflows are in 06, not 11, because the page uses them
+  and a page cannot reference a microflow that no role may run (CE0106, which the
+  script check catches as MDL-SEC21).
+
+Not done yet, and planned after the weekend:
+- read the live panels from the lake;
+- commit each pass of the sync on its own;
+- poll the fast tier more often;
+- consider OpenF1's MQTT/WebSocket stream, which the Sponsor tier includes
+  (openf1.org/auth.html).
+
+mx check 0, `reexec-all.sh` total writes 0.
