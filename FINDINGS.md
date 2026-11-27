@@ -10375,3 +10375,69 @@ Not done yet, and planned after the weekend:
   (openf1.org/auth.html).
 
 mx check 0, `reexec-all.sh` total writes 0.
+
+## 123. The graph covers all of f1db and the OpenF1 timing
+
+The graph (R2RML mapping and ontology, served as SPARQL, OData and through MCP)
+had three classes: Driver, Constructor and Race with its winner. It now has 57
+classes over 56 triples maps:
+- **All of f1db:** countries and continents, circuits and their layouts, Grands
+  Prix, seasons, races, drivers, constructors, engine and tyre manufacturers,
+  engines, chassis, entrants and their entries per season, family relationships,
+  constructor lineage, standings after every race and at season's end, each
+  season's record of drivers, constructors and suppliers, and every session
+  result: race, sprint, qualifying (Q, Q1, Q2, pre- and sprint qualifying),
+  FP1–4, warm-up, both grids, fastest laps, pit stops and Driver of the Day.
+- **Jolpica's lap positions.**
+- **OpenF1:** sessions linked to their f1db race weekend, entries linked to their
+  f1db driver, laps, stints, pit-lane visits, race control, weather, and the
+  replay forecasts.
+
+`scripts/datalake/build-graph.py` writes both `lake/mapping/f1.ttl` and
+`lake/ontology/f1.ttl` from a compact spec. It reads each view's column types from
+the running lake, turns `<x>Id` columns into links and f1db's `total<X>` columns
+into one name per measure. The views it needs were added to `lake/init.sql`:
+- the 27 f1db files that had none;
+- `f1.lap_positions`, Jolpica's laps with f1db race and driver ids. Every lap
+  resolves; 'sainz' needed a last-name suffix match for 'Sainz Jr.'.
+- `timing.session_races` (all 115 sessions with data matched);
+- `timing.session_drivers` (all 2,793 entries matched);
+- `timing.race_control` and `timing.weather`.
+
+The ontology is used for inference, since the lake applies it to queries:
+- `SessionResult` with sixteen subclasses (two levels for practice);
+- `Standing` and `SeasonParticipant`;
+- `relative` is symmetric;
+- `raceRecord`, `driverRecord`, `constructorRecord`, `seasonRecord` and
+  `sessionRecord` are the inverses of the links.
+
+Checked:
+- `SessionResult` finds all 188,879 results.
+- Jos and Max Verstappen are each other's relatives.
+- Every 2026 OpenF1 race session reaches its f1db winner.
+- Ferrari's 2024 entry is the SF-24 with the 066/12.
+- The Las Vegas forecasts reach f1db drivers.
+- Senna's 41 wins are still found.
+
+Driver, Race and Constructor keep every property the frontend's F1Graph client
+reads, with the same names and types; the `$metadata` was compared. The Lake
+drivers page loads as before.
+
+### Inference has a cost
+
+The lake applies domain, range and inverse to queries, so each one widens what
+"is a Driver" means:
+- `careerPoints` had the domain Driver. Constructors and suppliers have career
+  points too, so they became drivers: the OData `Driver` set listed Ferrari.
+- A range on every link, or a domain on an inverse (`driverRecord`), makes every
+  IRI any table links to as a driver a Driver: a union over results, standings,
+  entries and laps. `Driver/$count` took 3.7 s.
+
+So the ontology declares a domain only for properties one class owns, and no
+ranges. OData's navigation targets do not need ranges: the lake takes them from
+the IRI templates' shapes. Afterwards `Driver/$count` took 0.14 s; the frontend's
+queries (drivers with four titles, Senna's wins through `winner`, a race's results
+with their drivers) take 0.1–0.8 s; queries across every kind of result for a
+driver or a race take 1–3 s. Counting all 188,879 results through the superclass
+takes 12 s. That count dedupes across 16 tables, so the unique keys now declared in
+`[rdf] unique_keys` do not help it.
