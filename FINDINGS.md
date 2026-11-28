@@ -10731,3 +10731,39 @@ Compared at 1900 × 1100:
 Right after the restart, the page's first queries ran the lake out of its 4 GB
 cap (`failed to allocate … 3.7 GiB/3.7 GiB used`) while the pipeline steps
 refreshed; a minute later they answered.
+
+## 132. The backend on Mendix 11.17 too, and an mxcli CDC baseline problem
+
+The backend was upgraded the same way as the frontend (§131):
+- converted from its committed 11.16.1 model with `mx convert -p` 11.17.0;
+- its own copy of mxcli from main (`Formula1Backend/mxcli`; the root `./mxcli`
+  is still 1f6b9681);
+- every script re-run.
+
+It has run on runtime 11.17.0 since 10:49 UTC, with no errors in its log. The
+live sync runs, CDC events reach the lake, and the MQTT keeper connects. Both
+apps are now on 11.17.0.
+
+**CE1585 that the scripts cannot settle.** With mxcli main on 11.17, a CDC
+service written by `create or modify` does not keep a baseline that mx check
+accepts:
+- A fresh create (drop, then create, in one run) passes mx check. The first
+  re-run after it reports "Modified", the next ones "Unchanged", and mx check
+  still passes.
+- A full `reexec-all.sh` reports the service "Modified" again. That is probably
+  an earlier script rewriting the entity behind it; script 27 run on its own did
+  not do it. After that, mx check fails with CE1585 on LiveStateCdc and
+  AgentTraceCdc ("There are changes in your … document. Please accept the
+  changes or undo them."), even though further passes report "Unchanged".
+
+So the two services were recreated once more as the last step, and mx check
+passes on both apps. **Until mxcli is fixed, `scripts/reexec-all.sh` must not
+be run against these 11.17 models.** If it is, recreate both services
+(`drop change data capture service …` plus the `create or modify` from 17 and
+27, in one run) before the next build. A supervisor restart builds from the
+model as it is and does not run the scripts.
+
+Also seen: after FP2 ended at 18:00, the MQTT keeper took each three-minute
+silence for a dead connection until its three-hour window ran out, reaching
+generation 13. That is harmless but wasteful; the window should end with the
+session.
