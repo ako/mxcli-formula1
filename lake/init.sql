@@ -386,6 +386,25 @@ SELECT warpstream.headers['ce_type'] AS type,
        CAST(decode(warpstream.value) AS JSON) AS payload
   FROM main.local__openf1;
 
+-- The newest response per feed and request path (subject), the only version
+-- the views below use. Chosen on the small columns first and the JSON decoded
+-- for those alone: a response is megabytes (a finished session's whole feed),
+-- and picking the newest with a window over the decoded payloads held all of
+-- them at once. replay.forecast reads several of these views together, and
+-- that ran the lake out of its memory cap.
+CREATE OR REPLACE VIEW timing.latest AS
+SELECT n.type, n.subject, n.event_time, n.kafka_offset,
+       CAST(decode(t.warpstream.value) AS JSON) AS payload
+  FROM (SELECT warpstream.headers['ce_type'] AS type,
+               warpstream.headers['ce_subject'] AS subject,
+               warpstream.timestamp AS event_time,
+               warpstream.offset AS kafka_offset,
+               warpstream.partition AS kafka_partition
+          FROM main.local__openf1
+       QUALIFY row_number() OVER (PARTITION BY type, subject ORDER BY event_time DESC, kafka_offset DESC) = 1) n
+  JOIN main.local__openf1 t
+    ON t.warpstream.offset = n.kafka_offset AND t.warpstream.partition = n.kafka_partition;
+
 CREATE OR REPLACE VIEW timing.sessions AS
 SELECT DISTINCT ON (j.session_key)
        j.session_key, j.session_name, j.session_type, j.meeting_key, j.location,
@@ -399,7 +418,7 @@ SELECT DISTINCT ON (j.session_key)
        CAST(j.gmt_offset AS INTERVAL) AS gmt_offset
   FROM (SELECT event_time, kafka_offset,
                unnest(from_json(payload, '[{"session_key":"BIGINT","session_name":"VARCHAR","session_type":"VARCHAR","meeting_key":"BIGINT","location":"VARCHAR","country_name":"VARCHAR","circuit_short_name":"VARCHAR","year":"BIGINT","date_start":"VARCHAR","date_end":"VARCHAR","gmt_offset":"VARCHAR","is_cancelled":"BOOLEAN"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'sessions'))
+          FROM (SELECT * FROM timing.latest WHERE type = 'sessions'))
  WHERE j.session_key IS NOT NULL
  ORDER BY j.session_key, event_time DESC, kafka_offset DESC;
 
@@ -410,7 +429,7 @@ SELECT sk AS session_key, j.driver_number,
        COALESCE(j.team_name, '') AS team, j.team_colour
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","name_acronym":"VARCHAR","full_name":"VARCHAR","broadcast_name":"VARCHAR","team_name":"VARCHAR","team_colour":"VARCHAR"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'drivers')
+          FROM (SELECT * FROM timing.latest WHERE type = 'drivers')
          WHERE regexp_matches(subject, '^drivers\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -421,7 +440,7 @@ SELECT sk AS session_key, j.driver_number, j.lap_number, j.lap_duration,
        CAST(j.date_start AS TIMESTAMP) AS date_start
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lap_duration":"DOUBLE","duration_sector_1":"DOUBLE","duration_sector_2":"DOUBLE","duration_sector_3":"DOUBLE","i2_speed":"BIGINT","is_pit_out_lap":"BOOLEAN","date_start":"VARCHAR"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'laps')
+          FROM (SELECT * FROM timing.latest WHERE type = 'laps')
          WHERE regexp_matches(subject, '^laps\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -429,7 +448,7 @@ CREATE OR REPLACE VIEW timing.positions AS
 SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date, j.position
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","position":"BIGINT"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'position')
+          FROM (SELECT * FROM timing.latest WHERE type = 'position')
          WHERE regexp_matches(subject, '^position\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -439,7 +458,7 @@ SELECT sk AS session_key, j.driver_number, CAST(j.date AS TIMESTAMP) AS date,
        j.gap_to_leader, j."interval"
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","date":"VARCHAR","gap_to_leader":"VARCHAR","interval":"VARCHAR"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'intervals')
+          FROM (SELECT * FROM timing.latest WHERE type = 'intervals')
          WHERE regexp_matches(subject, '^intervals\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -448,7 +467,7 @@ SELECT sk AS session_key, j.driver_number, j.stint_number, j.compound,
        j.lap_start, j.lap_end, j.tyre_age_at_start
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","stint_number":"BIGINT","compound":"VARCHAR","lap_start":"BIGINT","lap_end":"BIGINT","tyre_age_at_start":"BIGINT"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'stints')
+          FROM (SELECT * FROM timing.latest WHERE type = 'stints')
          WHERE regexp_matches(subject, '^stints\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -456,7 +475,7 @@ CREATE OR REPLACE VIEW timing.pits AS
 SELECT sk AS session_key, j.driver_number, j.lap_number, j.lane_duration
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"driver_number":"BIGINT","lap_number":"BIGINT","lane_duration":"DOUBLE"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'pit')
+          FROM (SELECT * FROM timing.latest WHERE type = 'pit')
          WHERE regexp_matches(subject, '^pit\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -886,7 +905,7 @@ SELECT sk AS session_key, row_number() OVER (PARTITION BY sk ORDER BY j.date, j.
        j.driver_number, j.lap_number, j.message
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"date":"VARCHAR","category":"VARCHAR","flag":"VARCHAR","scope":"VARCHAR","sector":"BIGINT","driver_number":"BIGINT","lap_number":"BIGINT","message":"VARCHAR"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'race_control')
+          FROM (SELECT * FROM timing.latest WHERE type = 'race_control')
          WHERE regexp_matches(subject, '^race_control\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -895,7 +914,7 @@ SELECT sk AS session_key, CAST(j.date AS TIMESTAMP) AS date, j.air_temperature, 
        j.humidity, j.pressure, j.rainfall, j.wind_direction, j.wind_speed
   FROM (SELECT CAST(regexp_extract(subject, 'session_key=(\d+)', 1) AS BIGINT) AS sk,
                unnest(from_json(payload, '[{"date":"VARCHAR","air_temperature":"DOUBLE","track_temperature":"DOUBLE","humidity":"DOUBLE","pressure":"DOUBLE","rainfall":"DOUBLE","wind_direction":"DOUBLE","wind_speed":"DOUBLE"}]')) AS j
-          FROM (SELECT * FROM timing.events WHERE type = 'weather')
+          FROM (SELECT * FROM timing.latest WHERE type = 'weather')
          WHERE regexp_matches(subject, '^weather\?session_key=\d+$')
        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY event_time DESC, kafka_offset DESC) = 1);
 
@@ -926,7 +945,7 @@ SELECT * FROM timing.sessions
 -- table. They did, and together they ran the lake out of its memory cap
 -- (FINDINGS §125).
 CREATE OR REPLACE VIEW live.payloads AS
-SELECT type, payload FROM timing.events
+SELECT type, payload FROM timing.latest
  WHERE subject = type || '?session_key=' || (SELECT session_key FROM live.session)
 QUALIFY row_number() OVER (PARTITION BY type ORDER BY event_time DESC, kafka_offset DESC) = 1;
 
