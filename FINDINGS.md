@@ -10767,3 +10767,19 @@ Also seen: after FP2 ended at 18:00, the MQTT keeper took each three-minute
 silence for a dead connection until its three-hour window ran out, reaching
 generation 13. That is harmless but wasteful; the window should end with the
 session.
+
+## 133. DuckGraphLake c6dfbfb: Kafka log retention, and event views before init
+
+c6dfbfb adds two of the items reported in
+`docs/datalake/prompts/duckgraphlake-otel-merge-oom.md`:
+- `[kafka] log_retention`, 7 days by default, with `log_retention_mb`; what an
+  active consumer group has not read is kept;
+- business-event views (`openf1.<type>`) that exist "before `--init` runs".
+
+It also folds new major CDC revisions into the per-app views, and adds
+`plan` / `apply` / `serve --project` for a lake kept as a code project.
+
+Switched at 11:29 UTC, as before: checksums of the five topic tables first, the
+watchdog paused, then compared. They were identical. All 16 pipeline steps were
+ready, init.sql ran without errors, and the `openf1` event views were there
+again. It took about 20 s to answer after start, longer than ab99072.
