@@ -1196,3 +1196,48 @@ e AS (
    WHERE (t.status IS NULL OR t.status = 'PIT OUT') AND pb.best IS NOT NULL AND pb.b1 IS NOT NULL AND pb.b2 IS NOT NULL
 )
 SELECT code, colour, ta, round(fa, 4) AS fa, CAST(1000 * best * ratio AS BIGINT) AS lapms FROM e;
+
+-- The tower again, one row per car, for a Data Grid 2 version of it on the
+-- Timing page, beside the Vega one, to compare. The cells that carry styling
+-- are small HTML (rendered by the HTML Element widget, classes `tw-*` in the
+-- theme's _f1-layout.scss): the position chip in team colour, the pit badge,
+-- the purple best lap, the tyre ring, and each sector's time in its colour over
+-- its mini-sectors. The plain numbers stay plain.
+CREATE OR REPLACE VIEW live.tower_rows AS
+WITH t AS (SELECT * FROM live.tower),
+seg AS (
+  SELECT driver_number, k, string_agg('<i class="tw-ms tw-ms-' ||
+           CASE s WHEN 2051 THEN 'p' WHEN 2049 THEN 'g' WHEN 2048 THEN 'y' WHEN 2064 THEN 'pit' ELSE 'n' END || '"></i>', '' ORDER BY i) AS bar
+    FROM (SELECT driver_number, k, unnest(segs) AS s, generate_subscripts(segs, 1) AS i
+            FROM (SELECT driver_number, 1 AS k, seg1 AS segs FROM t UNION ALL
+                  SELECT driver_number, 2, seg2 FROM t UNION ALL SELECT driver_number, 3, seg3 FROM t)
+           WHERE segs IS NOT NULL)
+   GROUP BY ALL
+),
+sec AS (
+  SELECT t.driver_number, k,
+         '<div class="tw-sec tw-' ||
+           CASE WHEN v IS NULL THEN 'none' WHEN v <= ob THEN 'p' WHEN v <= own THEN 'g' ELSE 'y' END || '">' ||
+           COALESCE(printf('%.3f', v), '&nbsp;') || '</div><div class="tw-bar">' || COALESCE(seg.bar, '') || '</div>' AS html
+    FROM (SELECT driver_number, 1 AS k, s1 AS v, b1 AS own, ob1 AS ob FROM t UNION ALL
+          SELECT driver_number, 2, s2, b2, ob2 FROM t UNION ALL SELECT driver_number, 3, s3, b3, ob3 FROM t) t
+    LEFT JOIN seg USING (driver_number, k)
+)
+SELECT t.pos,
+       '<span class="tw-chip" style="background:' || t.colour || '">' || t.pos || '</span>'
+         || '<span class="tw-code" style="color:' || t.colour || '">' || COALESCE(t.code, '') || '</span>' AS driver,
+       CASE WHEN t.status IS NOT NULL THEN '<span class="tw-badge">' || t.status || '</span>'
+            ELSE COALESCE(live.laptime(t.last_lap), '—') END AS lastLap,
+       CASE WHEN t.fastest THEN '<span class="tw-purple">' || live.laptime(t.best) || '</span>'
+            ELSE COALESCE(live.laptime(t.best), '—') END AS bestLap,
+       CASE WHEN t.compound IS NULL THEN ''
+            ELSE '<span class="tw-tyre tw-tyre-' || lower(left(t.compound, 1)) || '">' || left(t.compound, 1) || '</span>' END AS tyre,
+       CAST(CASE WHEN t.compound IS NOT NULL THEN t.tyre_age END AS BIGINT) AS age,
+       COALESCE(NULLIF(t.gap, ''), CASE WHEN t.gap = '' THEN '—' END, '') AS gap,
+       (SELECT html FROM sec WHERE sec.driver_number = t.driver_number AND k = 1) AS s1,
+       (SELECT html FROM sec WHERE sec.driver_number = t.driver_number AND k = 2) AS s2,
+       (SELECT html FROM sec WHERE sec.driver_number = t.driver_number AND k = 3) AS s3,
+       CAST(t.laps AS BIGINT) AS laps,
+       COALESCE(t.st_speed || ' km/h', '') AS stSpeed,
+       COALESCE(live.laptime(t.theoretical), '') AS theoLap
+  FROM t;

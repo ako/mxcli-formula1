@@ -1521,3 +1521,26 @@
   margin-bottom: 8px;
 }
 .timing-fold > .panel { flex: 0 0 auto; margin-bottom: 0; }
+
+// The Timing page's Data Grid 2 tower (live.tower_rows): the HTML its cells
+// carry, styled to match the Vega tower.
+.tw-grid {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  .tw-chip { display: inline-block; min-width: 1.6em; padding: 0 .3em; border-radius: 3px; color: #0D1117;
+             font-weight: 700; text-align: center; margin-right: .4em; }
+  .tw-code { font-weight: 700; }
+  .tw-badge { display: inline-block; padding: 0 .5em; border-radius: 3px; background: #DA3633; color: #fff;
+              font-weight: 700; font-size: .85em; }
+  .tw-purple { display: inline-block; padding: 0 .4em; border-radius: 3px; background: #8B5CF6; color: #fff; }
+  .tw-tyre { display: inline-flex; align-items: center; justify-content: center; width: 1.5em; height: 1.5em;
+             border-radius: 50%; border: 2px solid currentColor; font-size: .75em; font-weight: 700; }
+  .tw-tyre-s { color: #E8002D; } .tw-tyre-m { color: #FFD12E; } .tw-tyre-h { color: #F0F0F0; }
+  .tw-tyre-i { color: #43B02A; } .tw-tyre-w { color: #0067AD; }
+  .tw-sec { font-weight: 600; line-height: 1.1; }
+  .tw-p { color: #A371F7; } .tw-g { color: #3FB950; } .tw-y { color: #E3B341; } .tw-none { color: transparent; }
+  .tw-bar { display: flex; gap: 1px; height: 3px; margin-top: 2px; }
+  .tw-ms { flex: 1 1 0; display: block; background: #30363D; }
+  .tw-ms-p { background: #A371F7; } .tw-ms-g { background: #3FB950; } .tw-ms-y { background: #E3B341; }
+  .tw-ms-pit { background: #58A6FF; }
+}

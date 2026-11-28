@@ -155,3 +155,6 @@
 
 # Copies of lake state moved out of data/ while recovering the lake (FINDINGS §125).
 /.lake-backup/
+
+# Studio Pro's Agent Editor extension writes its log here.
+/Formula1Frontend/agenteditor/

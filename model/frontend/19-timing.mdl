@@ -32,6 +32,14 @@ create or modify non-persistent entity Formula1Frontend.TimingHeader (
   AirTemp: string(20), Humidity: string(20), Pressure: string(30), Ticker: string(unlimited)
 );
 
+/* The tower as rows, for the Data Grid 2 version: live.tower_rows. The styled
+ * cells are HTML, shown by HTML Element widgets. */
+create or modify non-persistent entity Formula1Frontend.TowerRow (
+  Pos: long, Driver: string(unlimited), LastLap: string(unlimited), BestLap: string(unlimited),
+  Tyre: string(unlimited), Age: long, Gap: string(20), S1: string(unlimited), S2: string(unlimited),
+  S3: string(unlimited), Laps: long, StSpeed: string(20), TheoLap: string(20)
+);
+
 create or modify database connection Formula1Frontend.F1LakeLive (
 Type: 'PostgreSQL',
 ConnectionString: @Formula1Frontend.LakeUrl,
@@ -56,6 +64,12 @@ Password: @Formula1Frontend.LakePassword )
                  ''ta'': ta, ''fa'': fa, ''lapms'': lapms})) AS VARCHAR), ''[]'') AS json FROM live.map_cars',
     Returns: Formula1Frontend.Chart,
     Map: ( json = json ) )
+  query GetTowerRows (
+    Sql: 'SELECT pos, driver, lastLap, bestLap, tyre, age, gap, s1, s2, s3, laps, stSpeed, theoLap
+            FROM live.tower_rows ORDER BY pos',
+    Returns: Formula1Frontend.TowerRow,
+    Map: ( Pos = pos, Driver = driver, LastLap = lastLap, BestLap = bestLap, Tyre = tyre, Age = age,
+           Gap = gap, S1 = s1, S2 = s2, S3 = s3, Laps = laps, StSpeed = stSpeed, TheoLap = theoLap ) )
   query GetSectorCells (
     Sql: 'SELECT COALESCE(CAST(to_json(list({''k'': k, ''xt'': xt, ''yt'': yt, ''x'': x, ''x2'': x2, ''y'': y, ''y2'': y2, ''t'': text, ''fg'': fg, ''bg'': bg, ''s'': size})) AS VARCHAR), ''[]'') AS json FROM live.sector_cells',
     Returns: Formula1Frontend.Chart,
@@ -146,12 +160,28 @@ BEGIN
   RETURN $Chart;
 END;
 
+CREATE OR MODIFY MICROFLOW Formula1Frontend.DS_TowerRowsAt (
+  $Tick: Formula1Frontend.LiveTick
+)
+  RETURNS List of Formula1Frontend.TowerRow AS $Rows
+BEGIN
+  $Rows = execute database query Formula1Frontend.F1LakeLive.GetTowerRows
+    on error without rollback begin
+      log warning node 'F1Lake' 'Timing grid: the lake did not answer: {1}' with ({1} = $latestError/Message);
+      $None = CREATE LIST OF Formula1Frontend.TowerRow;
+      return $None;
+    end error;
+  RETURN $Rows;
+END;
+
 /* Granted here, not in 11: the page below uses them (CE0106). */
 GRANT READ * ON ENTITY Formula1Frontend.TimingHeader TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TimingHeaderAt TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TowerAt TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_SectorsAt TO Formula1Frontend.Enthusiast;
 GRANT EXECUTE ON MICROFLOW Formula1Frontend.DSJ_TimingMapAt TO Formula1Frontend.Enthusiast;
+GRANT READ * ON ENTITY Formula1Frontend.TowerRow TO Formula1Frontend.Enthusiast;
+GRANT EXECUTE ON MICROFLOW Formula1Frontend.DS_TowerRowsAt TO Formula1Frontend.Enthusiast;
 
 create or modify page Formula1Frontend.Timing
 (
@@ -219,6 +249,32 @@ create or modify page Formula1Frontend.Timing
             showActions: false,
             spec: '{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","width":210,"height":336,"data":{"name":"table"},"config":{"background":null,"view":{"stroke":null},"font":"JetBrains Mono"},"layer":[{"transform":[{"filter":"datum.k===''box''"}],"mark":{"type":"rect","cornerRadius":3},"encoding":{"x":{"field":"x","type":"quantitative","scale":{"domain":[0,210],"range":[0,210]},"axis":null},"x2":{"field":"x2"},"y":{"field":"y","type":"quantitative","scale":{"domain":[0,336],"range":[0,336]},"axis":null},"y2":{"field":"y2"},"fill":{"field":"bg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''tyre''"}],"mark":{"type":"point","shape":"circle","size":230,"strokeWidth":2.5,"filled":false},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,210],"range":[0,210]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,336],"range":[0,336]},"axis":null},"stroke":{"field":"fg","type":"nominal","scale":null,"legend":null}}},{"transform":[{"filter":"datum.k===''text'' || datum.k===''tyre''"}],"mark":{"type":"text","baseline":"middle","align":"center","fontWeight":600},"encoding":{"x":{"field":"xt","type":"quantitative","scale":{"domain":[0,210],"range":[0,210]},"axis":null},"y":{"field":"yt","type":"quantitative","scale":{"domain":[0,336],"range":[0,336]},"axis":null},"text":{"field":"t"},"color":{"field":"fg","type":"nominal","scale":null,"legend":null},"size":{"field":"s","type":"quantitative","scale":null,"legend":null}}}]}')
         }
+      }
+    }
+
+
+    /* The same tower as a Data Grid 2, to compare with the Vega one above. */
+    container tGridPanel (class: 'panel tw-grid') {
+      container tGridHead (class: 'panel-head') {
+        dynamictext tGridTitle (content: 'Timing tower, Data Grid 2', class: 'panel-title')
+        dynamictext tGridSub (content: 'the same rows as the chart above, as a table: it reflows and sorts', class: 'panel-sub')
+      }
+      datagrid dgTower (
+        datasource: MICROFLOW Formula1Frontend.DS_TowerRowsAt(Tick = $dvTick),
+        PageSize: 30, PagingPosition: bottom
+      ) {
+        column (caption: 'Driver') { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hDriver (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{Driver}') }
+        column (caption: 'Last lap', Alignment: right) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hLast (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{LastLap}') }
+        column (caption: 'Best lap', Alignment: right) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hBest (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{BestLap}') }
+        column (caption: 'Tyre', Alignment: center) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hTyre (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{Tyre}') }
+        column (attribute: Age, caption: 'Age', Alignment: right)
+        column (attribute: Gap, caption: 'Gap', Alignment: right)
+        column (caption: 'Sector 1', Alignment: center) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hS1 (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{S1}') }
+        column (caption: 'Sector 2', Alignment: center) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hS2 (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{S2}') }
+        column (caption: 'Sector 3', Alignment: center) { pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' hS3 (tagName: 'div', tagContentMode: 'innerHTML', tagContentHTML: '{S3}') }
+        column (attribute: Laps, caption: 'Laps', Alignment: right)
+        column (attribute: StSpeed, caption: 'ST speed', Alignment: right)
+        column (attribute: TheoLap, caption: 'Theo. lap', Alignment: right)
       }
     }
 

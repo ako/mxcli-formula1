@@ -10689,3 +10689,45 @@ map. Now:
 
 **Also:** a tyre age could read −1 just after a change, when the new stint
 arrived before its first lap. It is now at least 0.
+
+## 131. The frontend is on Mendix 11.17, and a Data Grid 2 tower beside the Vega one
+
+**11.17, by accident.** Opening the frontend in Studio Pro 11.17.0 converted it
+from 11.16.1 to 11.17.0. Before that was noticed, the old mxcli (1f6b9681, with
+the 11.17 bugs fixed in main 90b599447) wrote to the converted model twice: the
+Timing script, and a re-exec that replaced nine pages and the CDC service. The
+frontend was kept on 11.17, done properly:
+- the Studio Pro version was backed up to the scratchpad;
+- the model was restored from the last commit (11.16.1) and converted with
+  `mx convert -p` 11.17.0: 0 errors;
+- the frontend got its own copy of mxcli from main (`Formula1Frontend/mxcli`,
+  untracked; it had been a hard link shared with the backend);
+- every script was re-run: the first pass applied the conversion's page changes
+  and the new grid, the second wrote nothing;
+- mx check then reported CE1585 on AgentTraceCdc ("There are changes … accept
+  the changes"). mxcli rebuilds a CDC baseline when it writes the service, but it
+  saw the service as unchanged and did not. Dropping and creating it in one run
+  rebuilt the baseline at 1.0: same major version, so the same topics
+  (`cdc.Formula1Frontend.AgentTurn.1.local`) and the lake's history continue.
+  mx check passed after that.
+
+The frontend runs on runtime 11.17.0; the backend stays on 11.16.1 with the old
+mxcli until after the race. Opening the backend in Studio Pro 11.17 would convert
+it the same way.
+
+**The Data Grid 2 tower**, under the Vega one, to compare:
+- `live.tower_rows` gives one row per car; the styled cells are small HTML (chip
+  in team colour, pit badge, purple best lap, tyre ring, sector time over its
+  mini-sectors), shown by the HTML Element widget (`tagContentMode: innerHTML`,
+  `{Attribute}` in the template), with `tw-*` classes in the theme;
+- the same tick refreshes it.
+
+Compared at 1900 × 1100:
+- **The grid:** sorts, reflows and is a real table, but its rows are about
+  twice as tall (46 pixels against 23), the tyre rings come out tiny, and the
+  grid's own padding spreads the columns.
+- **The Vega tower:** compact and exact, but a fixed-size image of a table.
+
+Right after the restart, the page's first queries ran the lake out of its 4 GB
+cap (`failed to allocate … 3.7 GiB/3.7 GiB used`) while the pipeline steps
+refreshed; a minute later they answered.
